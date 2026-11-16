@@ -508,6 +508,9 @@ fn prerequisites_json(j: &Journey) -> Value {
     if !j.tunes.is_empty() {
         p["tunes"] = json!(j.tunes);
     }
+    if !j.art.is_empty() {
+        p["art"] = json!(j.art);
+    }
     if let Some(a) = &j.after {
         p["after"] = json!(a);
     }
@@ -621,37 +624,9 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
         prereq: get_str(pre, "text", "prerequisites")?.to_string(),
         skills: strs("skills")?,
         related: strs("related")?,
-        songs: match pre.get("songs") {
-            None => Vec::new(),
-            Some(list) => list
-                .as_array()
-                .ok_or("prerequisites: `songs` must be a list of strings")?
-                .iter()
-                .map(|x| {
-                    let name = x
-                        .as_str()
-                        .ok_or("prerequisites: `songs` must hold strings")?;
-                    crate::device::showcase_song(name)
-                        .map_err(|e| format!("prerequisites: {e}"))?;
-                    Ok(name.to_string())
-                })
-                .collect::<Result<_, String>>()?,
-        },
-        tunes: match pre.get("tunes") {
-            None => Vec::new(),
-            Some(list) => list
-                .as_array()
-                .ok_or("prerequisites: `tunes` must be a list of strings")?
-                .iter()
-                .map(|x| {
-                    let name = x
-                        .as_str()
-                        .ok_or("prerequisites: `tunes` must hold strings")?;
-                    crate::device::starter_tune(name).map_err(|e| format!("prerequisites: {e}"))?;
-                    Ok(name.to_string())
-                })
-                .collect::<Result<_, String>>()?,
-        },
+        songs: assets(pre, "songs", crate::device::showcase_song)?,
+        tunes: assets(pre, "tunes", crate::device::starter_tune)?,
+        art: assets(pre, "art", crate::device::art_pack)?,
         after: match pre.get("after") {
             None => None,
             Some(a) => Some(
@@ -663,8 +638,30 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
         prelude: Vec::new(),
         prelude_songs: Vec::new(),
         prelude_tunes: Vec::new(),
+        prelude_art: Vec::new(),
         steps,
     })
+}
+
+fn assets(
+    pre: &Value,
+    key: &str,
+    read: fn(&str) -> Result<Vec<u8>, String>,
+) -> Result<Vec<String>, String> {
+    let Some(list) = pre.get(key) else {
+        return Ok(Vec::new());
+    };
+    list.as_array()
+        .ok_or_else(|| format!("prerequisites: `{key}` must be a list of strings"))?
+        .iter()
+        .map(|x| {
+            let name = x
+                .as_str()
+                .ok_or_else(|| format!("prerequisites: `{key}` must hold strings"))?;
+            read(name).map_err(|e| format!("prerequisites: {e}"))?;
+            Ok(name.to_string())
+        })
+        .collect()
 }
 
 pub fn export(table: &str, dir: &Path) -> Result<Vec<String>, String> {
@@ -815,10 +812,12 @@ pub fn schema_keys() -> Map<String, Value> {
         related: vec![],
         songs: vec![],
         tunes: vec![],
+        art: vec![],
         after: None,
         prelude: vec![],
         prelude_songs: vec![],
         prelude_tunes: vec![],
+        prelude_art: vec![],
         steps: vec![],
     })
     .as_object()

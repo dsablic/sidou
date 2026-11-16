@@ -6,7 +6,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SIDOU cheat sheet</title>
-<meta name="description" content="Every control of SIDOU 1.10.0, the C64 SID firmware for the M-VAVE FM-1, on one page: playing, sound, songs, saving, MIDI and USB.">
+<meta name="description" content="Every control of SIDOU 1.20.0, the C64 SID firmware for the M-VAVE FM-1, on one page: playing, sound, songs, saving, MIDI and USB.">
 <link rel="icon" href="data:,">
 <style>
   :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
@@ -75,7 +75,7 @@
   <header>
     <div class="brand">
       <a href="./"><img src="logo.png" width="452" height="126" alt="SIDOU"></a>
-      <h1>Cheat sheet · SIDOU 1.10.0</h1>
+      <h1>Cheat sheet · SIDOU 1.20.0</h1>
     </div>
     <nav><a href="./">Play it in the browser</a> · <a href="videos.html">Videos</a> · <a href="library.html">Library</a> · <a href="songs.html">Songs for your FM-1</a> · <a href="midi.html">Songs to MIDI</a> · <a href="https://github.com/dsablic/sidou">Source</a> · <button type="button" class="print" onclick="print()">Print</button></nav>
   </header>
@@ -120,6 +120,7 @@
         <tr><td>Menu: SELECT</td><td>move: CHIP, TRACKER, SCENE, SONG, LAB, SIDS, PRE, OCTAVE, SETTINGS, STATUS, MIDI, CHARSET, ABOUT</td></tr>
         <tr><td>Menu: SAVE</td><td>OK: opens the highlighted item (ALGORITHM clockwise does too)</td></tr>
         <tr><td>Menu: ALGORITHM</td><td>on PRE / OCTAVE changes the value</td></tr>
+        <tr><td>SCENE: SELECT</td><td>the pieces: DEMO, FIRE, PLASMA, SCOPE, RED MOON RITE (plays to the keys, MIDI and songs; its art from the Library page)</td></tr>
         <tr><td>STATUS: SELECT</td><td>turns its 3 pages: knobs (6502 with a tune), chip + preset + notes, effects</td></tr>
         <tr><td>SEQ</td><td>opens the song view used last; again: STEP → TRACKER → ORDER → INSTR → TABLE → STEP</td></tr>
         <tr><td>Any control</td><td>skips the boot (a note skips and plays)</td></tr>
@@ -287,7 +288,7 @@
         <tr><td>REC</td><td>record quantise (not saved)</td></tr>
         <tr><td>SPREAD</td><td>OFF, 10 %…100 %</td></tr>
         <tr><td>RESET</td><td>SAVE asks (<code>RESET?</code>), SAVE again resets every preset and setting. Keeps songs, USER profiles, MIDI learn</td></tr>
-        <tr><td>BLUETOOTH</td><td>OFF / ON: Bluetooth MIDI (below); OFF by default</td></tr>
+        <tr><td>BLUETOOTH</td><td>OFF / ON / KEYBOARD: Bluetooth MIDI (below); OFF by default. KEYBOARD: SAVE opens DEVICES</td></tr>
       </table>
       <p class="note">Only STORE and RESET ask first: SAVE asks, SAVE again does it, HOME or moving away cancels; no knob confirms. The rest save themselves.</p>
     </section>
@@ -304,6 +305,7 @@
         <tr><td>MIDI out</td><td>USB and Bluetooth, channel 1: the panel's knobs, MASTER, the chip profile and slots as CCs, PRESETS as a program change; MIDI input is never echoed</td></tr>
         <tr><td>Clock</td><td>the song follows MIDI clock and start/stop (CLOCK AUTO); CLOCK OUT ON sends it over USB</td></tr>
         <tr><td>Bluetooth</td><td>SETTINGS → BLUETOOTH ON: <b>SIDOU XXXX</b> shows up as a Bluetooth MIDI device for a Mac, an iPad or a phone (no pairing); notes, CCs and clock in, the panel out as over USB. A dropped link releases the held notes</td></tr>
+        <tr><td>Bluetooth keyboard</td><td>BLUETOOTH KEYBOARD, SAVE: <b>DEVICES</b> lists the Bluetooth MIDI keyboards nearby; SAVE connects one (pairs if it asks: type the passkey shown), keeps it and reconnects after a power cycle or when it is back in range; toasts on connect and LOST. One link at a time: a computer connects with ON</td></tr>
       </table>
       <p class="note">Every parameter also has an NRPN: the full map is <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">midi.md</a>.</p>
     </section>
@@ -315,9 +317,9 @@
         <tr><td>USB audio</td><td>a class-compliant audio input (no driver; macOS, Windows, Linux, iPad): records the line out, 16-bit stereo, 44.1 kHz</td></tr>
         <tr><td>Send songs</td><td>the <a href="songs.html">Songs page</a> sends the showcase songs over USB (Chrome or Edge)</td></tr>
         <tr><td>Your files</td><td>the <a href="library.html">Library</a> lists, sends, renames, deletes, backs up and restores the store; exports a song and its instruments</td></tr>
-        <tr><td>Your RED MOON RITE</td><td>the <a href="art.html">art pack builder</a>: a PNG a slot (its frames in a row), previewed, downloaded as <code>.sidart</code> or sent to the FM-1; then SCENE, SELECT to RED MOON RITE</td></tr>
+        <tr><td>Your RED MOON RITE</td><td>the <a href="art.html">art pack builder</a>: a PNG a slot (its frames in a row), previewed, downloaded as <code>.sidart</code> or sent to the FM-1; SIDOU's own art: the Library's <b>RED MOON RITE art</b> button; then SCENE, SELECT to RED MOON RITE</td></tr>
         <tr><td>Song → MIDI file</td><td>the <a href="midi.html">Songs to MIDI</a> page turns any <code>.sng</code> into a <code>.mid</code></td></tr>
-        <tr><td>Install / update</td><td>Felucca's installer: <code>fm1_install.py sidou-1.10.0.fwsc</code>; back to stock: M-VAVE's <code>FM-1.fwsc</code></td></tr>
+        <tr><td>Install / update</td><td>Felucca's installer: <code>fm1_install.py sidou-1.20.0.fwsc</code>; back to stock: M-VAVE's <code>FM-1.fwsc</code></td></tr>
       </table>
     </section>
 
@@ -339,7 +341,7 @@
       <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">the MIDI map</a> ·
       <a href="https://dsablic.github.io/sidou/">play it in the browser</a> · <a href="https://dsablic.github.io/sidou/videos.html">the how-to videos</a> ·
       <a href="https://github.com/dsablic/sidou/releases/latest">latest release</a></p>
-    <p>Checked against SIDOU 1.10.0. SIDOU · github.com/dsablic/sidou · the firmware is
+    <p>Checked against SIDOU 1.20.0. SIDOU · github.com/dsablic/sidou · the firmware is
       GPL-3.0-only, this page GPL-3.0-or-later · an independent project, not affiliated with M-VAVE or Commodore trademark holders.</p>
   </footer>
 </main>

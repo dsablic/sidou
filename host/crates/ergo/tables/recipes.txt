@@ -267,17 +267,21 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE: a USER sound under its name, for PRESETS to find later. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: NOW PLAYING, the tune still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.10
-  goal See SIDOU 1.10's highlight: a whole song written as text, loaded and played on the FM-1, and the USER sounds read back as patches on the Library page.
-  prereq On LIVE after the boot; THREE PARTS, a song written as text (sidou-song/1), in the store.
-  skills SONG LOAD; SEQ opens the song views; PLAY; sidou-song/1; the Library page; USER sounds read over USB
-  related mute-and-solo; play-over-a-song; save-and-load; shape-in-lab
-  songs three-parts
-  step load | A song from *text* | HOME, SONG, LOAD: THREE PARTS, written as text, is in the store like any other song. | press HOME; wait 500; select-item SONG; press SAVE; wait 700; press SAVE; wait 1500; turn SELECT 1; wait 500; press SAVE; wait 2500 | view song_menu; absent BUSY; absent SNG:; focus SAVE; callout HOME, SONG, SAVE, SAVE
-  step play | It *plays* | SEQ twice opens the TRACKER, PLAY plays the song: bass, drums and a lead, three sections in order. | press SEQ; wait 900; press SEQ; wait 900; press PLAY; wait 6000 | view tracker; sound; focus PLAY; callout SEQ TWICE, PLAY
-  step text | Written as *text* | A model or coding agent writes the song as step-grid strings, sidou-song/1. The Library page previews it, sends it to the FM-1 or opens it in the editor; sidou-sysex song makes the file. | wait 5600 | sound; focus card; callout A MODEL WRITES sidou-song/1 <> LIBRARY: PREVIEW, SEND, EDIT
-  step user-sounds | *USER sounds*, read back | The Library page's USER sounds button reads the sounds LAB kept, over USB, and opens each as a patch. sidou-sysex user-sounds saves them as JSON. Read only. | wait 5000 | sound; focus card; callout FM-1 > USER SOUNDS > LIBRARY AS PATCHES
-  step get-it | Get *SIDOU 1.10* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | sound; focus card
+journey whats-new | What's new in SIDOU 1.20
+  goal See SIDOU 1.20's highlights: a Bluetooth keyboard picked on DEVICES, SCENE opening on DEMO, SCOPE's traces, RED MOON RITE's art from the store fighting to the keys, LAB's glowing card and the mod wheel's vibrato.
+  prereq On LIVE after the boot; RED MOON RITE's art pack in the store, as the Library page sends it.
+  skills SETTINGS; BLUETOOTH KEYBOARD; DEVICES; SCENE; DEMO; SCOPE; RED MOON RITE; art packs; LAB; the MIDI page's WHEEL
+  related sidou-intro; shape-in-lab; chord-arpeggio
+  art red-moon-rite
+  step keyboard | A *Bluetooth keyboard* | HOME, SETTINGS, BLUETOOTH: ALGORITHM turns it past ON to KEYBOARD, and SAVE opens DEVICES, the Bluetooth MIDI keyboards nearby with their signal bars. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout SETTINGS > BLUETOOTH KEYBOARD, SAVE
+  step pair | Paired, kept, *back by itself* | SAVE on a keyboard connects it: SIDOU pairs when it asks (a passkey shows large to type), keeps the bond, and connects again after a power cycle or when it comes back in range. | wait 5600 | view devices; focus card; callout DEVICES > SAVE > KEYBOARD MICROKEY AIR
+  step demo | SCENE opens on *DEMO* | HOME, SCENE: DEMO first, the SIDOU logo between starfields that speed up and glow with what is played. | press HOME; wait 500; press HOME; wait 500; select-item SCENE; turn ALGORITHM 1; wait 2500; play 150 C4:2 E4:2 G4:2 C5:2 G4:2 E4:2 C4:4 | view scene; sound; focus screen; callout SCENE > DEMO
+  step scope | *SCOPE*: the voices traced | SELECT to SCOPE: the three voices of the chip the keys play, as glowing oscilloscope traces. A held note stands still. | turn SELECT 3; wait 1500; down F3; wait 600; down C4; wait 600; down A4; wait 2400; up F3; up C4; up A4; wait 400 | view scene; sound; focus SELECT; callout SELECT TO SCOPE, HOLD A CHORD
+  step duel | RED MOON RITE *fights to the keys* | SELECT to RED MOON RITE, its art a file in the store. Any notes play it: a note attacks, high notes chop overhead, low notes sweep low, a chord flares the torches, a fast run is a flurry. | turn SELECT 1; wait 1500; play 150 A4:2 E5:2 F3:2 C4:2 E5:1 D5:1 C5:1 B4:1 A4:1 G4:1 F4:1 E4:1 A4+C5+E5:4 F3:4 E5:2 G3:2 G5:2 F3:4 | view scene; sound; focus screen; callout PLAY THE KEYS > RED MOON RITE
+  step art | Your own *art* | The site's art pack builder (art.html) puts your PNGs on the fighters, swords, skies and arena, previews the duel with the firmware's own code and sends the pack to the FM-1. | wait 5000 | view scene; focus card; callout YOUR PNGS > ART PACK > RED MOON RITE
+  step glow | LAB's card *glows* | HOME twice, ENV: LAB. The card a knob turns glows in its colour for a second. | press HOME; wait 500; press HOME; wait 900; press ENV; wait 1200; sweep K1 -8 800; play 150 A3:2 C4:2 E4:4 | view lab; sound; focus K1; callout PRESS ENV, TURN K1
+  step wheel | The mod wheel's *vibrato* | The mod wheel adds vibrato on every sound. The MIDI page's WHEEL row picks what it moves: VIBRATO, PULSE or CUTOFF. | press HOME; wait 600; press HOME; wait 600; select-item MIDI; turn ALGORITHM 1; wait 800; turn SELECT 8; wait 500; down A4; wait 500; cc 1 40; wait 300; cc 1 90; wait 1200; cc 1 127; wait 800; up A4; cc 1 0; wait 400 | view midi; text WHEEL; text VIBRATO; sound; focus screen; callout MENU > MIDI > WHEEL VIBRATO
+  step get-it | Get *SIDOU 1.20* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | view midi; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
@@ -285,6 +289,7 @@ journey sidou-intro | SIDOU in a minute | poweron
   skills the boot; songs; TRACKER and REC; GoatTracker 2; STEP and locks; two SIDs; SPREAD; CHIP; chord arpeggios; SCENE
   related first-sound; mute-and-solo; play-over-a-song
   songs chrome-comet
+  art red-moon-rite
   step boot | *SIDOU* for the FM-1 | SIDOU: GPL firmware that makes the M-VAVE FM-1 a C64 SID music machine. | hold HOME 2500; wait 3500 | change; focus screen; callout LOAD"SIDOU",8,1
   step load | Songs are *GoatTracker 2* files | SONG, LOAD: the store holds GoatTracker 2 .sng files. | press HOME; wait 600; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step tracker | Write C64 songs in a *tracker* | SEQ twice: the TRACKER, GoatTracker's layout. PLAY, then REC: what you play goes into the pattern. | press SEQ; wait 600; press SEQ; wait 600; press PLAY; wait 1800; press REC; play 150 D5:2 C5:2 A4:4 G4:2 A4:2 F4:4; press REC; wait 800 | view tracker; sound; screen 0 2 30 24; focus REC; callout SEQ, PLAY, REC

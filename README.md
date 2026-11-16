@@ -120,8 +120,10 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   ([midi.md](docs/reference/midi.md)).
 - **Play over Bluetooth.** Turn BLUETOOTH on in SETTINGS and a Mac, an iPad or a phone finds
   SIDOU as a Bluetooth MIDI device, no pairing: notes, CCs and clock in, the panel out, as over
-  USB ([controls](docs/reference/controls.md)). It is off by default, and while it is off the
-  radio never starts.
+  USB ([controls](docs/reference/controls.md)). Or set it to KEYBOARD and SIDOU connects to a
+  Bluetooth MIDI keyboard you pick on DEVICES: it pairs when the keyboard asks, keeps the bond and
+  connects again after a power cycle or when the keyboard comes back in range. It is off by
+  default, and while it is off the radio never starts.
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
   iPad: a DAW records what the line out plays, in stereo at 44.1 kHz, over the same cable
   as USB-MIDI.
@@ -266,7 +268,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 The releases and what each brought: [CHANGELOG.md](CHANGELOG.md). What comes next:
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
-Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit, and so has Bluetooth MIDI (notes in and CCs out, a link dropped with a note held, an hour of two SIDs with saves during the link); the first-run tour is still to be checked there. See the
+Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views, REC and `.sid` playback ([its flash day](docs/hardware-results/2026-10-25-m3-flash-day.md)) have run on a real unit, and so has Bluetooth MIDI (notes in and CCs out, a link dropped with a note held, an hour of two SIDs with saves during the link) and a Bluetooth keyboard (a Korg microKEY Air paired, played, lost and found again, and reconnected after a power cycle); the first-run tour is still to be checked there. See the
 [roadmap](docs/ROADMAP.md) and the
 [design document](docs/plans/2026-10-14-sidou-design.md).
 

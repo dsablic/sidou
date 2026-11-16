@@ -87,6 +87,8 @@ def recipe_capture(rid: str) -> Path:
     parts += [song_source(s).read_bytes() for s in songs]
     tunes = sorted({s for v in chain for s in v["prerequisites"].get("tunes", [])})
     parts += [(ROOT / f"assets/starter/{s}.sid").read_bytes() for s in tunes]
+    art = sorted({s for v in chain for s in v["prerequisites"].get("art", [])})
+    parts += [(ROOT / f"assets/art/{s}.sidart").read_bytes() for s in art]
     return capture(rid, RECIPES, parts)
 
 

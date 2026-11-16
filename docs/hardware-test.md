@@ -3142,7 +3142,7 @@ Set up:
   connected, §35's items once more: a minute of notes from Logic to SIDOU and from SIDOU's keys to
   Logic, Logic's MIDI clock to SIDOU over Bluetooth with a song following it (CLOCK on FOLLOW),
   no audio glitch, OFF and ON, a power cycle keeps ON, and a firmware install with BLUETOOTH ON
-  still finishes. Pass: as in §35, the song in time with Logic. *Result:* Partly passed 2026-11-15 (GarageBand has no MIDI clock or MIDI out, so this Mac sent and listened over `SIDOU D84A Bluetooth` with the owner's yes, as in §35): K1 turned, 605 CC 74 reached the Mac (35-127); notes from the Mac played SIDOU (the first try sent the moment the port opened and the owner had no headphones in; sent again after 2 s, heard); a song on FOLLOW started with the clock, followed 120, 90 and 140 BPM (961, 541, 841 ticks) evenly and stopped. An install with BLUETOOTH ON passed 2026-11-16 (the 1.20 test package from main 156fdd02, FM-1_964, app 548,260 B, SHA-256 b30c48be…05a1ef1: "done: the FM-1 runs FM-1_964"). Not run: OFF and ON, a power cycle keeps ON.
+  still finishes. Pass: as in §35, the song in time with Logic. *Result:* Partly passed 2026-11-15 (GarageBand has no MIDI clock or MIDI out, so this Mac sent and listened over `SIDOU D84A Bluetooth` with the owner's yes, as in §35): K1 turned, 605 CC 74 reached the Mac (35-127); notes from the Mac played SIDOU (the first try sent the moment the port opened and the owner had no headphones in; sent again after 2 s, heard); a song on FOLLOW started with the clock, followed 120, 90 and 140 BPM (961, 541, 841 ticks) evenly and stopped. An install with BLUETOOTH ON passed 2026-11-16 (the 1.20 test package from main 156fdd02, FM-1_964, app 548,260 B, SHA-256 b30c48be…05a1ef1: "done: the FM-1 runs FM-1_964"). Not run: OFF and ON, a power cycle keeps ON; both are in §40.
 
 ## 39. 1.20: RED MOON RITE's art from the store, and the logo intro
 
@@ -3190,6 +3190,54 @@ Set up:
   SETTINGS, STORE, FORMAT, SAVE then SAVE AGAIN. Pass: RED MOON RITE plays the intro again with the
   hint toast; restoring the backup brings the songs and the art back (the backup holds the pack).
 
+## 40. 1.20.0: the release package
+
+What it decides: whether the 1.20.0 package ships. §38 passed its keyboard items on test packages
+from main, §39 is run here only in part, so this section installs the release package itself over
+the owner's current test build and checks what a player meets first: the version, the kept songs,
+the keyboard reconnecting, SCENE opening on DEMO and RED MOON RITE with its art; and the two
+peripheral items §38 left unrun. The image is 548,228 bytes, 31,288 under the 579,516 ceiling.
+Every item waits for the owner's yes for that step: nothing is flashed, sent, connected or
+scanned before it.
+
+Set up: the 1.20.0 package (`build/fm1/sidou.fwsc` from the release branch, from a fresh build
+directory, `tools/preflash` passing), the FM-1 on the owner's current test build with its songs,
+BLUETOOTH on KEYBOARD and the Korg microKEY Air kept (§38); the microKEY Air charged; a Mac with
+Chrome on the [Library page](https://dsablic.github.io/sidou/library.html) (or `sidou-sysex`
+from the branch) and Audio MIDI Setup's Bluetooth window; headphones on the line out.
+
+- [x] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-1.20.0.fwsc`).
+  Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU boots; SONG, LOAD lists the songs it
+  had; SETTINGS still says KEYBOARD and the microKEY Air's name. *Emulator:* `package.rs`.
+  *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
+- [x] **The version:** ABOUT and STATUS. Pass: both say 1.20.0. *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
+- [x] **The keyboard reconnects:** with the microKEY Air on, a few seconds after the boot. Pass: the
+  toast `KEYBOARD microKEY Air`, no pairing asked again (no `PASSKEY`), and it plays: notes, the
+  mod wheel's vibrato on a saw sound (MIDI page, WHEEL: VIBRATO). Switch it off and on: `KEYBOARD
+  LOST`, then it connects by itself. *Emulator:*
+  `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`,
+  `ble_keyboard.rs::a_keyboard_gone_releases_its_notes_says_lost_and_reconnects_by_itself`.
+  *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5): reconnected without pairing, notes and the vibrato; the keyboard off and on was not repeated here (passed on the §38 build).
+- [x] **SCENE opens on DEMO:** HOME, SCENE. Pass: DEMO first (the SIDOU logo between starfields);
+  SELECT steps FIRE, PLASMA, SCOPE (a held chord draws three steady traces), RED MOON RITE; no
+  RULE 30, STARS or ANT; no stall or click. *Emulator:* `screen.rs`'s SCENE goldens. *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
+- [x] **RED MOON RITE with its art:** if the store has no pack yet, RED MOON RITE plays the intro
+  with the toast `RED MOON RITE ART: LIBRARY`; then the Library page's **RED MOON RITE art** (or
+  `sidou-sysex art` and `sidou-sysex send`). Pass: the page says it sent `RED MOON RITE`
+  (41,037 bytes); within a third of a second the duel takes over; played from the microKEY Air
+  and the FM-1's keys, the fighters answer the notes (attacks, chops for high notes, sweeps for low
+  ones, a chord flares the torches); PLAY a song: it fights to its drums. A power cycle keeps it
+  (§39's items 2 to 4 in one). *Emulator:* `scene_rmr.rs`, `screen.rs::scene_rmr_matches_its_golden_image`.
+  *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5): the pack sent in §39 was kept over the install, so the duel showed at once (the intro and the send passed in §39); the duel answered the keys and a song.
+- [x] **OFF and ON** (§38's last item, not run there): BLUETOOTH to ON, the Mac connects to
+  `SIDOU XXXX` and a note goes each way; BLUETOOTH OFF: the Mac's link drops and SIDOU is gone
+  from its list; ON again: it is listed and connects. Pass: as written, no reboot, the sound
+  uninterrupted. *Emulator:* `ble.rs`. *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
+- [x] **A power cycle keeps ON** (§38's last item, not run there): with BLUETOOTH ON, power the
+  FM-1 off and on. Pass: SETTINGS says ON, the Mac lists and connects to `SIDOU XXXX`. Then back
+  to KEYBOARD: the microKEY Air connects by itself. *Emulator:*
+  `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`.
+  *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -3234,3 +3282,5 @@ Set up:
 | 36 1.10: songs as text, the USER sounds read back | Pass | 2026-11-14, the 1.10.0 package |
 | 37 felucca-bsp `18eadadb`: USB audio by the crystal, the key scan's rate | | |
 | 38 1.11: Bluetooth connecting out to a keyboard | | |
+| 39 1.20: RED MOON RITE's art from the store, and the logo intro | | |
+| 40 1.20.0: the release package | | |

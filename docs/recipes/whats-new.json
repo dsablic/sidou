@@ -1,48 +1,47 @@
 {
-  "goal": "See SIDOU 1.10's highlight: a whole song written as text, loaded and played on the FM-1, and the USER sounds read back as patches on the Library page.",
+  "goal": "See SIDOU 1.20's highlights: a Bluetooth keyboard picked on DEVICES, SCENE opening on DEMO, SCOPE's traces, RED MOON RITE's art from the store fighting to the keys, LAB's glowing card and the mod wheel's vibrato.",
   "id": "whats-new",
   "prerequisites": {
-    "songs": [
-      "three-parts"
+    "art": [
+      "red-moon-rite"
     ],
     "start": "live",
-    "text": "On LIVE after the boot; THREE PARTS, a song written as text (sidou-song/1), in the store."
+    "text": "On LIVE after the boot; RED MOON RITE's art pack in the store, as the Library page sends it."
   },
   "related": [
-    "mute-and-solo",
-    "play-over-a-song",
-    "save-and-load",
-    "shape-in-lab"
+    "sidou-intro",
+    "shape-in-lab",
+    "chord-arpeggio"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "SONG LOAD",
-    "SEQ opens the song views",
-    "PLAY",
-    "sidou-song/1",
-    "the Library page",
-    "USER sounds read over USB"
+    "SETTINGS",
+    "BLUETOOTH KEYBOARD",
+    "DEVICES",
+    "SCENE",
+    "DEMO",
+    "SCOPE",
+    "RED MOON RITE",
+    "art packs",
+    "LAB",
+    "the MIDI page's WHEEL"
   ],
   "steps": [
     {
-      "caption": "HOME, SONG, LOAD: THREE PARTS, written as text, is in the store like any other song.",
-      "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then press SAVE, then wait 0.7 s, then press SAVE, then wait 1.5 s, then turn SELECT clockwise by 1 detent, then wait 0.5 s, then press SAVE, then wait 2.5 s",
+      "caption": "HOME, SETTINGS, BLUETOOTH: ALGORITHM turns it past ON to KEYBOARD, and SAVE opens DEVICES, the Bluetooth MIDI keyboards nearby with their signal bars.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until BLUETOOTH is selected, then turn ALGORITHM clockwise by 2 detents, then wait 1.5 s, then press SAVE, then wait 2.0 s",
       "expect": [
         {
           "kind": "view",
-          "value": "song_menu"
+          "value": "devices"
         },
         {
-          "kind": "text_absent",
-          "value": "BUSY"
-        },
-        {
-          "kind": "text_absent",
-          "value": "SNG:"
+          "kind": "text",
+          "value": "SCANNING"
         }
       ],
       "focus": {
-        "callout": "HOME, SONG, SAVE, SAVE",
+        "callout": "SETTINGS > BLUETOOTH KEYBOARD, SAVE",
         "control": "SAVE"
       },
       "harness": {
@@ -54,7 +53,7 @@
         "remember": false,
         "task": null
       },
-      "id": "load",
+      "id": "keyboard",
       "inputs": [
         {
           "button": "HOME",
@@ -66,26 +65,605 @@
         },
         {
           "op": "select_item",
-          "text": "SONG"
+          "text": "SETTINGS"
         },
         {
           "button": "SAVE",
           "op": "press"
         },
         {
-          "ms": 700,
+          "ms": 500,
           "op": "wait"
         },
         {
-          "button": "SAVE",
-          "op": "press"
+          "op": "select_item",
+          "text": "BLUETOOTH"
+        },
+        {
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
         },
         {
           "ms": 1500,
           "op": "wait"
         },
         {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *Bluetooth keyboard*"
+    },
+    {
+      "caption": "SAVE on a keyboard connects it: SIDOU pairs when it asks (a passkey shows large to type), keeps the bond, and connects again after a power cycle or when it comes back in range.",
+      "control": "wait 5.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "devices"
+        }
+      ],
+      "focus": {
+        "callout": "DEVICES > SAVE > KEYBOARD MICROKEY AIR",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "pair",
+      "inputs": [
+        {
+          "ms": 5600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Paired, kept, *back by itself*"
+    },
+    {
+      "caption": "HOME, SCENE: DEMO first, the SIDOU logo between starfields that speed up and glow with what is played.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SCENE is selected, then turn ALGORITHM clockwise by 1 detent, then wait 2.5 s, then play 7 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SCENE > DEMO",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "demo",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SCENE"
+        },
+        {
           "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "SCENE opens on *DEMO*"
+    },
+    {
+      "caption": "SELECT to SCOPE: the three voices of the chip the keys play, as glowing oscilloscope traces. A held note stands still.",
+      "control": "turn SELECT clockwise by 3 detents, then wait 1.5 s, then hold note key F3, then wait 0.6 s, then hold note key C4, then wait 0.6 s, then hold note key A4, then wait 2.4 s, then let go of note key F3, then let go of note key C4, then let go of note key A4, then wait 0.4 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SELECT TO SCOPE, HOLD A CHORD",
+        "control": "SELECT"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "scope",
+      "inputs": [
+        {
+          "detents": 3,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        },
+        {
+          "note": "F3",
+          "op": "down"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "note": "C4",
+          "op": "down"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "note": "A4",
+          "op": "down"
+        },
+        {
+          "ms": 2400,
+          "op": "wait"
+        },
+        {
+          "note": "F3",
+          "op": "up"
+        },
+        {
+          "note": "C4",
+          "op": "up"
+        },
+        {
+          "note": "A4",
+          "op": "up"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SCOPE*: the voices traced"
+    },
+    {
+      "caption": "SELECT to RED MOON RITE, its art a file in the store. Any notes play it: a note attacks, high notes chop overhead, low notes sweep low, a chord flares the torches, a fast run is a flurry.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 1.5 s, then play 18 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS > RED MOON RITE",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "duel",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "A4",
+                "C5",
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "F3"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F3"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "RED MOON RITE *fights to the keys*"
+    },
+    {
+      "caption": "The site's art pack builder (art.html) puts your PNGs on the fighters, swords, skies and arena, previews the duel with the firmware's own code and sends the pack to the FM-1.",
+      "control": "wait 5.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        }
+      ],
+      "focus": {
+        "callout": "YOUR PNGS > ART PACK > RED MOON RITE",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "art",
+      "inputs": [
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Your own *art*"
+    },
+    {
+      "caption": "HOME twice, ENV: LAB. The card a knob turns glows in its colour for a second.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press ENV, then wait 1.2 s, then turn K1 slowly counter-clockwise by 8 detents over 0.8 s, then play 3 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV, TURN K1",
+        "control": "K1"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "glow",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "detents": -8,
+          "encoder": "K1",
+          "ms": 800,
+          "op": "sweep"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "LAB's card *glows*"
+    },
+    {
+      "caption": "The mod wheel adds vibrato on every sound. The MIDI page's WHEEL row picks what it moves: VIBRATO, PULSE or CUTOFF.",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn SELECT until MIDI is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.8 s, then turn SELECT clockwise by 8 detents, then wait 0.5 s, then hold note key A4, then wait 0.5 s, then send MIDI, then wait 0.3 s, then send MIDI, then wait 1.2 s, then send MIDI, then wait 0.8 s, then let go of note key A4, then send MIDI, then wait 0.4 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "midi"
+        },
+        {
+          "kind": "text",
+          "value": "WHEEL"
+        },
+        {
+          "kind": "text",
+          "value": "VIBRATO"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "MENU > MIDI > WHEEL VIBRATO",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "wheel",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "MIDI"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": 8,
           "encoder": "SELECT",
           "op": "turn"
         },
@@ -94,144 +672,76 @@
           "op": "wait"
         },
         {
-          "button": "SAVE",
-          "op": "press"
+          "note": "A4",
+          "op": "down"
         },
         {
-          "ms": 2500,
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            1,
+            40
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            1,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            1,
+            127
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "note": "A4",
+          "op": "up"
+        },
+        {
+          "bytes": [
+            176,
+            1,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 400,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "A song from *text*"
-    },
-    {
-      "caption": "SEQ twice opens the TRACKER, PLAY plays the song: bass, drums and a lead, three sections in order.",
-      "control": "press SEQ, then wait 0.9 s, then press SEQ, then wait 0.9 s, then press PLAY, then wait 6.0 s",
-      "expect": [
-        {
-          "kind": "view",
-          "value": "tracker"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "SEQ TWICE, PLAY",
-        "control": "PLAY"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "play",
-      "inputs": [
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        },
-        {
-          "button": "SEQ",
-          "op": "press"
-        },
-        {
-          "ms": 900,
-          "op": "wait"
-        },
-        {
-          "button": "PLAY",
-          "op": "press"
-        },
-        {
-          "ms": 6000,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "It *plays*"
-    },
-    {
-      "caption": "A model or coding agent writes the song as step-grid strings, sidou-song/1. The Library page previews it, sends it to the FM-1 or opens it in the editor; sidou-sysex song makes the file.",
-      "control": "wait 5.6 s",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "A MODEL WRITES sidou-song/1 <> LIBRARY: PREVIEW, SEND, EDIT",
-        "control": "card"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "text",
-      "inputs": [
-        {
-          "ms": 5600,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "Written as *text*"
-    },
-    {
-      "caption": "The Library page's USER sounds button reads the sounds LAB kept, over USB, and opens each as a patch. sidou-sysex user-sounds saves them as JSON. Read only.",
-      "control": "wait 5.0 s",
-      "expect": [
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "FM-1 > USER SOUNDS > LIBRARY AS PATCHES",
-        "control": "card"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "user-sounds",
-      "inputs": [
-        {
-          "ms": 5000,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*USER sounds*, read back"
+      "title": "The mod wheel's *vibrato*"
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
       "control": "wait 3.2 s",
       "expect": [
         {
-          "assert": "sounding",
-          "kind": "audio"
+          "kind": "view",
+          "value": "midi"
         }
       ],
       "focus": {
@@ -254,8 +764,8 @@
         }
       ],
       "needs": [],
-      "title": "Get *SIDOU 1.10*"
+      "title": "Get *SIDOU 1.20*"
     }
   ],
-  "title": "What's new in SIDOU 1.10"
+  "title": "What's new in SIDOU 1.20"
 }

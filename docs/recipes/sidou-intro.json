@@ -2,6 +2,9 @@
   "goal": "See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.",
   "id": "sidou-intro",
   "prerequisites": {
+    "art": [
+      "red-moon-rite"
+    ],
     "songs": [
       "chrome-comet"
     ],
