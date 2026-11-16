@@ -9,6 +9,21 @@ use crate::device::{Dev, Recorder, FRAME_MS};
 use crate::journeys::{Journey, FS};
 use crate::screen::png_bytes;
 
+pub const READ_WPM: u64 = 180;
+pub const READ_BEAT_MS: u64 = 1000;
+pub const LEAD_IN_MS: u64 = 700;
+pub const AFTER_ACTION_MS: u64 = 1500;
+
+pub fn reading_ms(caption: &str) -> u64 {
+    caption.split_whitespace().count() as u64 * 60_000 / READ_WPM + READ_BEAT_MS
+}
+
+pub fn pad_ms(shown_from: u64, acts_end: u64, now: u64, caption: &str) -> u64 {
+    (shown_from + reading_ms(caption))
+        .max(acts_end + AFTER_ACTION_MS)
+        .saturating_sub(now)
+}
+
 pub struct StepTimes {
     pub start: u64,
     pub end: u64,
@@ -24,6 +39,8 @@ pub struct Capture {
     pub audio: Vec<i16>,
     pub audio_offset_ms: f64,
     pub captions: Vec<(u64, String)>,
+    pub torn_ticks: u32,
+    pub longest_hold_ms: u64,
 }
 
 fn sample_time_ms(dev: &Dev, i: usize) -> f64 {
@@ -61,6 +78,10 @@ impl Capture {
                 o.remove("needs");
                 o.insert("ms".into(), json!(t.start - t0));
                 o.insert("end_ms".into(), json!(t.end - t0));
+                o.insert(
+                    "read_ms".into(),
+                    json!(reading_ms(s.caption.as_deref().unwrap_or(""))),
+                );
                 if let Some(inputs) = o.get_mut("inputs").and_then(|i| i.as_array_mut()) {
                     for (input, (a, b)) in inputs.iter_mut().zip(&t.acts) {
                         input["ms"] = json!(a - t0);
@@ -75,6 +96,8 @@ impl Capture {
             title: j.title.clone(),
             steps,
             t0: rec.t0,
+            torn_ticks: rec.drawn.torn_ticks,
+            longest_hold_ms: rec.drawn.longest_hold_ms,
             frames: rec.frames.into_iter().map(|f| (f.ms, f.fb)).collect(),
             audio: all[from..].to_vec(),
             audio_offset_ms: sample_time_ms(dev, rec.audio_from) - rec.t0 as f64,
@@ -113,6 +136,8 @@ impl Capture {
                       "offset_ms": (self.audio_offset_ms * 1000.0).round() / 1000.0,
                       "samples": self.audio.len() / 2},
             "captions": captions,
+            "lcd": {"sampled": "fully drawn", "torn_ticks_held_back": self.torn_ticks,
+                    "longest_hold_ms": self.longest_hold_ms},
             "steps": self.steps,
         });
         std::fs::write(

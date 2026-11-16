@@ -1530,8 +1530,12 @@ pub fn run_journey(
     let mut marks: Vec<(u64, String)> = Vec::new();
     let mut timeline: Vec<crate::capture::StepTimes> = Vec::new();
     for (i, s) in j.steps.iter().enumerate() {
+        let shown_from = d.ms();
         if let Some(c) = &s.caption {
-            marks.push((d.ms(), c.clone()));
+            marks.push((shown_from, c.clone()));
+        }
+        if capture_full {
+            d.run(crate::capture::LEAD_IN_MS);
         }
         let (r, cap) = run_step(
             &mut d,
@@ -1546,9 +1550,28 @@ pub fn run_journey(
         if let Some(c) = cap {
             res.captured.push(c);
         }
+        let mut end = r.end_ms;
+        if capture_full {
+            let acts_end = s
+                .acts
+                .iter()
+                .zip(&r.act_ms)
+                .filter(|(a, _)| !matches!(a, Act::Wait(_) | Act::Sync))
+                .map(|(_, t)| t.1)
+                .max()
+                .unwrap_or(shown_from);
+            let caption = s.caption.as_deref().unwrap_or("");
+            d.run(crate::capture::pad_ms(
+                shown_from,
+                acts_end,
+                d.ms(),
+                caption,
+            ));
+            end = d.ms();
+        }
         timeline.push(crate::capture::StepTimes {
-            start: r.start_ms,
-            end: r.end_ms,
+            start: if capture_full { shown_from } else { r.start_ms },
+            end,
             acts: r.act_ms.clone(),
         });
         res.steps.push(r);
