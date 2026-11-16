@@ -876,7 +876,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
             "status" => open_status(&mut m, &fw),
             "menu" => open_menu_settled(&mut m, &fw),
             "chip" => open_chip(&mut m, &fw),
-            "scene" => open_scene(&mut m, &fw, 2),
+            "scene" => open_scene(&mut m, &fw, SCENE_DEMO),
             "midi" => open_midi_page(&mut m, &fw),
             _ => settle(&mut m, &fw),
         }

@@ -114,52 +114,53 @@ void scope_take_peaks(scope* sc, uint16_t out[2]) {
     sc->peak[k][1] = 0;
 }
 
-void scope_bins_start(scope_bins* b, uint32_t cycles) {
-    cycles = cycles < 1u ? 1u : cycles > 8u ? 8u : cycles;
-    b->per = SCOPE_W / cycles;
-    b->first = b->per;
-    for (uint32_t k = 0; k < b->per; k++) {
-        b->sum[k] = 0;
-        b->count[k] = 0;
-    }
-}
-
-void scope_bins_add(scope_bins* b, const scope_point* p, uint32_t n, uint32_t voice, uint32_t by) {
-    for (uint32_t i = 0; i < n; i++) {
-        uint32_t k = (uint32_t)p[i].phase[by] * b->per >> 8;
-        if (b->count[k] < 255u) {
-            b->sum[k] = (uint16_t)(b->sum[k] + p[i].wave[voice]);
-            b->count[k]++;
-        }
-        b->first = k < b->first ? k : b->first;
-    }
-}
-
-void scope_bins_trace(const scope_bins* b, uint8_t out[SCOPE_W]) {
+__attribute__((always_inline)) static inline void trace(const scope_point* const seg[2],
+                                                       const uint32_t len[2], uint32_t voice,
+                                                       uint32_t by, uint32_t cycles,
+                                                       uint8_t out[SCOPE_W]) {
+    uint16_t sum[SCOPE_W];
+    uint8_t count[SCOPE_W];
     uint8_t bin[SCOPE_W];
-    uint32_t per = b->per, first = b->first;
+    cycles = cycles < 1u ? 1u : cycles > 8u ? 8u : cycles;
+    uint32_t per = SCOPE_W / cycles;
+    for (uint32_t b = 0; b < per; b++) {
+        sum[b] = 0;
+        count[b] = 0;
+    }
+    uint32_t first = per;
+    for (uint32_t s = 0; s < 2u; s++) {
+        const scope_point* p = seg[s];
+        for (uint32_t i = 0; i < len[s]; i++) {
+            uint32_t b = (uint32_t)p[i].phase[by] * per >> 8;
+            if (count[b] < 255u) {
+                sum[b] = (uint16_t)(sum[b] + p[i].wave[voice]);
+                count[b]++;
+            }
+            first = b < first ? b : first;
+        }
+    }
     if (first == per) {
         for (uint32_t x = 0; x < SCOPE_W; x++) {
             out[x] = 128;
         }
         return;
     }
-    for (uint32_t k = 0; k < per; k++) {
-        bin[k] = b->count[k] ? (uint8_t)((b->sum[k] + b->count[k] / 2u) / b->count[k]) : 0u;
+    for (uint32_t b = 0; b < per; b++) {
+        bin[b] = count[b] ? (uint8_t)((sum[b] + count[b] / 2u) / count[b]) : 0u;
     }
     uint32_t a = first;
     do {
         uint32_t d = 1;
-        while (d < per && !b->count[(a + d) % per]) {
+        while (d < per && !count[(a + d) % per]) {
             d++;
         }
-        uint32_t c = (a + d) % per;
+        uint32_t b = (a + d) % per;
         int32_t va = bin[a];
-        int32_t vb = bin[c];
+        int32_t vb = bin[b];
         for (uint32_t i = 1; i < d; i++) {
             bin[(a + i) % per] = (uint8_t)(va + (vb - va) * (int32_t)i / (int32_t)d);
         }
-        a = c;
+        a = b;
     } while (a != first);
     for (uint32_t x = 0; x < SCOPE_W; x++) {
         out[x] = bin[x % per];
@@ -168,10 +169,9 @@ void scope_bins_trace(const scope_bins* b, uint8_t out[SCOPE_W]) {
 
 void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, uint32_t cycles,
                  uint8_t out[SCOPE_W]) {
-    scope_bins b;
-    scope_bins_start(&b, cycles);
-    scope_bins_add(&b, p, n, voice, by);
-    scope_bins_trace(&b, out);
+    const scope_point* const seg[2] = {p, p};
+    const uint32_t len[2] = {n, 0};
+    trace(seg, len, voice, by, cycles, out);
 }
 
 uint32_t scope_trace_ring(const scope* sc, uint32_t n, uint32_t voice, uint32_t by,
@@ -182,15 +182,17 @@ uint32_t scope_trace_ring(const scope* sc, uint32_t n, uint32_t voice, uint32_t 
     COMPILER_FENCE();
     uint32_t at = oldest & MASK;
     uint32_t first = n < SCOPE_RING - at ? n : SCOPE_RING - at;
-    scope_bins b;
-    scope_bins_start(&b, 1);
-    scope_bins_add(&b, &sc->point[at], first, voice, by);
-    scope_bins_add(&b, &sc->point[0], n - first, voice, by);
+    uint8_t wave[SCOPE_W];
+    const scope_point* const seg[2] = {&sc->point[at], &sc->point[0]};
+    const uint32_t len[2] = {first, n - first};
+    trace(seg, len, voice, by, 1, wave);
     COMPILER_FENCE();
     if (!scope_intact(oldest, sc->head)) {
         return 0;
     }
-    scope_bins_trace(&b, out);
+    for (uint32_t x = 0; x < SCOPE_W; x++) {
+        out[x] = wave[x];
+    }
     return n;
 }
 

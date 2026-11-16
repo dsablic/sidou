@@ -29,13 +29,6 @@ typedef struct {
 } scope_point;
 
 typedef struct {
-    uint16_t sum[SCOPE_W];
-    uint8_t count[SCOPE_W];
-    uint32_t per;
-    uint32_t first;
-} scope_bins;
-
-typedef struct {
     scope_point point[SCOPE_RING];
     volatile uint32_t head;
     volatile uint8_t env[SCOPE_VOICES];
@@ -63,9 +56,6 @@ void scope_set_race_hook(void (*hook)(void* ctx), void* ctx);
 
 void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, uint32_t cycles,
                  uint8_t out[SCOPE_W]);
-void scope_bins_start(scope_bins* b, uint32_t cycles);
-void scope_bins_add(scope_bins* b, const scope_point* p, uint32_t n, uint32_t voice, uint32_t by);
-void scope_bins_trace(const scope_bins* b, uint8_t out[SCOPE_W]);
 uint32_t scope_trace_ring(const scope* sc, uint32_t n, uint32_t voice, uint32_t by,
                           uint8_t out[SCOPE_W]);
 uint32_t scope_meter(uint32_t amplitude);

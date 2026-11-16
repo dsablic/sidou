@@ -5918,7 +5918,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   chips at once would need a second tap: its ring is 1.5 KB and the RAM region keeps only a few
   hundred bytes over its floor, so SCOPE shows the keys' chip and changes colour with it.
 - The tap samples every 16th sample (3 kHz), a few points a cycle, so a trace is folded by phase
-  as LIVE's (`scope_bins`, shared with `scope_trace`): the ring's last 224 points are binned in
+  as LIVE's (`scope_trace`'s binning over the ring's two segments): the ring's last 224 points are binned in
   place (no copy: the bins are checked intact against the head afterwards, as `scope_read`
   checks), a cycle of 160 bins with the empty ones interpolated. The cycle is rotated to its
   first rising crossing of the middle (`scene_scope_trigger`), so a held note stands still at any
