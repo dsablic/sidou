@@ -5925,43 +5925,46 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   started whole (`scene_start`); PLASMA, the costliest start, draws no row before it is asked. A
   piece starts in the compose of the wipe's first frame, not in the input's call.
 
-### RULE 30
+### The pieces (2026-11-15)
 
-- Wolfram's rule 30 on a ring of 60 cells (`SCENE_RULE30_W`), a generation a row of quadrant
-  pixels, written down the screen by a moving head that clears two rows ahead of it. Each note-on
-  steps it once (`SCENE_RULE30_MAX_STEPS`: 3 at most), the row in that voice's colour; voice 3's
-  note-on also flips the cell its pitch picks; a held voice keeps it stepping with its envelope
-  (`SCENE_ENV_STEP`: 512, so a full envelope is every other frame). A low cutoff darkens the
-  colours (under `SCENE_DARK_CUTOFF`: 512). The start draws `SCENE_RULE30_START` (24) generations
-  in grey, so it starts with its pattern.
-- Rule 30 runs on a ring of 60 as Wolfram states it: new = left XOR (centre OR right). The canvas
-  cell (c, r) shows the quadrants of generation rows 2r and 2r + 1, cells 2c and 2c + 1, in the
-  colour of the lower row where it has a pixel.
+- The owner, after seeing SCENE on the device: FIRE and PLASMA stay; RULE 30, STARS and ANT were
+  "meh" and went; DEMO (the logo intro) and SCOPE came in. SELECT's order: FIRE, PLASMA, SCOPE,
+  DEMO, RED MOON RITE. FIRE and PLASMA are the PETSCII canvas pieces (`SCENE_PETSCII`); the
+  others draw on the tile compositor and share its view path (`scene_view_rite`, `which`).
 
-### STARS
+### SCOPE
 
-- A starfield flying out of the centre, a third of the stars a voice's. A voice's envelope speeds
-  its stars (cruise + envelope * 180 / 256), a note-on lights them in its colour for
-  `SCENE_STARS_LIT` (5) frames, the latest note's pitch steers the centre across, and the cutoff
-  sets the cruising speed (`8 + cutoff * 24 / 2047`). Depth layers: 0..3 (far to near), each
-  drawn with its own glyph, in grey, light grey, white and white.
-- The stars come closer at their speed; a star at `STAR_NEAR` (205) or closer wraps to
-  `STAR_FAR` (4,096) and a new place.
-- A note-on lights its voice's stars even before its envelope rises: the tap's ENV3 is still 0
-  when the note-on comes before the audio has run a block. The light goes early only once the
-  voice is let go and silent.
+- What the tap hears, as an oscilloscope: three lanes of 80 pixel rows, a voice each, of the chip
+  the keys play (the tap follows the keys: chip A green and green, chip B yellow and orange, a
+  core pixel and a one-pixel halo in the darker colour), a dotted dark grey centre line. Both
+  chips at once would need a second tap: its ring is 1.5 KB and the RAM region keeps only a few
+  hundred bytes over its floor, so SCOPE shows the keys' chip and changes colour with it.
+- The tap samples every 16th sample (3 kHz), a few points a cycle, so a trace is folded by phase
+  as LIVE's (`scope_trace`'s binning over the ring's two segments): the ring's last 224 points are binned in
+  place (no copy: the bins are checked intact against the head afterwards, as `scope_read`
+  checks), a cycle of 160 bins with the empty ones interpolated. The cycle is rotated to its
+  first rising crossing of the middle (`scene_scope_trigger`), so a held note stands still at any
+  phase, and drawn over the lane's 240 columns as LIVE's cycles for its octave (1 to 4).
+- A held note still moves a column or two: the bins at a wave's edge (a saw's drop, a pulse's
+  edges) fill differently from window to window. A trace is redrawn only when more columns than
+  two an edge (`SCENE_SCOPE_EDGE_JITTER` times the cycles) move by more than a pixel; silence
+  lays it flat at once.
+- One lane a frame, in turn (`SCENE_SCOPE_LANES_A_FRAME`): a lane's trace (the binning and
+  the 240 columns) is about 28k instructions; two a frame took the busiest ui_poll to 70.5k,
+  over the allowance. A lane changes 8 times a second.
+- A redrawn lane touches, in each tile column, the rows its old and new traces span over the
+  columns its pixels depend on (a column's core joins it to the one before; its halo reaches a
+  column each side), so a frame sends only the trace's tiles. The layers' fields do not change
+  with the trace (that would make candidates of the whole lane); the chip is their `param`, so
+  a chip change repaints the lanes. A tile row computes its columns' spans once and skips the
+  per-pixel tests on rows away from the trace.
+- With the band: 85.6 cells and 737k instructions a frame, 139 cells at most, the busiest
+  ui_poll 49,659; with the song and the keys 87.5, 139 and 49,809.
 
-### ANT
+### DEMO
 
-- Three Langton's ants, a voice each. A note-on walks its ant `SCENE_ANT_STEPS` (3) steps and a
-  sounding voice keeps it walking with its envelope (the envelope adds up each frame, a step every
-  `SCENE_ENV_STEP` of it); the trail takes the voice's colour, darker under a low cutoff. A
-  silent voice's ant stops and greys. The board clears and the ants start again after
-  `SCENE_ANT_RESET` (9,000) steps.
-- Langton's ants walk a 30 x 30 torus: on an empty cell turn right and paint it, on a painted one
-  turn left and clear it, then step. A silent voice's ant is grey. The ant draws only the cells
-  it changes; a board cleared whole (`SCENE_ANT_RESET`) catches up in 5 frames (900 cells, 200 a
-  frame).
+- RED MOON RITE's intro (below, "The intro") as a piece: the same code and state, drawn whatever
+  the store holds.
 
 ### Pixel art images and format
 
@@ -6038,6 +6041,25 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   with a small shake; while one is unarmed nobody attacks or parries; each bar's first row refills
   an empty stamina meter; the cutoff: the sky's palette (0..2, from darkest to brightest), wiped
   down a cell row a frame.
+- Anything else plays it by its notes (the owner, 2026-11-15: the duel did not react to the keys).
+  A song "has the kit" when its SCNE chunk names a DRUMS or BASS+DRUMS voice, or leaves one AUTO
+  while an instrument's wavetable starts with noise (decided when it starts, so it never
+  changes mid-song); such a song keeps the beats above exactly. Otherwise each note-on (a
+  song's voice on chip A at velocity `SCENE_SONG_VELOCITY`, the keys on the chip they play with
+  their velocity) goes to `scene_rmr_notes`: a note on chip A is the left fighter's attack, on
+  chip B the right's (it takes the lead, so the pair drifts toward the other); from
+  `SCENE_RMR_HIGH_NOTE` (C4) up an overhead chop (RAISE then CHOP), below a low sweep (SPIN_A
+  then SPIN_B, its arc shown); a second note within `SCENE_RMR_PARRY_FRAMES` (8) is the other's
+  parry, a spark of stage 1-3 by velocity (`SCENE_RMR_SOFT` 64, `SCENE_RMR_HARD` 112) and a
+  shake from the hard one, and the attacker loses a notch; three notes at once flare the
+  torches; a gate held `SCENE_RMR_HOLD_FRAMES` (25) without a new note sways the pair
+  `SCENE_RMR_SWAY` (20) pixels round its place on a 256-frame sine, shifting guard every 32
+  frames (the art cannot swap sides, so circling is drift and footwork); note-on frames less
+  than `SCENE_RMR_RUN_GAP` (6) apart are a run: from the `SCENE_RMR_FLURRY`th (4) each is a
+  quick strike with no wind-up met by a block, the `SCENE_RMR_RUN_LONG`th (16) the spinning
+  attack (a turn every `SCENE_RMR_SPIN_FRAMES`) and the disarm; the sword is taken back
+  `SCENE_RMR_STUCK_FRAMES` (40) after it sticks; a note after a pause refills an empty meter.
+  The poses are the art's: no slot, size or format changed. Deterministic as the beats are.
 - Silence calms it: `SCENE_RMR_CALM_FRAMES` (25) frames after the last gate went off, the torches
   and the spin's arc hold still, and once the timers have run out nothing changes.
 - The torches' flames: six colours cycling up through the flame, which wobbles; flared, taller and
@@ -6116,7 +6138,10 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   after the last gate the calm pair, the bitmap's own. A new colour sweeps down the logo a tile row
   every second frame (24 frames for the whole logo), so a changing glow paints bands of colour
   downward. A sweep's row is marked to be sent (all 30 cells) rather than scanned: every row has
-  halo pixels, so a scan would composite each tile twice for nothing.
+  halo pixels, so a scan would composite each tile twice for nothing. The sweep runs in the
+  compose once the frame's cells are counted (`scene_intro_glow`) and waits a frame when fewer
+  than a row's are left: marked before, it sent 210 cells in the frame MIDI learn's frame opened
+  over DEMO.
 - Repainting the logo's tiles is affordable because the logo's rows are read through a cursor per
   pixel row (`grid_bitmap_span`, `grid_bitmap_cursor`): the logo has no checkpoints (one every 256
   pixels), and a seek from the row's start to the right edge walked about a hundred runs a row
@@ -6171,9 +6196,13 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   note every 8, let go after 6) and the filter wide open (the busiest PLASMA, the hottest FIRE),
   150 frames a piece, and the wipe to the next piece with a chord held. The bounds are about 10 %
   over the measurement (`docs/art/README.md`, "SCENE"), never looser than at first: cells a frame
-  (average, most) FIRE 125.0 and 159, PLASMA 138.4 and 200 (the cap), RULE 30 18.9 and 76, STARS
-  39.5 and 68, ANT 2.7 and 9; instructions a frame 101.6k, 141.4k, 32.7k, 74.1k and 29.3k; SPI a
-  frame at worst 13.85, 17.64, 6.60, 6.16 and 0.80 ms.
+  (average, most) FIRE 125.0 and 159, PLASMA 138.4 and 200 (the cap), SCOPE 85.6 and 139, DEMO
+  as the intro; instructions a frame 101.6k, 141.4k and 737k; SPI a frame at worst 13.85, 17.64
+  and 12.29 ms. Every piece is measured again with the song playing and the keys on chip B
+  (`every_scene_piece_with_the_song_and_the_keys_stays_within_its_budgets`): within the frame's
+  cells, the SPI budget and the poll allowance.
+- The scan's slice stops at the cells the frame has left (it could mark up to a slice past
+  them, which SCOPE, the first pixel piece to fill a frame, showed as 207 cells).
 - The busiest `ui_poll` of any PETSCII piece is FIRE's (58.9k: its two burns, half way between
   frames): `SCENE_WORST_POLL` 62,000.
 - The budget tests use a band (an arpeggio every 4 frames, a bass every 8, a high note every 16)
@@ -6186,7 +6215,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   and a frame can fall in one main-loop pass, between two drains of MIDI, so the busiest input and
   the busiest pass after it (from `midi_drain` to `midi_service`: the drain, `play()` and
   `ui_poll`'s frame with the start) stay within the poll allowance together. Measured, the busiest
-  of every piece: SELECT 203 (to RULE 30) and a pass of 60.7k (to FIRE: a frame of its burns);
+  of every piece: SELECT 203 (to RULE 30, since gone) and a pass of 60.7k (to FIRE: a frame of its burns);
   the menu's ALGORITHM 170 and 60.7k. Bounded about 10 % over: `SCENE_INPUT` 230,
   `SCENE_START_PASS` 67,000. PLASMA, the costliest start, drew its whole canvas in the input's
   call (48.8k) until the start moved into the frame (32.7k a pass).
@@ -6214,10 +6243,17 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   (`scene_budget.rs` `TILE_WORST` 5,300: two fighters, the spark and the arc over the arena), so
   the run and slice caps are 4 and 8 cells (`app/scene_px.h`): two runs, or a slice, and a song's
   analysis slice fit a pass. Bounds about 10 % over.
-- Under the keys' band RED MOON RITE is bounded at 133 cells and 1.14M instructions a frame
-  (measured 120.5 and 1.03M): the pair drifts a pixel a frame. RED MOON RITE's `ui_poll`s render the
+- Under the keys' band RED MOON RITE plays the notes' mapping (since the refresh): 66.0 cells
+  a frame, 169 at most, 650k instructions (bounded at 73, 186 and 715k; the beats' mapping had
+  measured 120.5, 136 and 1.03M: the hits' sparks and shakes now make the busiest frames, the
+  drift the average). With the song and the keys: 113.0, 148 and 1.04M. RED MOON RITE's `ui_poll`s render the
   compositor's runs (two of `SCENE_PX_RUN_CELLS` (4) painted cells, bounded by `scene_budget.rs`)
-  and have their own bound, as has the wipe into it from ANT.
+  and have their own bound, as has the wipe into it from DEMO.
+- The notes' mapping is proved frame by frame on the host (`scene_rmr.rs`: each reaction from
+  `scene_rmr_notes` and `scene_rmr_frame` alone, and the same notes twice give the same states);
+  the kit's beats keep the script's trace test unchanged; `scene_song.rs` proves which songs have
+  the kit and that the keys' notes carry their chip and velocity; on fm1-emu the keys attack,
+  parry, flare the torches and disarm with a long run.
 - The PNGs in `assets/scene/` are compared decoded (size, depth, palette, transparency, pixels),
   not byte for byte, because Node's zlib may compress the same image to other bytes. The test needs
   Node and is skipped without it.

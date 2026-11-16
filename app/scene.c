@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "scene.h"
 
-#include <stddef.h>
 #include <string.h>
 
 #include "font.h"
@@ -10,7 +9,7 @@
 #define BLANK_CH ((uint8_t)' ')
 #define BLANK_ATTR GRID_ATTR(GRID_BLACK, GRID_BLACK)
 
-const char* const scene_names[SCENE_PIECES] = {"FIRE", "PLASMA", "RULE 30", "STARS", "ANT",
+const char* const scene_names[SCENE_PIECES] = {"FIRE", "PLASMA", "SCOPE", "DEMO",
                                                "RED MOON RITE"};
 
 const uint8_t scene_dist4[GRID_ROWS][GRID_COLS] = {
@@ -106,20 +105,6 @@ uint32_t scene_random(uint32_t* state) {
     x ^= x << 5;
     *state = x;
     return x;
-}
-
-uint8_t scene_dark(uint8_t color) {
-    static const uint8_t DARK[16] = {
-        GRID_BLACK,     GRID_LIGHT_GREY, GRID_BROWN,     GRID_LIGHT_BLUE,
-        GRID_BLUE,      GRID_DARK_GREY,  GRID_DARK_GREY, GRID_ORANGE,
-        GRID_BROWN,     GRID_DARK_GREY,  GRID_RED,       GRID_DARK_GREY,
-        GRID_DARK_GREY, GRID_GREEN,      GRID_BLUE,      GRID_GREY,
-    };
-    return DARK[color & 15u];
-}
-
-static uint8_t cutoff_shaded_color(const scene_music* m, uint32_t v) {
-    return m->cutoff < SCENE_DARK_CUTOFF ? scene_dark(m->color[v]) : m->color[v];
 }
 
 static void put(scene* s, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
@@ -368,252 +353,8 @@ static void plasma_step(scene* s, const scene_music* m) {
     plasma_rows(s, m, s->frame & 1u, GRID_ROWS, 2u);
 }
 
-#define R30_W SCENE_RULE30_W
-#define R30_H SCENE_RULE30_H
-#define R30_MASK ((1ull << R30_W) - 1u)
-
-uint64_t scene_rule30_next(uint64_t cur) {
-    cur &= R30_MASK;
-    uint64_t left = ((cur << 1) | (cur >> (R30_W - 1u))) & R30_MASK;
-    uint64_t right = (cur >> 1) | ((cur & 1u) << (R30_W - 1u));
-    return left ^ (cur | right);
-}
-
-static void r30_generation(scene* s, uint8_t color, uint32_t* dirty) {
-    scene_rule30* t = &s->u.rule30;
-    uint32_t h = t->head;
-    t->cur = scene_rule30_next(t->cur);
-    t->row[h] = t->cur;
-    t->color[h] = color;
-    *dirty |= 1u << (h / 2u);
-    for (uint32_t k = 1; k <= 2u; k++) {
-        uint32_t a = (h + k) % R30_H;
-        t->row[a] = 0;
-        *dirty |= 1u << (a / 2u);
-    }
-    t->head = (uint8_t)((h + 1u) % R30_H);
-}
-
-static void r30_draw(scene* s, uint32_t r) {
-    const scene_rule30* t = &s->u.rule30;
-    uint64_t a = t->row[2u * r];
-    uint64_t b = t->row[2u * r + 1u];
-    for (uint32_t c = 0; c < GRID_COLS; c++) {
-        uint32_t q = (uint32_t)(a >> (2u * c) & 3u) | (uint32_t)(b >> (2u * c) & 3u) << 2;
-        if (!q) {
-            put(s, c, r, BLANK_CH, BLANK_ATTR);
-        } else {
-            uint8_t fg = q & 12u ? t->color[2u * r + 1u] : t->color[2u * r];
-            put(s, c, r, (uint8_t)(FONT_Q0 + q), GRID_ATTR(fg, GRID_BLACK));
-        }
-    }
-}
-
-static void r30_start(scene* s) {
-    scene_rule30* t = &s->u.rule30;
-    uint32_t dirty = 0;
-    t->cur = 1ull << (R30_W / 2u);
-    for (uint32_t g = 0; g < SCENE_RULE30_START; g++) {
-        r30_generation(s, GRID_GREY, &dirty);
-    }
-    for (uint32_t r = 0; r < GRID_ROWS; r++) {
-        r30_draw(s, r);
-    }
-}
-
-static void r30_step(scene* s, const scene_music* m) {
-    scene_rule30* t = &s->u.rule30;
-    uint32_t dirty = 0;
-    uint32_t steps = 0;
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        if (!m->trig[v] || steps >= SCENE_RULE30_MAX_STEPS) {
-            continue;
-        }
-        if (v == 2u && m->note[v] != SCENE_NO_NOTE) {
-            t->cur ^= 1ull << ((m->note[v] * 7u + s->frame * 11u) % R30_W);
-        }
-        r30_generation(s, cutoff_shaded_color(m, v), &dirty);
-        steps++;
-    }
-    uint32_t loud = SCENE_VOICES;
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        if (m->gate[v] && m->env[v] && (loud == SCENE_VOICES || m->env[v] > m->env[loud])) {
-            loud = v;
-        }
-    }
-    if (loud == SCENE_VOICES) {
-        t->acc = 0;
-    } else {
-        t->acc = (uint16_t)(t->acc + m->env[loud]);
-        if (t->acc >= SCENE_ENV_STEP) {
-            t->acc = (uint16_t)(t->acc - SCENE_ENV_STEP);
-            if (steps < SCENE_RULE30_MAX_STEPS) {
-                r30_generation(s, cutoff_shaded_color(m, loud), &dirty);
-            }
-        }
-    }
-    for (uint32_t r = 0; dirty >> r; r++) {
-        if (dirty >> r & 1u) {
-            r30_draw(s, r);
-        }
-    }
-}
-
-#define STAR_NEAR 205
-#define STAR_FAR 4096
-#define STAR_BOX 768
-
-static const uint8_t STAR_GLYPH[4] = {FONT_TINY, FONT_DOT, FONT_PLUS, FONT_STAR};
-static const uint8_t STAR_COLOR[4] = {GRID_GREY, GRID_LIGHT_GREY, GRID_WHITE, GRID_WHITE};
-
-static uint32_t star_layer(uint32_t z) {
-    return z > 3072u ? 0u : z > 1843u ? 1u : z > 901u ? 2u : 3u;
-}
-
-static void star_place(scene* s, scene_star* p) {
-    p->x = (int16_t)(scene_random(&s->rng) % (2u * STAR_BOX + 1u)) - STAR_BOX;
-    p->y = (int16_t)(scene_random(&s->rng) % (2u * STAR_BOX + 1u)) - STAR_BOX;
-}
-
-static void stars_draw(scene* s, const scene_music* m) {
-    const scene_stars* t = &s->u.stars;
-    blank_rows(s, 0, GRID_ROWS);
-    for (uint32_t layer = 0; layer < 4u; layer++) {
-        for (uint32_t i = 0; i < SCENE_STARS_N; i++) {
-            const scene_star* p = &t->st[i];
-            if (star_layer(p->z) != layer) {
-                continue;
-            }
-            int32_t sx = 120 + t->cx + (int32_t)p->x * 640 / (int32_t)p->z;
-            int32_t sy = 120 + (int32_t)p->y * 640 / (int32_t)p->z;
-            if (sx < 0 || sx >= 240 || sy < 0 || sy >= 240) {
-                continue;
-            }
-            uint32_t v = i % SCENE_VOICES;
-            uint8_t fg = m && t->lit[v] ? m->color[v] : STAR_COLOR[layer];
-            put(s, (uint32_t)sx / 8u, (uint32_t)sy / 8u, STAR_GLYPH[layer],
-                GRID_ATTR(fg, GRID_BLACK));
-        }
-    }
-}
-
-static void stars_start(scene* s) {
-    scene_stars* t = &s->u.stars;
-    for (uint32_t i = 0; i < SCENE_STARS_N; i++) {
-        star_place(s, &t->st[i]);
-        t->st[i].z = (uint16_t)(STAR_NEAR + scene_random(&s->rng) % (STAR_FAR - STAR_NEAR + 1u));
-    }
-    stars_draw(s, NULL);
-}
-
-static void stars_step(scene* s, const scene_music* m) {
-    scene_stars* t = &s->u.stars;
-    int32_t cruise = 8 + (int32_t)m->cutoff * 24 / 2047;
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        if (m->trig[v]) {
-            t->lit[v] = SCENE_STARS_LIT;
-            if (m->note[v] != SCENE_NO_NOTE) {
-                t->aim = (int16_t)clamp(((int32_t)m->note[v] - 60) * 4, -80, 80);
-            }
-        } else if (t->lit[v]) {
-            t->lit[v]--;
-        }
-        if (!m->gate[v] && !m->env[v]) {
-            t->lit[v] = 0;
-        }
-    }
-    int32_t d = t->aim - t->cx;
-    int32_t move = d / 8;
-    t->cx = (int16_t)(t->cx + (move ? move : d > 0 ? 1 : d < 0 ? -1 : 0));
-    for (uint32_t i = 0; i < SCENE_STARS_N; i++) {
-        scene_star* p = &t->st[i];
-        uint32_t v = i % SCENE_VOICES;
-        int32_t z = (int32_t)p->z - cruise - (m->env[v] * 180 >> 8);
-        if (z <= STAR_NEAR) {
-            star_place(s, p);
-            z = STAR_FAR;
-        }
-        p->z = (uint16_t)z;
-    }
-    stars_draw(s, m);
-}
-
-static const int8_t ANT_DX[4] = {0, 1, 0, -1};
-static const int8_t ANT_DY[4] = {-1, 0, 1, 0};
-static const scene_ant_walker ANT_HOME[SCENE_VOICES] = {{9, 12, 0}, {20, 12, 1}, {15, 20, 2}};
-
-static void ant_cell(scene* s, uint32_t x, uint32_t y) {
-    uint8_t k = s->u.ant.cell[y][x];
-    if (k) {
-        put(s, x, y, FONT_PIP, GRID_ATTR(k - 1u, GRID_BLACK));
-    } else {
-        put(s, x, y, BLANK_CH, BLANK_ATTR);
-    }
-}
-
-static void ant_balls(scene* s, const scene_music* m) {
-    const scene_ant* t = &s->u.ant;
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        uint8_t fg = m && m->env[v] ? GRID_WHITE : GRID_DARK_GREY;
-        put(s, t->a[v].x, t->a[v].y, FONT_BALL, GRID_ATTR(fg, GRID_BLACK));
-    }
-}
-
-static void ant_start(scene* s) {
-    scene_ant* t = &s->u.ant;
-    memset(t, 0, sizeof *t);
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        t->a[v] = ANT_HOME[v];
-    }
-    blank_rows(s, 0, GRID_ROWS);
-    ant_balls(s, NULL);
-}
-
-static void ant_walk(scene* s, uint32_t v, uint8_t color) {
-    scene_ant* t = &s->u.ant;
-    scene_ant_walker* a = &t->a[v];
-    uint8_t* k = &t->cell[a->y][a->x];
-    if (*k == 0) {
-        a->d = (uint8_t)((a->d + 1u) & 3u);
-        *k = (uint8_t)(color + 1u);
-    } else {
-        a->d = (uint8_t)((a->d + 3u) & 3u);
-        *k = 0;
-    }
-    ant_cell(s, a->x, a->y);
-    a->x = (uint8_t)((a->x + GRID_COLS + (uint32_t)(int32_t)ANT_DX[a->d]) % GRID_COLS);
-    a->y = (uint8_t)((a->y + GRID_ROWS + (uint32_t)(int32_t)ANT_DY[a->d]) % GRID_ROWS);
-}
-
-static void ant_step(scene* s, const scene_music* m) {
-    scene_ant* t = &s->u.ant;
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        ant_cell(s, t->a[v].x, t->a[v].y);
-    }
-    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
-        uint32_t n = m->trig[v] ? SCENE_ANT_STEPS : 0u;
-        if (m->env[v]) {
-            uint32_t acc = t->acc[v] + m->env[v];
-            for (; acc >= SCENE_ENV_STEP; acc -= SCENE_ENV_STEP) {
-                n++;
-            }
-            t->acc[v] = (uint16_t)acc;
-        } else {
-            t->acc[v] = 0;
-        }
-        for (; n > 0; n--) {
-            ant_walk(s, v, cutoff_shaded_color(m, v));
-            if (++t->steps >= SCENE_ANT_RESET) {
-                ant_start(s);
-                break;
-            }
-        }
-    }
-    ant_balls(s, m);
-}
-
 static const scene_music REST = {
-    {0}, {0}, {SCENE_NO_NOTE, SCENE_NO_NOTE, SCENE_NO_NOTE}, {0}, {0}, 0, 0};
+    {0}, {0}, {SCENE_NO_NOTE, SCENE_NO_NOTE, SCENE_NO_NOTE}, {0}, 0, 0};
 
 void scene_begin(scene* s, uint32_t piece) {
     memset(&s->u, 0, sizeof s->u);
@@ -621,15 +362,11 @@ void scene_begin(scene* s, uint32_t piece) {
     s->frame = 0;
     s->rng = 0x9E3779B9u * (s->piece + 1u);
     s->filled = GRID_ROWS;
-    switch (s->piece) {
-    case SCENE_FIRE: fire_start(s); break;
-    case SCENE_PLASMA:
+    if (s->piece == SCENE_PLASMA) {
         plasma_start(s);
         s->filled = 0;
-        break;
-    case SCENE_RULE30: r30_start(s); break;
-    case SCENE_STARS: stars_start(s); break;
-    default: ant_start(s); break;
+    } else {
+        fire_start(s);
     }
 }
 
@@ -649,12 +386,10 @@ void scene_start(scene* s, uint32_t piece, const scene_music* m) {
 
 void scene_step(scene* s, const scene_music* m) {
     scene_fill(s, m, GRID_ROWS);
-    switch (s->piece) {
-    case SCENE_FIRE: fire_step(s, m); break;
-    case SCENE_PLASMA: plasma_step(s, m); break;
-    case SCENE_RULE30: r30_step(s, m); break;
-    case SCENE_STARS: stars_step(s, m); break;
-    default: ant_step(s, m); break;
+    if (s->piece == SCENE_PLASMA) {
+        plasma_step(s, m);
+    } else {
+        fire_step(s, m);
     }
     s->frame++;
 }

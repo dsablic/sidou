@@ -74,6 +74,7 @@
 #include "scene_px.h"
 #include "scene_intro.h"
 #include "scene_rmr.h"
+#include "scene_scope.h"
 #include "scene_song.h"
 #include "scene_view.h"
 #include "settings.h"

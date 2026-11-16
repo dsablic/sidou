@@ -100,6 +100,8 @@ void live_view_cutoff_text(const live* l, char* buf);
 void live_view_fc_text(const live* l, uint32_t fc, char* buf);
 void live_view_knob_text(const live* l, uint32_t k, char* buf);
 uint8_t live_view_voice_control(const live* l, uint32_t v);
+uint32_t live_view_scope_cycles(uint8_t note);
+uint32_t live_view_scope_by(const live* l, uint32_t v);
 uint8_t live_view_wave_color(uint8_t control);
 void live_view_prepare(live_view* lv);
 

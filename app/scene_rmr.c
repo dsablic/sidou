@@ -41,6 +41,41 @@ uint32_t scene_rmr_sky_of(uint32_t cutoff) {
     return cutoff < SCENE_RMR_SKY_DIM ? 0u : cutoff < SCENE_RMR_SKY_MID ? 1u : 2u;
 }
 
+static void spin_turn(scene_rmr* r) {
+    uint32_t S = r->spin_who;
+    r->pose[S] = r->spin & 1u ? SCENE_RMR_SPIN_B : SCENE_RMR_SPIN_A;
+    if (--r->spin == 0) {
+        uint32_t V = 1u - S;
+        r->pose[S] = SCENE_RMR_SPIN_B;
+        r->t[S] = 6;
+        r->pose[V] = SCENE_RMR_HIT;
+        r->t[V] = 10;
+        r->hp[V] = (uint8_t)(r->hp[V] > 2u ? r->hp[V] - 2u : 0u);
+        r->shake = 3;
+        if (r->unarmed < 0) {
+            r->unarmed = (int8_t)V;
+            r->sword = 1;
+            r->sword_n = 0;
+            r->sword_x = (int16_t)place(r, V);
+        }
+    }
+}
+
+static void spin_start(scene_rmr* r, uint32_t who) {
+    r->spin = 4;
+    r->spin_who = (uint8_t)who;
+    r->pose[who] = SCENE_RMR_SPIN_A;
+    r->t[who] = 99;
+}
+
+static void refill(scene_rmr* r) {
+    for (uint32_t k = 0; k < 2u; k++) {
+        if (r->hp[k] == 0) {
+            r->hp[k] = SCENE_RMR_HP;
+        }
+    }
+}
+
 void scene_rmr_step(scene_rmr* r, const scene_rmr_beat* e) {
     if (e->bass != SCENE_RMR_BASS_NONE) {
         r->lead = (uint8_t)(e->bass == SCENE_RMR_BASS_HIGH);
@@ -55,32 +90,12 @@ void scene_rmr_step(scene_rmr* r, const scene_rmr_beat* e) {
             r->t[U] = 8;
         }
         if (e->bar == 3u && e->s == 3u * rpb && U < 0) {
-            r->spin = 4;
-            r->spin_who = (uint8_t)L;
-            r->pose[L] = SCENE_RMR_SPIN_A;
-            r->t[L] = 99;
+            spin_start(r, L);
         }
     }
     if (r->spin) {
-        if (!e->row) {
-            return;
-        }
-        uint32_t S = r->spin_who;
-        r->pose[S] = r->spin & 1u ? SCENE_RMR_SPIN_B : SCENE_RMR_SPIN_A;
-        if (--r->spin == 0) {
-            uint32_t V = 1u - S;
-            r->pose[S] = SCENE_RMR_SPIN_B;
-            r->t[S] = 6;
-            r->pose[V] = SCENE_RMR_HIT;
-            r->t[V] = 10;
-            r->hp[V] = (uint8_t)(r->hp[V] > 2u ? r->hp[V] - 2u : 0u);
-            r->shake = 3;
-            if (U < 0) {
-                r->unarmed = (int8_t)V;
-                r->sword = 1;
-                r->sword_n = 0;
-                r->sword_x = (int16_t)place(r, V);
-            }
+        if (e->row) {
+            spin_turn(r);
         }
         return;
     }
@@ -99,14 +114,111 @@ void scene_rmr_step(scene_rmr* r, const scene_rmr_beat* e) {
         r->stance ^= 1u;
     }
     if (e->row && e->s == 0) {
-        for (uint32_t k = 0; k < 2u; k++) {
-            if (r->hp[k] == 0) {
-                r->hp[k] = SCENE_RMR_HP;
-            }
-        }
+        refill(r);
     }
     if (e->hits & SCENE_RMR_ARP) {
         r->flare = 3;
+    }
+}
+
+static uint8_t spark_of(uint32_t velocity) {
+    return (uint8_t)(1u + (velocity >= SCENE_RMR_SOFT) + (velocity >= SCENE_RMR_HARD));
+}
+
+static void block(scene_rmr* r, const scene_rmr_note* n, uint32_t hurt) {
+    uint32_t A = r->attacker, D = 1u - A;
+    r->pose[D] = SCENE_RMR_BLOCK;
+    r->t[D] = 5;
+    r->spark = spark_of(n->velocity);
+    if (n->velocity >= SCENE_RMR_HARD) {
+        r->shake = 3;
+    }
+    if (hurt) {
+        r->hp[A] = (uint8_t)(r->hp[A] ? r->hp[A] - 1u : 0u);
+    }
+}
+
+static void strike(scene_rmr* r, const scene_rmr_note* n, int quick) {
+    uint32_t A = n->chip & 1u;
+    int high = n->pitch >= SCENE_RMR_HIGH_NOTE;
+    r->attacker = (uint8_t)A;
+    r->lead = (uint8_t)A;
+    if (!high) {
+        r->spin_who = (uint8_t)A;
+    }
+    if (quick) {
+        r->pose[A] = high ? SCENE_RMR_CHOP : SCENE_RMR_SPIN_B;
+        r->t[A] = 3;
+        r->follow[A] = 0;
+        block(r, n, 0);
+        return;
+    }
+    r->pose[A] = high ? SCENE_RMR_RAISE : SCENE_RMR_SPIN_A;
+    r->t[A] = 3;
+    r->follow[A] = (uint8_t)((high ? SCENE_RMR_CHOP : SCENE_RMR_SPIN_B) + 1u);
+    r->parry = SCENE_RMR_PARRY_FRAMES;
+}
+
+static void hold(scene_rmr* r, uint32_t count, int held) {
+    r->held = (uint8_t)(count || !held ? 0u : r->held < 255u ? r->held + 1u : 255u);
+    if (r->held < SCENE_RMR_HOLD_FRAMES) {
+        r->sway = 0;
+        return;
+    }
+    r->circle++;
+    r->sway = (int8_t)sine_scaled(r->circle, SCENE_RMR_SWAY);
+    if (r->circle % SCENE_RMR_STANCE_FRAMES == 0u) {
+        r->stance ^= 1u;
+    }
+}
+
+void scene_rmr_notes(scene_rmr* r, const scene_rmr_note* n, uint32_t count, int held) {
+    r->parry = (uint8_t)(r->parry ? r->parry - 1u : 0u);
+    r->gap = (uint8_t)(r->gap < 255u ? r->gap + 1u : 255u);
+    if (r->spin) {
+        if (++r->wait >= SCENE_RMR_SPIN_FRAMES) {
+            r->wait = 0;
+            spin_turn(r);
+        }
+        return;
+    }
+    int32_t U = r->unarmed;
+    if (r->sword && r->sword_n >= flight(r)->frames && r->pose[U] != SCENE_RMR_REACH &&
+        r->t[U] == 0 && ++r->wait >= SCENE_RMR_STUCK_FRAMES) {
+        r->wait = 0;
+        r->pose[U] = SCENE_RMR_REACH;
+        r->t[U] = 8;
+    }
+    hold(r, count, held);
+    if (!count) {
+        return;
+    }
+    int fresh = r->gap > SCENE_RMR_RUN_GAP;
+    r->run = (uint8_t)(fresh ? 1u : r->run < 255u ? r->run + 1u : 255u);
+    r->gap = 0;
+    if (fresh) {
+        refill(r);
+    }
+    if (count >= SCENE_RMR_CHORD) {
+        r->flare = 3;
+    }
+    if (U >= 0) {
+        return;
+    }
+    if (r->run >= SCENE_RMR_RUN_LONG) {
+        r->run = 0;
+        r->wait = 0;
+        spin_start(r, n[0].chip & 1u);
+        return;
+    }
+    int flurry = r->run >= SCENE_RMR_FLURRY;
+    for (uint32_t i = 0; i < count; i++) {
+        if (r->parry && !flurry) {
+            r->parry = 0;
+            block(r, &n[i], 1);
+        } else {
+            strike(r, &n[i], flurry);
+        }
     }
 }
 
@@ -140,6 +252,10 @@ void scene_rmr_frame(scene_rmr* r, uint32_t cutoff, int sounding) {
                 r->pose[k] = (uint8_t)(r->next - 1u);
                 r->t[k] = 5;
                 r->next = 0;
+            } else if (r->follow[k]) {
+                r->pose[k] = (uint8_t)(r->follow[k] - 1u);
+                r->t[k] = 5;
+                r->follow[k] = 0;
             } else {
                 if (r->pose[k] == SCENE_RMR_REACH) {
                     r->unarmed = -1;
@@ -155,7 +271,7 @@ void scene_rmr_frame(scene_rmr* r, uint32_t cutoff, int sounding) {
         }
     }
     if (!r->sword) {
-        int32_t tx = SCENE_RMR_MID + (r->lead ? -SCENE_RMR_DRIFT : SCENE_RMR_DRIFT);
+        int32_t tx = SCENE_RMR_MID + (r->lead ? -SCENE_RMR_DRIFT : SCENE_RMR_DRIFT) + r->sway;
         r->x = (int16_t)(r->x + (tx > r->x) - (tx < r->x));
     }
     r->shake_dx = (int8_t)(r->shake ? (r->shake & 1u ? 2 : -2) : 0);

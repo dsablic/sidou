@@ -122,8 +122,7 @@ static void update(live_view* lv, uint8_t pend[SCOPE_VOICES][SCOPE_W]) {
             }
             continue;
         }
-        uint8_t ctrl = voice_control(l, v);
-        uint32_t by = (ctrl & SID_CTRL_SYNC) ? (v + 2u) % SCOPE_VOICES : v;
+        uint32_t by = live_view_scope_by(l, v);
         uint8_t note = l->voice[p && p->mono_sync ? 0u : v].note;
         uint8_t wave[SCOPE_W];
         scope_trace(pts, n, v, by, cycles_for(note), wave);
@@ -197,6 +196,14 @@ void live_view_tap(live_view* lv, int on) {
 
 uint8_t live_view_voice_control(const live* l, uint32_t v) {
     return voice_control(l, v);
+}
+
+uint32_t live_view_scope_cycles(uint8_t note) {
+    return cycles_for(note);
+}
+
+uint32_t live_view_scope_by(const live* l, uint32_t v) {
+    return (voice_control(l, v) & SID_CTRL_SYNC) ? (v + 2u) % SCOPE_VOICES : v;
 }
 
 uint8_t live_view_wave_color(uint8_t control) {

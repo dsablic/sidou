@@ -33,6 +33,20 @@ enum { SCENE_RMR_BASS_NONE, SCENE_RMR_BASS_LOW, SCENE_RMR_BASS_HIGH };
 #define SCENE_RMR_SPARK_UP 92
 #define SCENE_RMR_ARC_UP 60
 
+#define SCENE_RMR_HIGH_NOTE 60u
+#define SCENE_RMR_PARRY_FRAMES 8u
+#define SCENE_RMR_RUN_GAP 6u
+#define SCENE_RMR_FLURRY 4u
+#define SCENE_RMR_RUN_LONG 16u
+#define SCENE_RMR_CHORD 3u
+#define SCENE_RMR_HOLD_FRAMES 25u
+#define SCENE_RMR_SWAY 20
+#define SCENE_RMR_STANCE_FRAMES 32u
+#define SCENE_RMR_SPIN_FRAMES 4u
+#define SCENE_RMR_STUCK_FRAMES 40u
+#define SCENE_RMR_SOFT 64u
+#define SCENE_RMR_HARD 112u
+
 enum {
     SCENE_RMR_SLOT_HUD,
     SCENE_RMR_SLOT_EMPTY0,
@@ -68,6 +82,12 @@ typedef struct {
 } scene_rmr_beat;
 
 typedef struct {
+    uint8_t chip;
+    uint8_t pitch;
+    uint8_t velocity;
+} scene_rmr_note;
+
+typedef struct {
     int16_t x;
     uint8_t lead;
     uint8_t pose[2];
@@ -96,10 +116,20 @@ typedef struct {
     uint32_t cutoff;
     const scene_rmr_art* art;
     scene_px_mark arc_marks[SCENE_RMR_ARC_MARKS];
+    uint8_t follow[2];
+    int8_t sway;
+    uint8_t attacker;
+    uint8_t parry;
+    uint8_t gap;
+    uint8_t run;
+    uint8_t held;
+    uint8_t wait;
+    uint8_t circle;
 } scene_rmr;
 
 void scene_rmr_init(scene_rmr* r);
 void scene_rmr_step(scene_rmr* r, const scene_rmr_beat* e);
+void scene_rmr_notes(scene_rmr* r, const scene_rmr_note* n, uint32_t count, int held);
 void scene_rmr_frame(scene_rmr* r, uint32_t cutoff, int sounding);
 uint32_t scene_rmr_sky_of(uint32_t cutoff);
 void scene_rmr_draw(scene_rmr* r, const scene_rmr_art* art, scene_px* sp);

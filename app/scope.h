@@ -56,6 +56,8 @@ void scope_set_race_hook(void (*hook)(void* ctx), void* ctx);
 
 void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, uint32_t cycles,
                  uint8_t out[SCOPE_W]);
+uint32_t scope_trace_ring(const scope* sc, uint32_t n, uint32_t voice, uint32_t by,
+                          uint8_t out[SCOPE_W]);
 uint32_t scope_meter(uint32_t amplitude);
 
 #ifdef __cplusplus

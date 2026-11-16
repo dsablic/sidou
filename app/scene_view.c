@@ -71,12 +71,21 @@ static void cover(scene_view_rite* rt, const screen* s) {
     scene_px_set(&rt->px, SCENE_RMR_SLOT_COVER, &l);
 }
 
+static int rite_intro(const scene_view_rite* rt) {
+    return rt->which == SCENE_DEMO || (rt->which == SCENE_RMR && !rt->has_art);
+}
+
 static void rite_draw(scene_view_rite* rt) {
-    if (rt->has_art) {
-        scene_rmr_draw(&rt->rmr, &rt->art, &rt->px);
-    } else {
-        scene_intro_draw(&rt->intro, &rt->px, rt->g);
+    if (rite_intro(rt)) {
+        scene_intro_draw(&rt->intro, &rt->px);
+    } else if (rt->which == SCENE_RMR) {
+        scene_rmr_draw(&rt->rmr, &rt->pic.art, &rt->px);
     }
+}
+
+static int rite_calm(const scene_view_rite* rt) {
+    return rt->which == SCENE_SCOPE ? rt->pic.scope.quiet >= SCENE_SCOPE_CALM_FRAMES
+                                    : rt->rmr.quiet >= SCENE_RMR_CALM_FRAMES;
 }
 
 static void rite_reset(scene_view* sv, grid* g) {
@@ -90,12 +99,15 @@ static void rite_reset(scene_view* sv, grid* g) {
 
 static int rite_art(scene_view* sv) {
     scene_view_rite* rt = &sv->u.rite;
-    rt->has_art = (uint8_t)(art_pack_open(&rt->art, sv->st, &rt->pack) == ART_PACK_OK);
+    rt->has_art = (uint8_t)(art_pack_open(&rt->pic.art, sv->st, &rt->pack) == ART_PACK_OK);
     return rt->has_art;
 }
 
 static int rite_art_changed(scene_view* sv) {
     scene_view_rite* rt = &sv->u.rite;
+    if (rt->which != SCENE_RMR) {
+        return 0;
+    }
     if (rt->has_art) {
         if (store_file_same(sv->st, &rt->pack)) {
             return 0;
@@ -107,8 +119,14 @@ static int rite_art_changed(scene_view* sv) {
 }
 
 static void rite_start(scene_view* sv, grid* g) {
-    scene_rmr_init(&sv->u.rite.rmr);
-    scene_intro_init(&sv->u.rite.intro);
+    scene_view_rite* rt = &sv->u.rite;
+    rt->which = sv->which;
+    scene_rmr_init(&rt->rmr);
+    scene_intro_init(&rt->intro);
+    if (rt->which == SCENE_SCOPE) {
+        rt->has_art = 0;
+        scene_scope_init(&rt->pic.scope);
+    }
     sv->song.n = 0;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         sv->song.stamp[v] = sv->l->voice[v].stamp;
@@ -118,11 +136,20 @@ static void rite_start(scene_view* sv, grid* g) {
 
 static void rite_step(scene_view* sv) {
     scene_view_rite* rt = &sv->u.rite;
+    if (rt->which == SCENE_SCOPE) {
+        scene_scope_frame(&rt->pic.scope, sv->on ? sv->tap : NULL, sv->l, &rt->px);
+        return;
+    }
     scene_song_frame_out m;
     scene_song_frame(&sv->song, sv->l, &m);
     for (uint32_t i = 0; i < m.n; i++) {
-        scene_rmr_step(&rt->rmr, &m.beat[i]);
+        if (m.kit) {
+            scene_rmr_step(&rt->rmr, &m.beat[i]);
+        }
         scene_intro_beat(&rt->intro, &m.beat[i]);
+    }
+    if (!m.kit) {
+        scene_rmr_notes(&rt->rmr, m.note, m.notes, m.sounding);
     }
     scene_rmr_frame(&rt->rmr, m.cutoff, m.sounding);
     scene_intro_frame(&rt->intro, m.cutoff, m.sounding);
@@ -158,6 +185,9 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
     cover(rt, s);
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < SCENE_VIEW_FRAME_CELLS ? SCENE_VIEW_FRAME_CELLS - used : 0u;
+    if (rite_intro(rt)) {
+        left -= scene_intro_glow(&rt->intro, g, left);
+    }
     uint32_t i = sv->cursor;
     for (uint32_t n = 0; n < GRID_CELLS; n++, i = i + 1u < GRID_CELLS ? i + 1u : 0u) {
         uint32_t r = i / GRID_COLS, c = i % GRID_COLS;
@@ -173,7 +203,7 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
         grid_put(g, c, r, ' ', BLANK);
         left--;
     }
-    if (left && rt->rmr.quiet < SCENE_RMR_CALM_FRAMES) {
+    if (left && !rite_calm(rt)) {
         scene_px_refresh(&rt->px, g, 1);
         left--;
     }
@@ -182,7 +212,7 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
 }
 
 int scene_view_idle(scene_view* sv) {
-    if (!sv->on || sv->which != SCENE_RMR || sv->starting) {
+    if (!sv->on || sv->which < SCENE_PETSCII || sv->starting) {
         sv->idle = 0;
         return 0;
     }
@@ -192,7 +222,7 @@ int scene_view_idle(scene_view* sv) {
         return 0;
     }
     uint32_t before = rt->px.marked;
-    scene_px_scan(&rt->px, rt->g, SCENE_PX_SCAN_SLICE);
+    scene_px_scan(&rt->px, rt->g, rt->left < SCENE_PX_SCAN_SLICE ? rt->left : SCENE_PX_SCAN_SLICE);
     uint32_t m = rt->px.marked - before;
     rt->left = (uint16_t)(m < rt->left ? rt->left - m : 0u);
     sv->idle = (uint8_t)(rt->px.ncand && rt->left);
@@ -223,7 +253,6 @@ static void listen(scene_view* sv, scene_music* m) {
         m->trig[v] = (uint8_t)(gate && x->stamp != sv->stamp[v]);
         m->note[v] = ctrl ? x->note : SCENE_NO_NOTE;
         m->env[v] = heard && ctrl ? sv->tap->env[v] : 0u;
-        m->color[v] = live_view_wave_color(ctrl);
     }
     m->cutoff = l->cutoff_out;
     m->resonance = l->resonance;
@@ -236,7 +265,7 @@ static void step(scene_view* sv) {
 }
 
 void scene_view_prepare(scene_view* sv) {
-    if (sv->on && !sv->starting && sv->which != SCENE_RMR) {
+    if (sv->on && !sv->starting && sv->which < SCENE_PETSCII) {
         step(sv);
         sv->prepared = 1;
     }
@@ -272,7 +301,7 @@ static void compose(screen* s, void* state, grid* g) {
     }
     if (sv->starting) {
         sv->starting = 0;
-        if (sv->which == SCENE_RMR) {
+        if (sv->which >= SCENE_PETSCII) {
             rite_start(sv, g);
         } else {
             if (g->region_painter) {
@@ -282,7 +311,7 @@ static void compose(screen* s, void* state, grid* g) {
             scene_begin(&sv->u.piece, sv->which);
         }
     }
-    if (sv->which == SCENE_RMR) {
+    if (sv->which >= SCENE_PETSCII) {
         rite_compose(s, sv, g);
         return;
     }

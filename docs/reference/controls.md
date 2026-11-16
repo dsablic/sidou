@@ -153,7 +153,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
 | **SELECT (encoder 0)**, in TRACKER | moves the cursor one row, or one 8-row page with EDIT held; stops at the first and last body rows |
 | **ALGORITHM (encoder 1)**, in TRACKER | the shown voice: voice 1, 2, 3 and round; the cursor's voice and the audition always match the voice on screen |
-| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
+| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, SCOPE, DEMO, RED MOON RITE, and round): it wipes in, and a toast names it. SCOPE draws the voices of the chip the keys play as three triggered traces, green for chip A and amber for chip B; DEMO is SIDOU's logo between drifting starfields, its glow in the colours played; RED MOON RITE's duel follows a song with SIDOU's drum kit by its beats and anything else by its notes (a note on chip A is the left fighter's attack, on chip B the right's; a second note soon after the other's parry, its spark and shake by velocity; a chord flares the torches; high notes chop overhead, low notes sweep low; a held note sets the pair circling; a fast run is a flurry, a long run the spinning attack and the disarm) |
 
 LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
 LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
@@ -973,7 +973,8 @@ LFO). The bend range and the three targets stay the sound's; the effect slots go
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
 generative piece on the whole screen that reacts to what the instrument plays
-(`app/scene.h`), and RED MOON RITE, a drawn duel the song plays (below). SELECT and ALGORITHM step between the pieces (the same step; a toast names the piece, on entry too); everything else plays as on
+(`app/scene.h`, `app/scene_scope.h`, `app/scene_intro.h`), and RED MOON RITE, a drawn duel
+the music plays (below). SELECT and ALGORITHM step between the pieces (the same step; a toast names the piece, on entry too); everything else plays as on
 LIVE, so the keys and MIDI move the piece, and K1 (cutoff) and K2 (resonance) set
 its mood. The piece starts again from its beginning each time it opens.
 
@@ -981,27 +982,26 @@ its mood. The piece starts again from its beginning each time it opens.
 |---|---|---|---|---|
 | FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it burns low: a flame a cell row or two high, red, never dark | higher notes burn higher | the cutoff how hot it looks (red, up to yellow and white near the bed); the resonance a little taller |
 | PLASMA | drop a bright ring that grows from a place | speed it up (silence runs it at an eighth) and voice 3's warms it | the pitch class sets the ring's place across, the pitch its height | the cutoff its speed, the resonance its twist |
-| RULE 30 | step the automaton a generation in the voice's colour; voice 3's flips a cell first | a held voice keeps it stepping | voice 3's pitch picks the cell it flips | a low cutoff darkens the colours |
-| STARS | light the voice's third of the stars in its colour | speed the voice's stars | the latest note steers the centre across | the cutoff sets the cruising speed |
-| ANT | walk the voice's ant three steps | a sounding voice keeps its ant walking; silent, it stops and greys | | a low cutoff darkens the trail |
+| SCOPE | | each voice's lane (voice 1 at the top) traces its waveform as heard, as tall as its envelope; silent, a flat line | each octave up shows a cycle more (1 to 4) | |
+| DEMO | the logo's glow sweeps into the colour of the hit (a kick red, a snare yellow, the bass orange, an arp green, a hat cyan) | | | the stars drift faster while notes sound, more with the cutoff open |
 
-A voice that makes no sound (SYNC LEAD's voices 2 and 3) counts as silent. The voices'
-colours are their waveforms' (pulse cyan, saw yellow, triangle light green, noise light
-grey), as on LIVE.
+A voice that makes no sound (SYNC LEAD's voices 2 and 3) counts as silent. SCOPE shows the
+chip the keys play (the tap follows them): green traces for chip A, amber for chip B, each
+with a dimmer halo, triggered at its rising crossing so a held note stands still; a lane
+changes 8 times a second.
 
 ### RED MOON RITE
 
-The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
-([art](../art/README.md#red-moon-rite)), played by the song while one plays (PLAY, button
-12), else by the keys. Its pictures are an [art pack](art-pack.md) in the store, sent from the
+The last piece (M2f) is a drawn duel of two barbarians under a blood moon
+([art](../art/README.md#red-moon-rite)), played by a song with SIDOU's drum kit by its beats
+(below), and by anything else, the keys, MIDI, Bluetooth or a song without the kit, by its notes. Its pictures are an [art pack](art-pack.md) in the store, sent from the
 Library page (**RED MOON RITE art**, [library.md](../manual/library.md#2-the-files-on-the-fm-1)).
-Without them the piece is SIDOU's logo intro, played by the same music: the SIDOU logo over three
-raster bars, one above it and two below, that swing wider as the cutoff opens and flash white on
-a snare, an arp note or the fill; its toast says `RED MOON RITE ART: LIBRARY`. The art takes over
+Without them the piece is SIDOU's logo intro (the DEMO piece), played by the same music: the logo
+between two drifting starfields, its glow in the colours played; its toast says `RED MOON RITE ART: LIBRARY`. The art takes over
 within a third of a second of arriving, and the intro comes back if the pack is deleted or the
 store formatted. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
 
-| The music | The duel |
+| A song with the kit | The duel |
 |---|---|
 | a kick | the leader raises his sword and chops overhead |
 | a snare | the other parries, a spark where the blades meet, and the leader loses a notch of stamina |
@@ -1022,10 +1022,22 @@ A row is each row of voice 1; the bar has 4 beats of the `MIDI` chunk's rows a b
 default). The bass is high above the middle of its range over the current and the last bar.
 A muted voice plays no part: muted drums stop the chops and parries.
 
-**With the keys:** a note-on on a voice whose waveform has noise (NOISE PERC) is a drum by its
-pitch, the lowest note held is the bass, the others the arp; a free clock makes a row every
-3 frames while a note is held, so the fill comes as you play. A second after the last
-release the torches hold still, and once the duel has settled nothing changes.
+A song has the kit when its `SCNE` chunk names a DRUMS or BASS+DRUMS voice, or leaves a voice
+AUTO while one of its instruments starts with noise.
+
+| Notes (the keys, MIDI, Bluetooth, a song without the kit) | The duel |
+|---|---|
+| a note on chip A (a song's voices, or the keys there) | the left barbarian attacks; on chip B the right one |
+| C4 and up / under C4 | an overhead chop / a low sweep |
+| a second note within a third of a second | the other parries, a spark where the blades meet (bigger the harder the key; a hard one shakes the screen), and the attacker loses a notch |
+| three notes at once | the torches flare |
+| a note held a second with no new one | the pair circles, drifting and shifting guard |
+| a fast run (notes under a quarter of a second apart) | from the fourth, a flurry of quick strikes, each blocked |
+| a long run, 16 notes | the spinning attack and the disarm; the sword is pulled free 1.6 s after it sticks |
+| the cutoff | the sky's palette, as above |
+
+A second after the last release the torches hold still, and once the duel has settled nothing
+changes.
 
 ## Presets
 

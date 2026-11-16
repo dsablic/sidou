@@ -11,7 +11,6 @@ use crate::{c_text, cutoff_after};
 
 const COLS: usize = GRID_COLS as usize;
 const ROWS: usize = GRID_ROWS as usize;
-const W60: usize = SCENE_RULE30_W as usize;
 const BLANK: (u8, u8) = (b' ', 0);
 
 fn new_scene(piece: u32) -> Box<scene> {
@@ -30,7 +29,6 @@ fn no_voice_playing() -> scene_music {
         trig: [0; 3],
         note: [SCENE_NO_NOTE as u8; 3],
         env: [0; 3],
-        color: [GRID_YELLOW as u8; 3],
         cutoff: 1200,
         resonance: 6,
     }
@@ -62,460 +60,6 @@ fn cells_changed(a: &scene_canvas, b: &scene_canvas) -> usize {
 
 fn attr(fg: u32, bg: u32) -> u8 {
     ((bg << 4) | fg) as u8
-}
-
-fn rule30_as_wolfram_states_it(cur: &[bool; W60]) -> [bool; W60] {
-    std::array::from_fn(|i| cur[(i + W60 - 1) % W60] ^ (cur[i] | cur[(i + 1) % W60]))
-}
-
-fn bits(x: u64) -> [bool; W60] {
-    std::array::from_fn(|i| x >> i & 1 != 0)
-}
-
-#[test]
-fn rule30_steps_by_the_rule_on_a_ring_of_60() {
-    let mut x = 1u64 << 30;
-    let mut model = bits(x);
-    for g in 0..200 {
-        x = unsafe { scene_rule30_next(x) };
-        model = rule30_as_wolfram_states_it(&model);
-        assert_eq!(bits(x), model, "generation {}", g + 1);
-        assert_eq!(x >> W60, 0, "bits past the ring");
-    }
-    let one = unsafe { scene_rule30_next(1 << 30) };
-    assert_eq!(one, 0b111 << 29);
-    assert_eq!(
-        unsafe { scene_rule30_next(one) },
-        0b10011 << 28,
-        "cells 28..32: 1 1 0 0 1"
-    );
-    assert_eq!(
-        unsafe { scene_rule30_next(1) },
-        1 << 59 | 0b11,
-        "cell 0's neighbours are 59 and 1"
-    );
-}
-
-fn r30(s: &scene) -> scene_rule30 {
-    unsafe { s.u.rule30 }
-}
-
-fn rule30_cell(t: &scene_rule30, c: usize, r: usize) -> (u8, u8) {
-    let (a, b) = (2 * r, 2 * r + 1);
-    let bit = |row: usize, x: usize| (t.row[row] >> x & 1) as u32;
-    let q = bit(a, 2 * c) | bit(a, 2 * c + 1) << 1 | bit(b, 2 * c) << 2 | bit(b, 2 * c + 1) << 3;
-    if q == 0 {
-        return BLANK;
-    }
-    let fg = if q & 12 != 0 { t.color[b] } else { t.color[a] };
-    ((FONT_Q0 + q) as u8, attr(u32::from(fg), GRID_BLACK))
-}
-
-fn assert_rule30_canvas(s: &scene) {
-    let t = r30(s);
-    for r in 0..ROWS {
-        for c in 0..COLS {
-            assert_eq!(cell(s, c, r), rule30_cell(&t, c, r), "cell ({c}, {r})");
-        }
-    }
-}
-
-#[test]
-fn rule30_starts_with_its_pattern_in_grey_and_holds_still_in_silence() {
-    let mut s = new_scene(SCENE_RULE30);
-    let t = r30(&s);
-    let mut x = 1u64 << 30;
-    for g in 0..SCENE_RULE30_START as usize {
-        x = unsafe { scene_rule30_next(x) };
-        assert_eq!(t.row[g], x, "generation {g}");
-        assert_eq!(u32::from(t.color[g]), GRID_GREY);
-    }
-    assert_eq!(usize::from(t.head), SCENE_RULE30_START as usize);
-    assert_eq!(t.cur, x);
-    assert_rule30_canvas(&s);
-    let before = s.cv;
-    for _ in 0..50 {
-        step(&mut s, &no_voice_playing());
-    }
-    assert_eq!(cells_changed(&before, &s.cv), 0, "silence moved it");
-}
-
-#[test]
-fn rule30_steps_at_each_note_on_in_the_voices_colour() {
-    let mut s = new_scene(SCENE_RULE30);
-    let mut m = note_on(no_voice_playing(), 1, 60, 0);
-    m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
-    let head = usize::from(r30(&s).head);
-    let cur = r30(&s).cur;
-    step(&mut s, &m);
-    let t = r30(&s);
-    assert_eq!(usize::from(t.head), head + 1);
-    assert_eq!(t.row[head], unsafe { scene_rule30_next(cur) });
-    assert_eq!(u32::from(t.color[head]), GRID_YELLOW);
-    assert_eq!(
-        (t.row[head + 1], t.row[head + 2]),
-        (0, 0),
-        "the two rows ahead of the head are cleared"
-    );
-    assert_rule30_canvas(&s);
-
-    let mut m2 = note_on(note_on(no_voice_playing(), 0, 60, 0), 2, 40, 0);
-    m2.color = m.color;
-    step(&mut s, &m2);
-    let t = r30(&s);
-    assert_eq!(usize::from(t.head), head + 3);
-    assert_eq!(u32::from(t.color[head + 1]), GRID_CYAN);
-    assert_eq!(u32::from(t.color[head + 2]), GRID_LIGHT_GREEN);
-    let second_step = 1usize;
-    let flip = (40 * 7 + second_step * 11) % W60;
-    let before = unsafe { scene_rule30_next(t.row[head]) };
-    assert_eq!(
-        t.row[head + 2],
-        unsafe { scene_rule30_next(t.row[head + 1] ^ 1 << flip) },
-        "voice 3 flipped cell {flip}"
-    );
-    assert_ne!(t.row[head + 2], before);
-    assert_rule30_canvas(&s);
-
-    let mut dark = note_on(no_voice_playing(), 1, 60, 0);
-    dark.color = m.color;
-    dark.cutoff = SCENE_DARK_CUTOFF as u16 - 1;
-    step(&mut s, &dark);
-    let t = r30(&s);
-    assert_eq!(t.color[head + 3], unsafe { scene_dark(GRID_YELLOW as u8) });
-    assert_ne!(u32::from(t.color[head + 3]), GRID_YELLOW);
-}
-
-#[test]
-fn rule30_keeps_stepping_while_a_voice_sounds_and_stops_with_it() {
-    let mut s = new_scene(SCENE_RULE30);
-    let head = |s: &scene| usize::from(r30(s).head);
-    let h0 = head(&s);
-    for _ in 0..20 {
-        step(&mut s, &held(no_voice_playing(), 0, 60, 255));
-    }
-    let steps = (head(&s) + W60 - h0) % W60;
-    assert!(
-        (9..=10).contains(&steps),
-        "{steps} generations in 20 frames"
-    );
-    let h1 = head(&s);
-    for _ in 0..20 {
-        step(&mut s, &no_voice_playing());
-    }
-    assert_eq!(head(&s), h1);
-    let mut all = no_voice_playing();
-    for v in 0..3 {
-        all = note_on(all, v, 60, 255);
-    }
-    step(&mut s, &all);
-    assert!((head(&s) + W60 - h1) % W60 <= SCENE_RULE30_MAX_STEPS as usize);
-    for _ in 0..80 {
-        step(&mut s, &note_on(no_voice_playing(), 0, 60, 0));
-    }
-    assert_rule30_canvas(&s);
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Ant {
-    x: usize,
-    y: usize,
-    d: usize,
-}
-
-struct AntModel {
-    cell: [[u8; COLS]; ROWS],
-    a: [Ant; 3],
-    acc: [u32; 3],
-}
-
-impl AntModel {
-    fn new() -> Self {
-        AntModel {
-            cell: [[0; COLS]; ROWS],
-            a: [
-                Ant { x: 9, y: 12, d: 0 },
-                Ant { x: 20, y: 12, d: 1 },
-                Ant { x: 15, y: 20, d: 2 },
-            ],
-            acc: [0; 3],
-        }
-    }
-
-    fn walk(&mut self, v: usize, color: u8) {
-        let a = &mut self.a[v];
-        let c = &mut self.cell[a.y][a.x];
-        if *c == 0 {
-            a.d = (a.d + 1) % 4;
-            *c = color + 1;
-        } else {
-            a.d = (a.d + 3) % 4;
-            *c = 0;
-        }
-        let (dx, dy) = [(0, -1), (1, 0), (0, 1), (-1, 0)][a.d];
-        a.x = (a.x as i32 + dx).rem_euclid(COLS as i32) as usize;
-        a.y = (a.y as i32 + dy).rem_euclid(ROWS as i32) as usize;
-    }
-
-    fn frame(&mut self, m: &scene_music) {
-        for v in 0..3 {
-            let mut n = if m.trig[v] != 0 { SCENE_ANT_STEPS } else { 0 };
-            if m.env[v] > 0 {
-                self.acc[v] += u32::from(m.env[v]);
-                while self.acc[v] >= SCENE_ENV_STEP {
-                    self.acc[v] -= SCENE_ENV_STEP;
-                    n += 1;
-                }
-            } else {
-                self.acc[v] = 0;
-            }
-            let color = if u32::from(m.cutoff) < SCENE_DARK_CUTOFF {
-                unsafe { scene_dark(m.color[v]) }
-            } else {
-                m.color[v]
-            };
-            for _ in 0..n {
-                self.walk(v, color);
-            }
-        }
-    }
-}
-
-fn ant(s: &scene) -> scene_ant {
-    unsafe { s.u.ant }
-}
-
-#[test]
-fn the_ants_follow_langtons_rules() {
-    let mut s = new_scene(SCENE_ANT);
-    let mut model = AntModel::new();
-    let mut rng = 12345u32;
-    for f in 0..600u32 {
-        let mut m = no_voice_playing();
-        m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
-        m.cutoff = if f % 200 < 100 { 1200 } else { 300 };
-        for v in 0..3 {
-            let r = unsafe { scene_random(&mut rng) };
-            if r % 7 == 0 {
-                m = note_on(m, v, 60, 0);
-            }
-            if (f / 50 + v as u32).is_multiple_of(3) {
-                m.env[v] = (r >> 8) as u8 | 1;
-            }
-        }
-        step(&mut s, &m);
-        model.frame(&m);
-        let a = ant(&s);
-        for v in 0..3 {
-            let w = a.a[v];
-            assert_eq!(
-                Ant {
-                    x: w.x.into(),
-                    y: w.y.into(),
-                    d: w.d.into()
-                },
-                model.a[v],
-                "frame {f}, ant {v}"
-            );
-        }
-        assert_eq!(a.cell, model.cell, "frame {f}");
-        for r in 0..ROWS {
-            for c in 0..COLS {
-                let k = a.cell[r][c];
-                let want = if k == 0 {
-                    BLANK
-                } else {
-                    (FONT_PIP as u8, attr(u32::from(k - 1), GRID_BLACK))
-                };
-                let on = (0..3)
-                    .rev()
-                    .find(|&v| usize::from(a.a[v].x) == c && usize::from(a.a[v].y) == r);
-                let want = match on {
-                    Some(v) => {
-                        let fg = if m.env[v] > 0 {
-                            GRID_WHITE
-                        } else {
-                            GRID_DARK_GREY
-                        };
-                        (FONT_BALL as u8, attr(fg, GRID_BLACK))
-                    }
-                    None => want,
-                };
-                assert_eq!(cell(&s, c, r), want, "frame {f}, cell ({c}, {r})");
-            }
-        }
-    }
-}
-
-#[test]
-fn the_ants_start_again_after_scene_ant_reset_steps() {
-    let mut s = new_scene(SCENE_ANT);
-    let mut m = no_voice_playing();
-    for v in 0..3 {
-        m = held(m, v, 60, 255);
-    }
-    let mut most = 0;
-    let mut restarted = false;
-    for _ in 0..10_000 {
-        let before = ant(&s).steps;
-        step(&mut s, &m);
-        most = most.max(ant(&s).steps);
-        if ant(&s).steps < before {
-            restarted = true;
-            break;
-        }
-    }
-    assert!(restarted, "the ants never started again");
-    assert!(u32::from(most) < SCENE_ANT_RESET);
-}
-
-fn stars(s: &scene) -> scene_stars {
-    unsafe { s.u.stars }
-}
-
-#[test]
-fn the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch() {
-    let mut s = new_scene(SCENE_STARS);
-    let z = |s: &scene| -> Vec<i32> { stars(s).st.iter().map(|p| i32::from(p.z)).collect() };
-    let cruise = |cutoff: u32| 8 + cutoff as i32 * 24 / 2047;
-    for cutoff in [0u16, 1200, 2047] {
-        let before = z(&s);
-        let mut m = no_voice_playing();
-        m.cutoff = cutoff;
-        step(&mut s, &m);
-        for (i, (&b, &a)) in before.iter().zip(&z(&s)).enumerate() {
-            if a <= b {
-                assert_eq!(
-                    b - a,
-                    cruise(u32::from(cutoff)),
-                    "star {i}, cutoff {cutoff}"
-                );
-            } else {
-                assert_eq!(a, 4096, "star {i} starts again at the far end");
-            }
-        }
-    }
-    let before = z(&s);
-    step(&mut s, &held(no_voice_playing(), 1, 60, 255));
-    for (i, (&b, &a)) in before.iter().zip(&z(&s)).enumerate() {
-        if a <= b {
-            let boost = if i % 3 == 1 { 255 * 180 / 256 } else { 0 };
-            assert_eq!(b - a, cruise(1200) + boost, "star {i}");
-        }
-    }
-    for p in stars(&s).st {
-        assert!(
-            (-768..=768).contains(&p.x) && (-768..=768).contains(&p.y),
-            "{p:?}"
-        );
-        assert!((205..=4096).contains(&p.z), "{p:?}");
-    }
-    for _ in 0..40 {
-        step(&mut s, &note_on(no_voice_playing(), 2, 80, 200));
-    }
-    assert_eq!(stars(&s).cx, 80, "steered to (80 - 60) * 4");
-    for _ in 0..40 {
-        step(&mut s, &note_on(no_voice_playing(), 0, 40, 200));
-    }
-    assert_eq!(stars(&s).cx, -80);
-}
-
-#[test]
-fn a_note_on_lights_the_stars_before_its_envelope_rises_until_let_go_and_silent() {
-    let lit = SCENE_STARS_LIT as u8;
-    let mut s = new_scene(SCENE_STARS);
-    let mut m = note_on(no_voice_playing(), 0, 60, 0);
-    m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_YELLOW as u8];
-    step(&mut s, &m);
-    assert_eq!(
-        stars(&s).lit[0],
-        lit,
-        "the note-on's light went with ENV3 at 0"
-    );
-    let cyan = |s: &scene| {
-        (0..ROWS).any(|r| (0..COLS).any(|c| u32::from(s.cv.attr[r][c] & 15) == GRID_CYAN))
-    };
-    assert!(cyan(&s), "no star in the voice's colour");
-    m.trig = [0; 3];
-    step(&mut s, &m);
-    assert_eq!(stars(&s).lit[0], lit - 1);
-    m.gate = [0; 3];
-    m.env[0] = 30;
-    step(&mut s, &m);
-    assert_eq!(stars(&s).lit[0], lit - 2);
-    m.env[0] = 0;
-    step(&mut s, &m);
-    assert_eq!(stars(&s).lit[0], 0);
-    assert!(!cyan(&s));
-}
-
-fn star_canvas(s: &scene, m: &scene_music) -> Vec<(usize, usize, u8, u8)> {
-    let t = stars(s);
-    let mut out = Vec::new();
-    let near = |z: u16| match z {
-        3073.. => 0,
-        1844..=3072 => 1,
-        902..=1843 => 2,
-        _ => 3,
-    };
-    for layer in 0..4 {
-        for (i, p) in t.st.iter().enumerate() {
-            if near(p.z) != layer {
-                continue;
-            }
-            let sx = 120 + i32::from(t.cx) + i32::from(p.x) * 640 / i32::from(p.z);
-            let sy = 120 + i32::from(p.y) * 640 / i32::from(p.z);
-            if !(0..240).contains(&sx) || !(0..240).contains(&sy) {
-                continue;
-            }
-            let glyph = [FONT_TINY, FONT_DOT, FONT_PLUS, FONT_STAR][layer] as u8;
-            let v = i % 3;
-            let fg = if t.lit[v] > 0 {
-                u32::from(m.color[v])
-            } else {
-                [GRID_GREY, GRID_LIGHT_GREY, GRID_WHITE, GRID_WHITE][layer]
-            };
-            out.push((
-                sx as usize / 8,
-                sy as usize / 8,
-                glyph,
-                attr(fg, GRID_BLACK),
-            ));
-        }
-    }
-    out
-}
-
-#[test]
-fn the_stars_are_drawn_far_to_near_and_light_with_their_voice() {
-    let mut s = new_scene(SCENE_STARS);
-    let mut m = no_voice_playing();
-    m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_LIGHT_GREEN as u8];
-    for f in 0..60 {
-        let m = if f == 10 {
-            note_on(m, 1, 60, 200)
-        } else if f > 10 && f < 30 {
-            held(m, 1, 60, 200)
-        } else {
-            m
-        };
-        step(&mut s, &m);
-        let mut want = [[BLANK; COLS]; ROWS];
-        for (c, r, g, a) in star_canvas(&s, &m) {
-            want[r][c] = (g, a);
-        }
-        for (r, row) in want.iter().enumerate() {
-            for (c, &w) in row.iter().enumerate() {
-                assert_eq!(cell(&s, c, r), w, "frame {f}, cell ({c}, {r})");
-            }
-        }
-        let lit = stars(&s).lit[1];
-        if (10..10 + SCENE_STARS_LIT).contains(&f) {
-            assert!(lit > 0, "frame {f}: voice 2's stars are not lit");
-        } else {
-            assert_eq!(lit, 0, "frame {f}");
-        }
-    }
 }
 
 fn fire(s: &scene) -> scene_fire {
@@ -911,7 +455,7 @@ fn a_piece_starts_and_plays_the_same_every_time() {
             "piece {piece}"
         );
     }
-    assert_eq!(new_scene(SCENE_PETSCII + 2).piece, 2);
+    assert_eq!(u32::from(new_scene(SCENE_PETSCII + 1).piece), SCENE_PLASMA);
 }
 
 #[test]
@@ -979,7 +523,7 @@ pub(crate) fn open_scene(ui: &mut Ui) {
 }
 
 fn grid_is_canvas(ui: &Ui) -> bool {
-    if u32::from(ui.v.scene.which) == SCENE_RMR {
+    if u32::from(ui.v.scene.which) >= SCENE_PETSCII {
         return ui.g.region_painter.is_some()
             && (0..ROWS * COLS).all(|i| ui.g.ch[i] == b' ' && ui.g.attr[i] == 0);
     }
@@ -1014,13 +558,17 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
             Some(piece_name(k % SCENE_PIECES).as_str())
         );
         ui.settle();
-        if k % SCENE_PIECES == SCENE_RMR {
+        if k % SCENE_PIECES >= SCENE_PETSCII {
             ui.frames_sent(40);
-            assert!(grid_is_canvas(&ui), "RED MOON RITE's cells are not blank");
+            assert!(
+                grid_is_canvas(&ui),
+                "{}: the painter's cells are not blank",
+                piece_name(k % SCENE_PIECES)
+            );
         }
     }
-    ui.turn(PANEL_ENC_SELECT, -2);
-    assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 2);
+    ui.turn(PANEL_ENC_SELECT, -(SCENE_PIECES as i32) - 1);
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 1);
     let cutoff = ui.live().cutoff;
     ui.turn(PANEL_ENC_K1, 3);
     assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, 3));
@@ -1033,7 +581,12 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "SCENE");
-    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_PIECES - 2);
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 1);
+    assert_eq!(
+        unsafe { ui.v.scene.u.rite.which },
+        ui.v.scene.which,
+        "the menu reopens the piece it left"
+    );
 }
 
 #[test]
@@ -1096,8 +649,24 @@ fn the_tap_runs_while_scene_shows() {
     assert_eq!((ui.sc.on, ui.v.scene.on), (0, 0), "the tap stayed on");
 }
 
+const TAP_POINTS_A_FRAME: u32 = 60;
+const SID_CYCLES_A_TAP_POINT: u32 = 328;
+
+pub(crate) fn feed_the_tap(sc: &mut scope, acc: &mut [u32; 3], freq: [u16; 3]) {
+    for _ in 0..TAP_POINTS_A_FRAME {
+        let p = &mut sc.point[(sc.head % SCOPE_RING) as usize];
+        for v in 0..3 {
+            acc[v] = (acc[v] + u32::from(freq[v]) * SID_CYCLES_A_TAP_POINT) & 0xff_ffff;
+            p.phase[v] = (acc[v] >> 16) as u8;
+            p.wave[v] = p.phase[v];
+        }
+        sc.head = sc.head.wrapping_add(1);
+    }
+}
+
 struct Band {
     env: [u8; 3],
+    acc: [u32; 3],
     frame: u32,
     notes_and_their_end_frames: Vec<(u8, u32)>,
 }
@@ -1106,6 +675,7 @@ impl Band {
     fn new() -> Self {
         Band {
             env: [0; 3],
+            acc: [0; 3],
             frame: 0,
             notes_and_their_end_frames: Vec::new(),
         }
@@ -1145,6 +715,8 @@ impl Band {
             };
             ui.sc.env[v] = self.env[v];
         }
+        let freq = std::array::from_fn(|v| ui.live().voice[v].freq_out);
+        feed_the_tap(&mut ui.sc, &mut self.acc, freq);
         ui.frame();
         drain(&mut ui.g)
     }
@@ -1226,29 +798,34 @@ fn a_note_moves_the_scene_and_silence_calms_it() {
     }
 }
 
-#[test]
-fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
-    let mut ui = scene_on(SCENE_ANT);
+fn pips_above_the_fire(ui: &mut Ui) -> usize {
     let cv = &mut petscii_mut(&mut ui.v.scene).cv;
-    for r in 0..ROWS {
+    for r in 0..FIRE_TOP {
         for c in 0..COLS {
             cv.ch[r][c] = FONT_PIP as u8;
             cv.attr[r][c] = attr(GRID_CYAN, GRID_BLACK);
         }
     }
-    let mut frames = 0;
-    loop {
+    FIRE_TOP * COLS
+}
+
+#[test]
+fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
+    let mut ui = scene_on(SCENE_FIRE);
+    let pips = pips_above_the_fire(&mut ui);
+    let mut sent = Vec::new();
+    while !grid_is_canvas(&ui) || sent.is_empty() {
         ui.frame();
-        let sent = drain(&mut ui.g);
-        assert!(sent.cells <= SCENE_VIEW_FRAME_CELLS as usize, "{sent:?}");
-        if sent.cells == 0 {
-            break;
-        }
-        frames += 1;
-        assert!(frames < 10, "still sending after {frames} frames");
+        let s = drain(&mut ui.g);
+        assert!(s.cells <= SCENE_VIEW_FRAME_CELLS as usize, "{s:?}");
+        sent.push(s.cells);
+        assert!(sent.len() < 10, "still behind after {sent:?}");
     }
-    assert_eq!(frames, 5, "900 cells, 200 a frame");
-    assert!(grid_is_canvas(&ui));
+    assert_eq!(
+        sent.len(),
+        pips.div_ceil(SCENE_VIEW_FRAME_CELLS as usize),
+        "{pips} cells, 200 a frame: {sent:?}"
+    );
 }
 
 #[test]
@@ -1335,41 +912,30 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
 
 #[test]
 fn the_copy_leaves_a_showing_toast_alone() {
-    let mut ui = scene_on(SCENE_ANT);
+    let mut ui = scene_on(SCENE_FIRE);
     let text = c"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let n = text.to_bytes().len();
     unsafe { screen_toast(&mut ui.v.s, text.as_ptr(), 4000) };
     ui.frame();
     drain(&mut ui.g);
-    let cv = &mut petscii_mut(&mut ui.v.scene).cv;
-    for r in 0..ROWS {
-        for c in 0..COLS {
-            cv.ch[r][c] = FONT_PIP as u8;
-            cv.attr[r][c] = attr(GRID_CYAN, GRID_BLACK);
-        }
-    }
-    let mut sent = Vec::new();
-    loop {
-        ui.frame();
-        let s = drain(&mut ui.g);
-        if s.cells == 0 {
-            break;
-        }
-        sent.push(s.cells);
-        assert!(sent.len() < 10, "still sending: {sent:?}");
-    }
+    pips_above_the_fire(&mut ui);
     let toast_row = SCREEN_TOAST_ROW as usize;
     let toast_col = SCREEN_TOAST_COL as usize;
-    let cv = &petscii(&ui.v.scene).cv;
     let under_toast =
         |r: usize, c: usize| r == toast_row && (toast_col..toast_col + n).contains(&c);
-    assert!(
+    let caught_up = |ui: &Ui| {
+        let cv = &petscii(&ui.v.scene).cv;
         (0..ROWS * COLS).all(|i| {
             let (r, c) = (i / COLS, i % COLS);
             under_toast(r, c) || (ui.g.ch[i] == cv.ch[r][c] && ui.g.attr[i] == cv.attr[r][c])
-        }),
-        "the canvas did not catch up"
-    );
+        })
+    };
+    let mut sent = Vec::new();
+    while !caught_up(&ui) || sent.is_empty() {
+        ui.frame();
+        sent.push(drain(&mut ui.g).cells);
+        assert!(sent.len() < 10, "still sending: {sent:?}");
+    }
     assert!(
         sent[..sent.len() - 1]
             .iter()
@@ -1432,53 +998,29 @@ fn sync_leads_silent_voices_stop_their_parts() {
     let sync = (0..4u8)
         .find(|&i| crate::preset_name(crate::preset(i)) == "SYNC LEAD")
         .expect("a SYNC LEAD preset");
-    for piece in [SCENE_FIRE, SCENE_ANT] {
-        let mut ui = scene_on(piece);
-        ui.rig.set_preset(sync);
-        let mut band = Band::new();
-        let ants = unsafe { petscii(&ui.v.scene).u.ant.a };
-        let mut heard = [0u32; 3];
-        for _ in 0..200 {
-            band.frame(&mut ui, true);
-            let m = &ui.v.scene.music;
-            for (v, h) in heard.iter_mut().enumerate() {
-                *h += u32::from(m.gate[v]) + u32::from(m.env[v]) + u32::from(m.trig[v]);
-            }
-        }
-        assert!(heard[0] > 0, "{}: voice 1 is not heard", piece_name(piece));
-        assert_eq!(
-            heard[1..],
-            [0, 0],
-            "{}: voices 2 and 3 heard",
-            piece_name(piece)
-        );
-        if piece == SCENE_FIRE {
-            let s = petscii(&ui.v.scene);
-            assert!(
-                flame_height_in_heat_rows(s, 0) > 0,
-                "voice 1's flame is out"
-            );
-            assert_eq!(
-                (
-                    flame_height_in_heat_rows(s, 1),
-                    flame_height_in_heat_rows(s, 2)
-                ),
-                (0, 0)
-            );
-        } else {
-            let now = unsafe { petscii(&ui.v.scene).u.ant.a };
-            assert_ne!(
-                (now[0].x, now[0].y),
-                (ants[0].x, ants[0].y),
-                "voice 1's ant stood still"
-            );
-            for v in 1..3 {
-                assert_eq!(
-                    (now[v].x, now[v].y),
-                    (ants[v].x, ants[v].y),
-                    "ant {v} walked"
-                );
-            }
+    let mut ui = scene_on(SCENE_FIRE);
+    ui.rig.set_preset(sync);
+    let mut band = Band::new();
+    let mut heard = [0u32; 3];
+    for _ in 0..200 {
+        band.frame(&mut ui, true);
+        let m = &ui.v.scene.music;
+        for (v, h) in heard.iter_mut().enumerate() {
+            *h += u32::from(m.gate[v]) + u32::from(m.env[v]) + u32::from(m.trig[v]);
         }
     }
+    assert!(heard[0] > 0, "voice 1 is not heard");
+    assert_eq!(heard[1..], [0, 0], "voices 2 and 3 heard");
+    let s = petscii(&ui.v.scene);
+    assert!(
+        flame_height_in_heat_rows(s, 0) > 0,
+        "voice 1's flame is out"
+    );
+    assert_eq!(
+        (
+            flame_height_in_heat_rows(s, 1),
+            flame_height_in_heat_rows(s, 2)
+        ),
+        (0, 0)
+    );
 }

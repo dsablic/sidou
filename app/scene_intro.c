@@ -118,9 +118,9 @@ static void logo_row(const void* ctx, uint32_t x, uint32_t y, uint32_t n, uint8_
     }
 }
 
-static void glow_sweep(scene_intro* in, grid* g) {
-    if (in->frame % SCENE_INTRO_GLOW_EVERY) {
-        return;
+uint32_t scene_intro_glow(scene_intro* in, grid* g, uint32_t room) {
+    if (in->frame % SCENE_INTRO_GLOW_EVERY || room < GRID_COLS) {
+        return 0;
     }
     for (uint32_t k = 0; k < SCENE_INTRO_LOGO_ROWS; k++) {
         uint32_t row = (in->glow_next + k) % SCENE_INTRO_LOGO_ROWS;
@@ -130,14 +130,14 @@ static void glow_sweep(scene_intro* in, grid* g) {
             for (uint32_t c = 0; c < GRID_COLS; c++) {
                 grid_mark(g, c, SCENE_INTRO_LOGO_Y0 / GRID_CELL_PX + row);
             }
-            return;
+            return GRID_COLS;
         }
     }
+    return 0;
 }
 
-void scene_intro_draw(scene_intro* in, scene_px* sp, grid* g) {
+void scene_intro_draw(scene_intro* in, scene_px* sp) {
     stars_drift(in, sp);
-    glow_sweep(in, g);
     scene_px_layer l = stars(in, 0, SCENE_INTRO_STARS_TOP);
     scene_px_set(sp, SCENE_INTRO_SLOT_STARS_TOP, &l);
     l = stars(in, SCENE_INTRO_STARS_TOP, SCENE_INTRO_STARS - SCENE_INTRO_STARS_TOP);

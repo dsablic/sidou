@@ -29,6 +29,8 @@ uint32_t scene_song_drum_of_pitch(uint32_t pitch) {
                                           : SONG_DRUM_SNARE;
 }
 
+static int has_kit(const scene_song* ss, const gt2_song* s);
+
 static void setup(scene_song* ss, const gt2_song* s) {
     const song_ctl* sc = ss->sc;
     scene_song_init(ss);
@@ -45,6 +47,7 @@ static void setup(scene_song* ss, const gt2_song* s) {
             ss->drum[i][1] = scne.drum[i][1];
         }
     }
+    ss->kit = (uint8_t)has_kit(ss, s);
     song_midi midi;
     if (s && song_ext_get_midi(s, &midi) && midi.rows_per_beat >= 1u && midi.rows_per_beat <= 16u) {
         ss->rpb = midi.rows_per_beat;
@@ -67,6 +70,50 @@ static int first_wave(const gt2_song* s, uint32_t i, uint8_t* left, uint8_t* rig
 static int starts_with_noise(const gt2_song* s, uint32_t i) {
     uint8_t l, r;
     return first_wave(s, i, &l, &r) && l >= 0x80u && l <= 0xdfu;
+}
+
+static int has_kit(const scene_song* ss, const gt2_song* s) {
+    int guessed = 0;
+    for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
+        uint32_t r = ss->role[v];
+        if (r == SONG_ROLE_DRUMS || r == SONG_ROLE_BASS_DRUMS) {
+            return 1;
+        }
+        guessed |= r == SONG_ROLE_AUTO;
+    }
+    for (uint32_t i = 1; guessed && i <= GT2_MAX_INSTR; i++) {
+        if (starts_with_noise(s, i)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void hear(scene_song* ss, uint32_t chip, uint32_t pitch, uint32_t velocity) {
+    if (ss->heard < SCENE_SONG_NOTES) {
+        scene_rmr_note* n = &ss->hear[ss->heard++];
+        n->chip = (uint8_t)chip;
+        n->pitch = (uint8_t)pitch;
+        n->velocity = (uint8_t)velocity;
+    }
+}
+
+static uint32_t keys_chip(const live* l) {
+    return l->two_chips && l->keys_chip;
+}
+
+static int hear_keys(scene_song* ss, const live* l) {
+    int held = 0;
+    for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
+        const live_voice* x = &l->voice[v];
+        int gate = x->gate && live_view_voice_control(l, v);
+        if (gate && x->stamp != ss->stamp[v]) {
+            hear(ss, keys_chip(l), x->note, x->velocity);
+        }
+        held |= gate;
+        ss->stamp[v] = x->stamp;
+    }
+    return held;
 }
 
 static uint32_t drum_pitch(const gt2_song* s, uint32_t i, uint32_t note) {
@@ -183,6 +230,9 @@ static void flush(scene_song* ss) {
         if (ss->note[v] == NONE) {
             continue;
         }
+        if (!ss->kit) {
+            hear(ss, 0, MIDI_OF(ss->note[v]), SCENE_SONG_VELOCITY);
+        }
         if (starts_with_noise(s, ss->instr[v])) {
             ss->noise[0][v] = 1;
         }
@@ -287,6 +337,7 @@ static void from_live(scene_song* ss, const live* l, scene_song_frame_out* out) 
         const live_voice* x = &l->voice[v];
         sounding |= ss->gate[v];
         if (ss->gate[v] && x->stamp != ss->stamp[v]) {
+            hear(ss, keys_chip(l), x->note, x->velocity);
             if (ctrl[v] & 0x80u) {
                 b.hits |= (uint8_t)hit_of(scene_song_drum_of_pitch(x->note));
             } else if (v == bass) {
@@ -319,8 +370,9 @@ static void from_live(scene_song* ss, const live* l, scene_song_frame_out* out) 
 
 void scene_song_frame(scene_song* ss, const live* l, scene_song_frame_out* out) {
     if (ss->playing && ss->sc) {
-        for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
-            ss->stamp[v] = l->voice[v].stamp;
+        int keys = hear_keys(ss, l) && !ss->kit;
+        if (ss->kit) {
+            ss->heard = 0;
         }
         flush(ss);
         const uint8_t* reg = ss->sc->shadow;
@@ -330,6 +382,7 @@ void scene_song_frame(scene_song* ss, const live* l, scene_song_frame_out* out) 
         for (uint32_t v = 0; v < SCENE_SONG_VOICES; v++) {
             sounding |= ss->gate[v] && !(quiet >> v & 1u);
         }
+        sounding |= keys;
         out->sounding = (uint8_t)sounding;
     } else {
         from_live(ss, l, out);
@@ -339,4 +392,10 @@ void scene_song_frame(scene_song* ss, const live* l, scene_song_frame_out* out) 
         out->beat[i] = ss->beat[i];
     }
     ss->n = 0;
+    out->kit = (uint8_t)(ss->playing && ss->sc && ss->kit);
+    out->notes = ss->heard;
+    for (uint32_t i = 0; i < ss->heard; i++) {
+        out->note[i] = ss->hear[i];
+    }
+    ss->heard = 0;
 }
