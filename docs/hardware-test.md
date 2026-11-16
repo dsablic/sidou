@@ -3185,7 +3185,7 @@ Set up:
   no hint toast; the toast `RED MOON RITE` reads black on yellow.
 - [ ] **A broken pack is refused:** with `sidou-sysex art` refusing a pack edited by hand (a byte
   of its slot table changed), and the Library's **Send files…** with the same file. Pass: the page
-  refuses it in words before sending; nothing changes on the FM-1. *Emulator:* `art.rs` (sidou-sysex).
+  refuses it in words before sending; nothing changes on the FM-1. *Emulator:* `art.rs` (sidou-sysex). *Result:* `sidou-sysex` part passed 2026-11-16 (no FM-1 needed): the default pack with one byte of its slot table changed is refused (`refused: its slots are not RED MOON RITE's: every image at its size and frame count`) and no `.syx` is written; the unchanged pack converts (41,037 bytes). The Library's Send files part is not run.
 - [ ] **FORMAT takes it:** only with the songs backed up (Library, Back up all) and the owner's yes:
   SETTINGS, STORE, FORMAT, SAVE then SAVE AGAIN. Pass: RED MOON RITE plays the intro again with the
   hint toast; restoring the backup brings the songs and the art back (the backup holds the pack).
