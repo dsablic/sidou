@@ -8,9 +8,20 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+- **SCENE refreshed: SCOPE and DEMO join FIRE, PLASMA and RED MOON RITE; RULE 30, STARS and ANT
+  are gone.** SELECT steps FIRE, PLASMA, SCOPE, DEMO, RED MOON RITE. **SCOPE** draws the three
+  voices of the chip the keys play, what the tap hears, as glowing oscilloscope traces (green
+  for chip A, amber for chip B, a dimmer halo round each), each triggered at its rising crossing
+  so a held note stands still. **DEMO** is RED MOON RITE's logo intro as a piece of its own.
+  **RED MOON RITE fights to anything played**: a song with SIDOU's drum kit keeps its beats;
+  the keys, MIDI, Bluetooth and songs without the kit play it by their notes (a note on chip A
+  the left fighter's attack, on chip B the right's; a second note soon after the other's parry,
+  its spark and a screen shake by velocity; a chord flares the torches; high notes chop
+  overhead, low notes sweep low; a held note sets the pair circling; a fast run is a flurry, a
+  long run the spinning attack and the disarm; the cutoff colours the sky as before).
 - **RED MOON RITE's art is a file on the FM-1** (waiting for its device check, hardware-test §39):
   the Library page's **RED MOON RITE art** button (or `sidou-sysex art`, `sidou-sysex send`) sends
-  the pictures SCENE's sixth piece draws, an [art pack](docs/reference/art-pack.md)
+  the pictures SCENE's last piece draws, an [art pack](docs/reference/art-pack.md)
   (`assets/art/red-moon-rite.sidart`, 41,037 bytes), which the FM-1 keeps in its store and draws
   from in place. Without it RED MOON RITE plays SIDOU's logo intro: the logo between two drifting
   starfields at three depths, which speed up while notes sound and with the cutoff, and the logo's

@@ -22,7 +22,10 @@ impl Intro {
     }
 
     fn draw(&mut self) {
-        unsafe { scene_intro_draw(&mut *self.r, &mut *self.rig.sp, &mut *self.rig.g) };
+        unsafe {
+            scene_intro_draw(&mut *self.r, &mut *self.rig.sp);
+            scene_intro_glow(&mut *self.r, &mut *self.rig.g, GRID_CELLS);
+        }
     }
 
     fn frame(&mut self, hits: u32, cutoff: u32, sounding: bool) {

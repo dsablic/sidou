@@ -1288,9 +1288,7 @@ change most of the screen in the prototype are trimmed to fit, so the cap rarely
 |---|---|---|
 | FIRE | 426 (the whole screen) | the bottom 14 rows, three 10-column flames; it burns every other frame (two steps at once, so the flames rise at the prototype's speed) and draws half its rows a frame, the even ones then the odd ones: 12.5 fps, at most 210 cells a frame. Heat at or below 48 goes out above the ember bed; a silent voice's fuel falls to FIRE_IDLE_HOT (120), not to 0, so silence keeps a low red flame flickering (about 94 at the bed, a cell row or two high, now and then a tongue to eight rows) |
 | PLASMA | 500 | the whole screen, every other row a frame; its top speed is 0.8 rad a second (the prototype's 3.7 changed more cells than the budget has), an eighth of it in silence; a note-on's ripple is one ring growing half a cell a frame, not a train of rings, and voice 3's warmth follows its envelope at most 4 steps a frame |
-| RULE 30 | 20 | as the prototype: a 60 x 60 ring of generations in quadrant glyphs, at most 3 generations a frame |
-| STARS | 25 | 90 stars, a glyph each, drawn far to near |
-| ANT | 3 | as the prototype |
+| SCOPE | (not in the prototype) | three lanes of triggered traces on the tile compositor, one lane redrawn a frame, only the tiles its traces cross |
 
 Measured in fm1-emu (`scene_stays_within_its_budgets`, 150 frames a piece of a band on the keys:
 an arpeggio note every 4 frames, a bass note every 8, the filter wide open):
@@ -1299,9 +1297,7 @@ an arpeggio note every 4 frames, a bass note every 8, the filter wide open):
 |---|---|---|---|
 | FIRE | 125.0, 159 | 10.93 ms, 13.85 ms | 101.6k, 58.9k instructions |
 | PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 141.4k, 53.0k |
-| RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 32.7k, 21.3k |
-| STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 74.1k, 21.1k |
-| ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 29.3k, 18.9k |
+| SCOPE | 85.6, 139 | 7.55 ms, 12.29 ms | 737k, 49.7k |
 
 The piece steps half way between frames (`views_prepare`), as LIVE reads its tap, so a frame's
 `ui_poll` is the copy alone; the busiest `ui_poll` (FIRE's two burns, 58.9k) is half the latency

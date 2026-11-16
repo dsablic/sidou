@@ -56,7 +56,8 @@ typedef struct {
 void scene_intro_init(scene_intro* in);
 void scene_intro_beat(scene_intro* in, const scene_rmr_beat* e);
 void scene_intro_frame(scene_intro* in, uint32_t cutoff, int sounding);
-void scene_intro_draw(scene_intro* in, scene_px* sp, grid* g);
+void scene_intro_draw(scene_intro* in, scene_px* sp);
+uint32_t scene_intro_glow(scene_intro* in, grid* g, uint32_t room);
 
 #ifdef __cplusplus
 }

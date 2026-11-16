@@ -51,7 +51,7 @@ name, an identical one is left alone and a different one is replaced only after 
 sent song is loaded on the FM-1 from the menu: **SONG, LOAD**. A sent tune plays from **SIDS**
 ([sid-tunes.md](sid-tunes.md#4-play-it)).
 
-**RED MOON RITE art** sends the pictures SCENE's sixth piece draws (an
+**RED MOON RITE art** sends the pictures SCENE's last piece draws (an
 [art pack](../reference/art-pack.md), about 40 KB). An FM-1 without them plays SIDOU's logo intro
 in RED MOON RITE's place, and its toast says `RED MOON RITE ART: LIBRARY`; once they are sent,
 the duel is drawn: **SCENE**, then SELECT to RED MOON RITE. A store FORMAT erases them with the

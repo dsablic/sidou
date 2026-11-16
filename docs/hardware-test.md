@@ -749,7 +749,7 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
   *Emulator:* `emu-gate/tests/screen.rs::fire_keeps_a_low_flame_in_silence`,
   `emu-gate/tests/screen.rs::scene_fire_matches_its_golden_image`,
   `sidou-tests/tests/app/scene.rs::a_silent_fire_keeps_a_low_flame`.
-- [ ] SELECT clockwise: PLASMA, RULE 30, STARS, ANT, RED MOON RITE, then
+- [ ] SELECT clockwise: PLASMA, SCOPE, DEMO, RED MOON RITE, then
   FIRE again, each wiping in from the top with its name as a toast;
   counter-clockwise goes back. HOME returns to the menu.
   *Emulator:*
@@ -773,27 +773,18 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
   `sidou-tests/tests/app/scene.rs::the_plasma_fills_the_screen_and_the_cutoff_speeds_it`,
   `sidou-tests/tests/app/scene.rs::a_note_on_drops_a_ripple_where_its_pitch_says`,
   `emu-gate/tests/screen.rs::scene_plasma_matches_its_golden_image`.
-- [ ] RULE 30: a grey triangle at the start; each note-on writes a new
-  generation in the voice's colour (SAW LEAD's yellow) on the row below the
-  last, a held note keeps it going, and it stops in silence. K1 turned well
-  down darkens the colour.
+- [ ] SCOPE: three dotted grey lines in silence; a held chord draws three green
+  traces (voice 1 at the top) with a dim halo, standing still while held; higher
+  octaves show more cycles; K1 does not move them; let go, each lays flat. With a
+  song playing and the keys on chip B, the keys' traces are amber.
   *Emulator:*
-  `sidou-tests/tests/app/scene.rs::rule30_starts_with_its_pattern_in_grey_and_holds_still_in_silence`,
-  `sidou-tests/tests/app/scene.rs::rule30_steps_at_each_note_on_in_the_voices_colour`,
-  `sidou-tests/tests/app/scene.rs::rule30_keeps_stepping_while_a_voice_sounds_and_stops_with_it`;
-  *Emulator (no test yet):* K1 turned well down darkening the colour.
-- [ ] STARS: stars fly out of the centre, slowly in silence, faster with
-  notes; a note-on lights a third of them in its colour for a moment, and
-  high notes steer the centre right, low ones left.
-  *Emulator:*
-  `sidou-tests/tests/app/scene.rs::the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch`,
-  `sidou-tests/tests/app/scene.rs::a_note_on_lights_the_stars_before_its_envelope_rises`,
-  `sidou-tests/tests/app/scene.rs::the_stars_are_drawn_far_to_near_and_light_with_their_voice`.
-- [ ] ANT: three white balls (grey while their voice is silent) walking
-  Langton's ant trails while their voices sound, one per voice.
-  *Emulator:* `sidou-tests/tests/app/scene.rs::the_ants_follow_langtons_rules`,
-  `emu-gate/tests/screen.rs::scene_ant_matches_its_golden_image`; *emulator (no test yet):* the
-  ball turning grey while its voice is silent.
+  `emu-gate/tests/screen.rs::scopes_held_chord_stands_still_and_its_traces_glow_in_the_keys_chips_colours`,
+  `sidou-tests/tests/app/scene_scope.rs::a_held_note_stands_still_whatever_its_phase`;
+  *device-only:* whether the traces read as a scope on the real LCD.
+- [ ] DEMO: SIDOU's logo between two drifting starfields; a chord sweeps the logo's
+  glow into the colours played and speeds the stars, silence calms both.
+  *Emulator:* `emu-gate/tests/screen.rs::scene_demo_matches_its_golden_image`,
+  `sidou-tests/tests/app/scene_intro.rs::the_logos_glow_takes_the_colour_of_what_is_played_and_calms_in_silence`.
 - [ ] No flicker or tearing beyond the pieces' own motion, the sound stays
   clean (SCENE taps the audio interrupt as LIVE does), and fast playing
   (a run of notes, a chord stab) keeps the sound and the keys on time.
@@ -839,6 +830,15 @@ only the real LCD shows.
   `emu-gate/tests/song.rs::the_first_song_is_bit_exact_while_red_moon_rite_plays_it` (the duel
   script, frame rate and cells, audio untouched); *device-only:* the motion looking smooth to
   the eye and the sound staying clean as heard (panel look and speaker).
+- [ ] With the song stopped, play the keys: a high note is the left fighter's overhead chop,
+  a low one a low sweep; a second note right after is the right fighter's parry (a bigger
+  spark and a shake on a hard key); a chord flares the torches; a held note sets the pair
+  circling; a fast run is a flurry of strikes, a long one the spinning attack and the disarm,
+  the sword taken back after a while.
+  *Emulator:*
+  `emu-gate/tests/screen.rs::red_moon_rite_fights_to_the_keys_attack_parry_chord_and_a_long_run_disarms`,
+  `sidou-tests/tests/app/scene_rmr.rs` (each mapping frame by frame); *device-only:* whether
+  it reads as a fight to the eye.
 - [ ] K1 (the keys' cutoff, with the song stopped) or the song's filter darkens and
   brightens the sky in three palettes, wiped down a row at a time.
   *Emulator:* `sidou-tests/tests/app/scene_rmr.rs::the_sky_takes_the_cutoffs_palette`; *Emulator

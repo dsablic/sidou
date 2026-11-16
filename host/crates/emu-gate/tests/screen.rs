@@ -5264,3 +5264,147 @@ fn red_moon_rite_sends_nothing_once_the_stopped_songs_releases_have_rung_out() {
     assert_eq!(sum(&after), 0, "{after:?}");
 }
 
+
+fn colour_count(px: &[u8], c: u32) -> usize {
+    px.iter().filter(|&&p| u32::from(p) == c).count()
+}
+
+#[test]
+fn scopes_held_chord_stands_still_and_its_traces_glow_in_the_keys_chips_colours() {
+    let Some((build, fw)) = common::build_and_firmware("the SCOPE test") else {
+        return;
+    };
+    let mut m = booted_with_art(&fw);
+    open_scene(&mut m, &fw, SCENE_SCOPE);
+    chord_keys(&mut m, true);
+    m.run_ms(1500);
+    to_mid_frame(&mut m, &fw);
+    let held = indexed(&m.soc.lcd.fb);
+    let sent = cells_sent(&measure(&mut m, &fw, 25, |_| {}));
+    assert_eq!(indexed(&m.soc.lcd.fb), held, "the held chord's traces moved");
+    assert!(
+        sent.iter().all(|&n| n <= 1),
+        "a held chord sends no more than the refresh sweep's tile: {sent:?}"
+    );
+    let [chip_a, chip_b] = unsafe { sidou_sys::scene_scope_colour };
+    for c in chip_a {
+        assert!(colour_count(&held, u32::from(c)) > 200, "chip A's colour {c}");
+    }
+    assert_eq!(colour_count(&held, u32::from(chip_b[0])), 0);
+    chord_keys(&mut m, false);
+    m.run_ms(2000);
+    song_on_chip_a(&mut m, &fw);
+    m.key(A4_KEY, true);
+    m.run_ms(1500);
+    to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "scene-scope-keys-b", &m.soc.lcd.fb, &[]);
+    let b = indexed(&m.soc.lcd.fb);
+    for c in chip_b {
+        assert!(colour_count(&b, u32::from(c)) > 100, "chip B's colour {c}");
+    }
+    assert_eq!(colour_count(&b, u32::from(chip_a[0])), 0);
+}
+
+fn tap_key(m: &mut Machine, key: u8, ms: u64) {
+    m.key(key, true);
+    m.run_ms(ms);
+    m.key(key, false);
+}
+
+fn rmr_poses(m: &mut Machine, fw: &Firmware, frames: u32) -> Vec<[u32; 2]> {
+    use sidou_sys::ilp32::scene_rmr as r;
+    (0..frames)
+        .map(|_| {
+            m.run_ms(UI_FRAME_MS);
+            std::array::from_fn(|k| u32::from(rmr_byte(m, fw, r::pose + k)))
+        })
+        .collect()
+}
+
+#[test]
+fn red_moon_rite_fights_to_the_keys_attack_parry_chord_and_a_long_run_disarms() {
+    use sidou_sys::ilp32::scene_rmr as r;
+    let Some(fw) = common::firmware("the RED MOON RITE keys test") else {
+        return;
+    };
+    let mut m = booted_with_art(&fw);
+    open_scene(&mut m, &fw, SCENE_RMR);
+    m.run_ms(TOAST_GONE_MS);
+    m.key(A4_KEY, true);
+    let poses = rmr_poses(&mut m, &fw, 12);
+    m.key(A4_KEY, false);
+    let left: Vec<u32> = poses.iter().map(|p| p[0]).collect();
+    assert!(left.contains(&sidou_sys::SCENE_RMR_RAISE), "{poses:?}");
+    assert!(left.contains(&sidou_sys::SCENE_RMR_CHOP), "{poses:?}");
+    m.run_ms(1000);
+    tap_key(&mut m, A4_KEY, UI_FRAME_MS);
+    m.run_ms(2 * UI_FRAME_MS);
+    tap_key(&mut m, note_key(72), UI_FRAME_MS);
+    let poses = rmr_poses(&mut m, &fw, 8);
+    assert!(
+        poses.iter().any(|p| p[1] == sidou_sys::SCENE_RMR_BLOCK),
+        "the second note's parry: {poses:?}"
+    );
+    m.run_ms(1000);
+    chord_keys(&mut m, true);
+    m.run_ms(2 * UI_FRAME_MS);
+    assert_eq!(rmr_byte(&mut m, &fw, r::flame_big), 1, "the chord's torches");
+    chord_keys(&mut m, false);
+    m.run_ms(1000);
+    let run = [60u8, 64, 67, 72];
+    let mut disarmed = false;
+    for i in 0..2 * sidou_sys::SCENE_RMR_RUN_LONG as usize {
+        tap_key(&mut m, note_key(run[i % run.len()]), UI_FRAME_MS);
+        m.run_ms(UI_FRAME_MS);
+        disarmed |= rmr_byte(&mut m, &fw, r::sword) != 0;
+    }
+    m.run_ms(1000);
+    disarmed |= rmr_byte(&mut m, &fw, r::sword) != 0;
+    assert!(disarmed, "a long run's spinning attack disarms");
+}
+
+#[test]
+fn every_scene_piece_with_the_song_and_the_keys_stays_within_its_budgets() {
+    let Some(fw) = common::firmware("the SCENE song budget test") else {
+        return;
+    };
+    let mut over = Vec::new();
+    for (piece, name) in SCENE_PIECES.iter().enumerate() {
+        let mut m = Machine::boot_with_art(&fw.image);
+        m.watch_calls(fw.symbol("ui_poll"));
+        run_past_boot(&mut m, &fw);
+        open_scene(&mut m, &fw, piece);
+        open_the_filter(&mut m);
+        press(&mut m, PLAY);
+        m.run_ms(500);
+        assert_eq!(song_state(&mut m, &fw), sidou_sys::SONG_PLAYING, "{name}");
+        let c = measure_band(&mut m, &fw, 150);
+        let per = cells_sent(&c);
+        let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+        let most = per.iter().copied().max().unwrap_or(0);
+        let poll = if piece >= SCENE_PETSCII {
+            RMR_WORST_POLL
+        } else {
+            SCENE_WORST_POLL
+        };
+        println!(
+            "SCENE {name} with the song and the keys: {avg:.1} cells a frame, at most {most}; \
+             worst SPI {:.2} ms; {:.0} instructions a frame, busiest ui_poll {}",
+            c.worst_frame_ms(),
+            c.instructions_per_frame(),
+            c.worst_poll
+        );
+        if most > sidou_sys::SCENE_VIEW_FRAME_CELLS
+            || c.worst_frame_ms() > SPI_BUDGET_MS
+            || c.worst_poll >= poll
+        {
+            over.push(format!(
+                "{name}: at most {most} cells, {:.2} ms, ui_poll {}",
+                c.worst_frame_ms(),
+                c.worst_poll
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+

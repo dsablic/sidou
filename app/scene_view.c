@@ -71,11 +71,15 @@ static void cover(scene_view_rite* rt, const screen* s) {
     scene_px_set(&rt->px, SCENE_RMR_SLOT_COVER, &l);
 }
 
+static int rite_intro(const scene_view_rite* rt) {
+    return rt->which == SCENE_DEMO || (rt->which == SCENE_RMR && !rt->has_art);
+}
+
 static void rite_draw(scene_view_rite* rt) {
-    if (rt->which == SCENE_RMR && rt->has_art) {
+    if (rite_intro(rt)) {
+        scene_intro_draw(&rt->intro, &rt->px);
+    } else if (rt->which == SCENE_RMR) {
         scene_rmr_draw(&rt->rmr, &rt->pic.art, &rt->px);
-    } else if (rt->which != SCENE_SCOPE) {
-        scene_intro_draw(&rt->intro, &rt->px, rt->g);
     }
 }
 
@@ -181,6 +185,9 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
     cover(rt, s);
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < SCENE_VIEW_FRAME_CELLS ? SCENE_VIEW_FRAME_CELLS - used : 0u;
+    if (rite_intro(rt)) {
+        left -= scene_intro_glow(&rt->intro, g, left);
+    }
     uint32_t i = sv->cursor;
     for (uint32_t n = 0; n < GRID_CELLS; n++, i = i + 1u < GRID_CELLS ? i + 1u : 0u) {
         uint32_t r = i / GRID_COLS, c = i % GRID_COLS;

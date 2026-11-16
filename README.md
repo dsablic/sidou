@@ -125,8 +125,9 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 - **Record over USB.** The FM-1 is also a USB audio input, with no driver, on a computer or an
   iPad: a DAW records what the line out plays, in stereo at 44.1 kHz, over the same cable
   as USB-MIDI.
-- **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece:
-  its art is a file the Library page sends to the FM-1, and until it arrives SIDOU's logo intro
+- **Look at it.** SCENE plays along: FIRE, PLASMA, SCOPE (the chip's voices as glowing
+  oscilloscope traces), DEMO (the logo between starfields) and RED MOON RITE, a barbarian duel
+  that fights to a song's drums or to the notes you play. Its art is a file the Library page sends to the FM-1, and until it arrives SIDOU's logo intro
   plays in its place.
 - **Learn it from the device.** A first-run tour, and a help card on every screen.
 
