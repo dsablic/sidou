@@ -18,7 +18,7 @@ All notable changes are documented here. The format follows
   loader and played by RED MOON RITE's own code in the page. Name it, download the `.sidart`, or
   send it to the FM-1 over Web MIDI. A pack is too big for a link: share the file.
 - **SCENE refreshed: SCOPE and DEMO join FIRE, PLASMA and RED MOON RITE; RULE 30, STARS and ANT
-  are gone.** SELECT steps FIRE, PLASMA, SCOPE, DEMO, RED MOON RITE. **SCOPE** draws the three
+  are gone.** SELECT steps DEMO, FIRE, PLASMA, SCOPE, RED MOON RITE, and SCENE opens on DEMO, the logo between starfields. **SCOPE** draws the three
   voices of the chip the keys play, what the tap hears, as glowing oscilloscope traces (green
   for chip A, amber for chip B, a dimmer halo round each), each triggered at its rising crossing
   so a held note stands still. **DEMO** is RED MOON RITE's logo intro as a piece of its own.

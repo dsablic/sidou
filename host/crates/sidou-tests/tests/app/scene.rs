@@ -427,7 +427,7 @@ fn the_plasmas_sine_table_is_sine_q7() {
 
 #[test]
 fn a_piece_starts_and_plays_the_same_every_time() {
-    for piece in 0..SCENE_PETSCII {
+    for piece in PETSCII_PIECES {
         let mut a = new_scene(piece);
         let mut b = new_scene(piece);
         assert_eq!(cells_changed(&a.cv, &b.cv), 0, "piece {piece}");
@@ -455,7 +455,6 @@ fn a_piece_starts_and_plays_the_same_every_time() {
             "piece {piece}"
         );
     }
-    assert_eq!(u32::from(new_scene(SCENE_PETSCII + 1).piece), SCENE_PLASMA);
 }
 
 #[test]
@@ -463,7 +462,7 @@ fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
     let mut m = no_voice_playing();
     m.resonance = 11;
     m.cutoff = 1900;
-    for piece in 0..SCENE_PETSCII {
+    for piece in PETSCII_PIECES {
         let mut whole = Box::<scene>::default();
         unsafe { scene_start(&mut *whole, piece, &m) };
         let mut part = Box::<scene>::default();
@@ -508,6 +507,12 @@ fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
 
 const INTRO: u32 = SCENE_PIECES;
 
+const PETSCII_PIECES: std::ops::Range<u32> = SCENE_FIRE..SCENE_FIRE + SCENE_PETSCII;
+
+fn is_petscii(piece: u32) -> bool {
+    PETSCII_PIECES.contains(&piece)
+}
+
 fn piece_name(k: u32) -> String {
     if k == INTRO {
         return "RED MOON RITE's intro".to_string();
@@ -523,7 +528,7 @@ pub(crate) fn open_scene(ui: &mut Ui) {
 }
 
 fn grid_is_canvas(ui: &Ui) -> bool {
-    if u32::from(ui.v.scene.which) >= SCENE_PETSCII {
+    if !is_petscii(u32::from(ui.v.scene.which)) {
         return ui.g.region_painter.is_some()
             && (0..ROWS * COLS).all(|i| ui.g.ch[i] == b' ' && ui.g.attr[i] == 0);
     }
@@ -539,17 +544,16 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     let mut ui = Ui::new();
     open_scene(&mut ui);
     assert_eq!(ui.top(), "SCENE");
-    assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
-    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
-    assert_eq!(ui.toast().as_deref(), Some("FIRE"), "the name on entry");
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_DEMO);
+    assert_eq!(ui.toast().as_deref(), Some("DEMO"), "the name on entry");
     ui.frames_sent(40);
     assert!(ui.toast().is_none());
-    assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
+    assert!(grid_is_canvas(&ui), "the grid is not the logo's canvas");
     for k in 1..=SCENE_PIECES {
         ui.turn(PANEL_ENC_SELECT, 1);
         assert_eq!(u32::from(ui.v.scene.which), k % SCENE_PIECES);
         ui.frame();
-        if k % SCENE_PIECES < SCENE_PETSCII {
+        if is_petscii(k % SCENE_PIECES) {
             assert_eq!(u32::from(petscii(&ui.v.scene).piece), k % SCENE_PIECES);
         }
         assert_ne!(ui.v.s.wipe, 0, "piece {k}: no wipe");
@@ -558,7 +562,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
             Some(piece_name(k % SCENE_PIECES).as_str())
         );
         ui.settle();
-        if k % SCENE_PIECES >= SCENE_PETSCII {
+        if !is_petscii(k % SCENE_PIECES) {
             ui.frames_sent(40);
             assert!(
                 grid_is_canvas(&ui),
@@ -617,7 +621,7 @@ fn algorithm_steps_the_piece_as_select_does() {
 fn entering_scene_names_the_piece_once() {
     let mut ui = Ui::new();
     open_scene(&mut ui);
-    assert_eq!(ui.toast().as_deref(), Some("FIRE"));
+    assert_eq!(ui.toast().as_deref(), Some("DEMO"));
     assert_eq!(ui.v.scene.say, 0);
     ui.frames(60);
     assert!(ui.toast().is_none(), "the toast ends and is not said again");

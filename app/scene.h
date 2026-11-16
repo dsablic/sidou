@@ -14,11 +14,12 @@ extern "C" {
 #define SCENE_VOICES 3u
 #define SCENE_PIECES 5u
 #define SCENE_PETSCII 2u
-#define SCENE_FIRE 0u
-#define SCENE_PLASMA 1u
-#define SCENE_SCOPE 2u
-#define SCENE_DEMO 3u
+#define SCENE_DEMO 0u
+#define SCENE_FIRE 1u
+#define SCENE_PLASMA 2u
+#define SCENE_SCOPE 3u
 #define SCENE_RMR 4u
+#define SCENE_IS_PETSCII(piece) ((uint32_t)(piece)-SCENE_FIRE < SCENE_PETSCII)
 
 #define SCENE_NO_NOTE 0xFFu
 

@@ -153,7 +153,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
 | **SELECT (encoder 0)**, in TRACKER | moves the cursor one row, or one 8-row page with EDIT held; stops at the first and last body rows |
 | **ALGORITHM (encoder 1)**, in TRACKER | the shown voice: voice 1, 2, 3 and round; the cursor's voice and the audition always match the voice on screen |
-| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, SCOPE, DEMO, RED MOON RITE, and round): it wipes in, and a toast names it. SCOPE draws the voices of the chip the keys play as three triggered traces, green for chip A and amber for chip B; DEMO is SIDOU's logo between drifting starfields, its glow in the colours played; RED MOON RITE's duel follows a song with SIDOU's drum kit by its beats and anything else by its notes (a note on chip A is the left fighter's attack, on chip B the right's; a second note soon after the other's parry, its spark and shake by velocity; a chord flares the torches; high notes chop overhead, low notes sweep low; a held note sets the pair circling; a fast run is a flurry, a long run the spinning attack and the disarm) |
+| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (DEMO, FIRE, PLASMA, SCOPE, RED MOON RITE, and round; SCENE opens on DEMO the first time, then on the piece it was left on): it wipes in, and a toast names it. SCOPE draws the voices of the chip the keys play as three triggered traces, green for chip A and amber for chip B; DEMO is SIDOU's logo between drifting starfields, its glow in the colours played; RED MOON RITE's duel follows a song with SIDOU's drum kit by its beats and anything else by its notes (a note on chip A is the left fighter's attack, on chip B the right's; a second note soon after the other's parry, its spark and shake by velocity; a chord flares the torches; high notes chop overhead, low notes sweep low; a held note sets the pair circling; a fast run is a flurry, a long run the spinning attack and the disarm) |
 
 LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
 LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
@@ -980,10 +980,10 @@ its mood. The piece starts again from its beginning each time it opens.
 
 | Piece | Note-ons | Envelopes (ENV3) | Pitch | Cutoff, resonance |
 |---|---|---|---|---|
+| DEMO | the logo's glow sweeps into the colour of the hit (a kick red, a snare yellow, the bass orange, an arp green, a hat cyan) | | | the stars drift faster while notes sound, more with the cutoff open |
 | FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it burns low: a flame a cell row or two high, red, never dark | higher notes burn higher | the cutoff how hot it looks (red, up to yellow and white near the bed); the resonance a little taller |
 | PLASMA | drop a bright ring that grows from a place | speed it up (silence runs it at an eighth) and voice 3's warms it | the pitch class sets the ring's place across, the pitch its height | the cutoff its speed, the resonance its twist |
 | SCOPE | | each voice's lane (voice 1 at the top) traces its waveform as heard, as tall as its envelope; silent, a flat line | each octave up shows a cycle more (1 to 4) | |
-| DEMO | the logo's glow sweeps into the colour of the hit (a kick red, a snare yellow, the bass orange, an arp green, a hat cyan) | | | the stars drift faster while notes sound, more with the cutoff open |
 
 A voice that makes no sound (SYNC LEAD's voices 2 and 3) counts as silent. SCOPE shows the
 chip the keys play (the tap follows them): green traces for chip A, amber for chip B, each
