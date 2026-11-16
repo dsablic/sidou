@@ -42,8 +42,7 @@ All of them play on the [videos page](https://dsablic.github.io/sidou/videos.htm
 ## The videos
 
 Durations are of the wide cut; each comes as `ID.mp4` (1920 x 1080), `ID-square.mp4`
-(1080 x 1080) and `ID-vertical.mp4` (1080 x 1920), with `ID.srt` (the captions, as a sidecar:
-nothing is written into the picture but the headline and the label on the control) and chapter
+(1080 x 1080) and `ID-vertical.mp4` (1080 x 1920), with `ID.srt` (the captions, also as a sidecar) and chapter
 marks.
 
 | Video | Preview | What it teaches | Length (wide, MB) |
@@ -76,16 +75,20 @@ marks.
 - **A payoff first**: the last seconds of the result, then a typed `LOAD"…",8,1` title card
   with the loading stripes, under CHROME COMET played by SIDOU (a capture of the
   `soundtrack` journey in `tools/videos/soundtrack.txt`).
-- **Each step**: its number, its headline with one word in an accent colour, the FM-1's panel
-  with the control in use lit (the rest dimmed, a thick ring and a glow, a press that sinks and
-  bursts, a turn's arrow and the knob's pointer turning, a hold's ring filling like a timer), a
-  C64 sprite pointer that flies to it a moment before, and a label in plain words beside it
-  (`HOLD GLO + KEY 2`). The screen, three times its size, pushes in on the region where the
-  result shows once the inputs are done. A raster-bar wipe runs through the border at each
-  step, and the screen's frame glows on the song's beat.
+- **Each step**: its number, its headline with one word in an accent colour, its caption in a
+  fixed lower third (fading 200 ms out, then the next in), the FM-1's panel with the control in
+  use lit (the rest dimmed, a thick ring and a glow, a press that sinks, a turn's arrow and the
+  knob's pointer turning, a hold's ring filling like a timer), a C64 sprite pointer that glides
+  to it, and a label in plain words beside it (`HOLD GLO + KEY 2`) that glides with it. The
+  screen, three times its size and pixel-exact, outlines the region where the result shows,
+  moving only when the region changes; its frame glows softly on the song's beat. Each step shows
+  its caption before its action and holds long enough to read it and to see the result.
 - **The end**: the result held, the screen easing back out.
-- **The sound**: the capture's own audio, normalised to -16 LUFS (true peak -1.5 dBTP), turned
-  down where the AAC encode would take a sample peak over -1.5 dB.
+- **60 fps**: the camera and the overlays move at 60 fps; the screen is the firmware's, fully
+  drawn frames only, at its own 25.
+- **The sound**: the capture's own audio, the parts crossfaded, normalised to -16 LUFS (true peak
+  -1.5 dBTP), turned down where the AAC encode would take a sample peak over -1.5 dB; a render off
+  -16 LUFS by over 1 LU or over -1 dBTP fails.
 
 The look lives in `tools/videos/template.py` (layouts, colours, fonts, wipes, cards), the
 panel's geometry in `tools/videos/panel.py` (after fm1-emu's panel drawing, MIT), what happens
@@ -113,7 +116,11 @@ after), its songs and the harness's sources: a change of the look re-renders wit
 emulator, a change of the firmware or the recipe captures again. A recipe's `prerequisites.tunes` (starter-pack `.sid` files, as SIDS plays them) go into the
 emulated store like its `songs`. The captures run several at
 once; each video's frames render on every core and go straight into ffmpeg.
-`build/videos/report.json` has each video's length, sizes, render time and frames' digest.
+`build/videos/report.json` has each video's length, sizes, render time, loudness and frames'
+digest. `tools/videos/measure.py ID --media MP4` prints a video's pacing (each step's time against
+its caption's reading time), camera moves, pointer jumps, held-back LCD frames and loudness; the
+tooling's tests are `uv run --no-project --with pillow==13.0.0 python -m unittest test_videos`
+in `tools/videos`.
 
 A firmware change that alters the screens (help cards, the menu, STEP's numbering) needs only
 this one command; a recipe that no longer runs as written stops it with the failing step

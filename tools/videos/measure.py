@@ -15,7 +15,8 @@ READ_WPM = 180
 READ_BEAT_MS = 1000
 REVERSAL_MS = 1000
 STILL = 1e-4
-JUMP_PX_PER_S = 1500
+JUMP_MS = 400
+JUMP_PX = 20
 
 
 def reading_ms(caption: str) -> int:
@@ -72,8 +73,8 @@ def pointer_jumps(plan: dict, fps: float) -> int:
     make.init(plan, 1.0, "wide")
     step = 1000 / fps
     at = [make.pointer_at(i * step) for i in range(int(plan["frames"] * 40 / step))]
-    return sum(1 for a, b in zip(at, at[1:])
-               if a and b and math.dist(a, b) * fps > JUMP_PX_PER_S)
+    track = moves([p or (0.0, 0.0) for p in at], step)
+    return sum(1 for m in track if m["ms"] < JUMP_MS and math.dist(m["from"], m["to"]) > JUMP_PX)
 
 
 def report(rid: str, media: Path | None) -> dict:

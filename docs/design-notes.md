@@ -6954,6 +6954,38 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   WAV's peaks, by up to 2.4 dB on the hard-panned pulse waves of chip-spread. Over -1.5 dB, the
   WAV is turned down by the excess plus 0.1 dB and checked again, so such a video ends a little
   under -16 LUFS rather than near full scale.
+- A render fails when the MP4's own loudness is off -16 LUFS by more than 1 LU or its true peak
+  is over -1 dBTP; the teaser, title, steps and end crossfade over 300 ms instead of cutting.
+
+### How-to videos' pacing and motion
+
+- **Pacing lives in the capture**, not in the renderer: ergo's full capture shows a step's
+  caption 700 ms before its first action and keeps the firmware running until the caption's
+  reading time (180 words a minute plus a second) and 1.5 s after the last action have passed.
+  The extra time is real emulation, so a song keeps playing and the screen keeps moving; a
+  frozen frame under live sound would look broken. The pacing applies only to `--capture full`,
+  never to the recipe checks.
+- **Only fully drawn LCD frames:** the firmware spreads a screen change over several 40 ms UI
+  frames (a menu's lines within `MENU_FRAME_CELLS`, SCENE's drawing in `views_idle`), and the
+  SPI sends the marked cells over the first milliseconds of each frame. The capture steps the
+  emulator a millisecond at a time and keeps the LCD as it was the last time nothing was left
+  to send: no marked grid row, no prepared run, no budgeted menu line pending, no SCENE idle
+  work, and the LCD bus quiet for that millisecond. Each 40 ms tick records that picture;
+  `frames.json` counts the ticks it held back (100 of 2167 in whats-new, mostly SCENE and the
+  BLUETOOTH menus) and the longest hold (450 ms, SCENE's art). The menu wipe is the firmware's
+  own transition and stays.
+- **60 fps, LCD at its own 25:** the camera, the pointer, the label and the fades are computed
+  at 60 fps; the LCD shows the latest captured frame.
+- **A calm camera:** the framing changes only at a step's start, only when the step's region
+  really differs (overlap under 60%, or another zoom), over 900 ms with a quintic ease, and a
+  move waits a second after the last one ended. Zoom snaps to pixel-exact steps (4/3, 5/3, 2 of
+  the 3x LCD) so the LCD is crisp at rest. No recipe's region is narrow enough to zoom today:
+  the region box is what moves, gliding between regions.
+- **One caption, one label, one pointer:** the step's caption sits in a fixed lower third under
+  the panel, the old one fading out 200 ms before the new fades in; the pointer glides 600 ms to
+  each control the step uses (not to every key a melody plays); the label glides between
+  controls and fades when it moves between the panel and the screen, never crossing the LCD.
+  The per-step raster wipes and sparkles are gone; the beat glow is at 0.4.
 
 ### Generators and their checks
 

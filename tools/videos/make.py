@@ -503,13 +503,13 @@ def callout_at(ms: float) -> tuple | None:
     k = step_at(ms)
     to = P["callouts"][k]
     fro = P["callouts"][k - 1] if k else None
-    if to is None or fro is None:
-        return to
-    e = T.glide((ms - P["steps"][k]["ms"]) / CALLOUT_GLIDE_MS)
-    tick = None
-    if to[2]:
-        tick = (lerp(fro[2][0], to[2][0], e) if fro[2] else to[2][0], to[2][1])
-    return (lerp(fro[0], to[0], e), lerp(fro[1], to[1], e), tick)
+    if to is None:
+        return None
+    dt = ms - P["steps"][k]["ms"]
+    if fro is None or not (fro[2] and to[2]):
+        return (*to, min(1.0, max(0.0, dt / CAPTION_FADE_MS)) if k else 1.0)
+    e = T.glide(dt / CALLOUT_GLIDE_MS)
+    return (lerp(fro[0], to[0], e), lerp(fro[1], to[1], e), (lerp(fro[2][0], to[2][0], e), to[2][1]), 1.0)
 
 
 def caption_at(steps: list, ms: float) -> tuple | None:
@@ -578,7 +578,7 @@ def compose_main(ms: float) -> Image.Image:
             T.pointer(im, pt, 0)
     at = callout_at(ms)
     if at:
-        T.callout(im, s["callout_text"], at)
+        T.callout(im, s["callout_text"], at[:3], at[3])
     cap = caption_at(P["steps"], ms)
     if cap:
         T.lower_third(im, *cap)
