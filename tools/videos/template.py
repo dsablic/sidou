@@ -6,13 +6,12 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import panel
 
 ROOT = Path(__file__).resolve().parents[2]
 S = 1.0
-FPS = 25
 
 PAL = [
     (0, 0, 0), (255, 255, 255), (107, 52, 41), (115, 166, 181), (107, 60, 132), (90, 142, 66),
@@ -28,13 +27,13 @@ WARM = [BROWN, RED, ORANGE, LRED, YELLOW, WHITE, YELLOW, LRED, ORANGE, RED, BROW
 LAYOUTS = {
     "wide": {"size": (1920, 1080), "border": 36, "logo": (72, 62, 1.0), "version": (1848, 76),
              "tag": (72, 142, 24), "headline": (72, 178, 1010, 72), "lcd": (1128, 250, 720),
-             "panel": (50, 352, 0.72), "callout": 32},
+             "panel": (50, 336, 0.72), "callout": 32, "caption": (72, 930, 1000, 28)},
     "square": {"size": (1080, 1080), "border": 24, "logo": (40, 34, 0.6), "version": (1040, 40),
-               "tag": (40, 80, 16), "headline": (40, 100, 1000, 36), "lcd": (300, 172, 480),
-               "panel": (239, 668, 0.47), "callout": 24},
+               "tag": (40, 80, 16), "headline": (40, 100, 1000, 36), "lcd": (300, 180, 480),
+               "panel": (297, 690, 0.38), "callout": 24, "caption": (40, 998, 1000, 17)},
     "vertical": {"size": (1080, 1920), "border": 36, "logo": (90, 90, 1.0), "version": (990, 104),
                  "tag": (90, 190, 24), "headline": (90, 228, 900, 64), "lcd": (180, 420, 720),
-                 "panel": (28, 1190, 0.8), "callout": 32},
+                 "panel": (66, 1180, 0.74), "callout": 32, "caption": (90, 1770, 900, 30)},
 }
 L = LAYOUTS["wide"]
 
@@ -73,6 +72,11 @@ def size() -> tuple:
 def ease(t: float) -> float:
     t = min(max(t, 0.0), 1.0)
     return t * t * (3 - 2 * t)
+
+
+def glide(t: float) -> float:
+    t = min(max(t, 0.0), 1.0)
+    return t * t * t * (t * (6 * t - 15) + 10)
 
 
 def _font_c() -> list:
@@ -269,8 +273,20 @@ def frame_base(tag: str, headline: str, version: str, logo: Image.Image) -> Imag
     base = panel_base((L["panel"], S))
     paste(im, base, (u(L["panel"][0]), u(L["panel"][1])))
     lx, ly, ls = L["lcd"]
-    d.rounded_rectangle((u(lx - 18), u(ly - 18), u(lx + ls + 18), u(ly + ls + 18)), u(22), fill=(14, 14, 16))
+    bezel = (u(lx - 18), u(ly - 18), u(lx + ls + 18), u(ly + ls + 18))
+    lcd_shadow(im, bezel)
+    d.rounded_rectangle(bezel, u(22), fill=(14, 14, 16))
     return im
+
+
+def lcd_shadow(im: Image.Image, bezel: tuple) -> None:
+    pad, blur, drop = u(60), u(22), u(14)
+    box = (bezel[0] - pad, bezel[1] - pad, bezel[2] + pad, bezel[3] + pad)
+    mask = Image.new("L", (box[2] - box[0], box[3] - box[1]), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((pad, pad + drop, mask.width - pad, mask.height - pad + drop),
+                                           u(22), fill=150)
+    mask = mask.filter(ImageFilter.GaussianBlur(blur))
+    im.paste(Image.new("RGB", mask.size, (0, 0, 0)), box[:2], mask)
 
 
 def panel_box() -> tuple:
@@ -303,14 +319,25 @@ def beat_glow(im: Image.Image, strength: float) -> None:
         d.rounded_rectangle((u(lx) - g, u(ly) - g, u(lx + ls) + g, u(ly + ls) + g), u(16), outline=col)
 
 
+def pixel_zoom(target: float) -> float:
+    base = L["lcd"][2] / 240
+    k = max(math.ceil(base - 1e-9), math.floor(base * target + 1e-9))
+    return max(1.0, k / base)
+
+
 def lcd_view(lcd: Image.Image, zoom: float, centre: tuple) -> Image.Image:
     side = u(L["lcd"][2])
     if zoom <= 1.0001:
         return lcd.resize((side, side), Image.NEAREST)
     span = 240 / zoom
-    cx = min(max(centre[0], span / 2), 240 - span / 2)
-    cy = min(max(centre[1], span / 2), 240 - span / 2)
-    return lcd.resize((side, side), Image.NEAREST, box=(cx - span / 2, cy - span / 2, cx + span / 2, cy + span / 2))
+    x0 = min(max(centre[0] - span / 2, 0), 240 - span)
+    y0 = min(max(centre[1] - span / 2, 0), 240 - span)
+    exact = side / span
+    if abs(exact - round(exact)) < 1e-6 and x0 == int(x0) and y0 == int(y0):
+        return lcd.resize((side, side), Image.NEAREST, box=(x0, y0, x0 + span, y0 + span))
+    k = math.ceil(exact)
+    big = lcd.resize((240 * k, 240 * k), Image.NEAREST)
+    return big.resize((side, side), Image.BILINEAR, box=(x0 * k, y0 * k, (x0 + span) * k, (y0 + span) * k))
 
 
 def lcd_to_frame(px: float, py: float, zoom: float, centre: tuple) -> tuple:
@@ -429,12 +456,9 @@ def control_highlight(im: Image.Image, name: str, state: dict) -> None:
     ring(d, rect, hot, width=7 * k)
 
 
-def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 1.0) -> None:
-    if not text or alpha <= 0:
-        return
+def callout_layout(text: str, rect: tuple | None) -> tuple:
     sc = pixel_scale(L["callout"])
-    col = c(YELLOW)
-    t = pixel_text(text, sc, c(BLACK), col)
+    t = pixel_text(text, sc, c(BLACK), c(YELLOW))
     pad = max(2, u(L["callout"] * 0.4))
     W, H = size()
     b = u(L["border"]) + u(8)
@@ -463,18 +487,51 @@ def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 
         if not clear(y) and clear(rect[3] + gap):
             y, up = rect[3] + gap, False
         tick = (cx, up)
-    d = ImageDraw.Draw(im)
-    d.rectangle((x + u(5), y + u(5), x + w + u(5), y + h + u(5)), fill=(0, 0, 0))
-    d.rectangle((x, y, x + w, y + h), fill=col)
+    return (x, y, tick)
+
+
+def callout(im: Image.Image, text: str, at: tuple, alpha: float = 1.0) -> None:
+    if not text or alpha <= 0:
+        return
+    x, y, tick = int(at[0]), int(at[1]), at[2]
+    col = c(YELLOW)
+    t = pixel_text(text, pixel_scale(L["callout"]), c(BLACK), col)
+    pad = max(2, u(L["callout"] * 0.4))
+    w, h = t.width + 2 * pad, t.height + 2 * pad
+    layer = Image.new("RGBA", (w + u(5) + 1, h + u(5) + u(14)), (0, 0, 0, 0))
+    up = tick is None or tick[1]
+    oy = 0 if up else u(14)
+    d = ImageDraw.Draw(layer)
+    d.rectangle((u(5), oy + u(5), w + u(5), oy + h + u(5)), fill=(0, 0, 0, 255))
+    d.rectangle((0, oy, w, oy + h), fill=col + (255,))
     if tick:
-        cx, up = tick
         s_ = u(12)
-        cx = min(max(cx, x + s_), x + w - s_)
+        cx = min(max(int(tick[0]) - x, s_), w - s_)
         if up:
-            d.polygon([(cx - s_, y + h), (cx + s_, y + h), (cx, y + h + s_)], fill=col)
+            d.polygon([(cx - s_, h), (cx + s_, h), (cx, h + s_)], fill=col + (255,))
         else:
-            d.polygon([(cx - s_, y), (cx + s_, y), (cx, y - s_)], fill=col)
-    paste(im, t, (x + pad, y + pad))
+            d.polygon([(cx - s_, oy), (cx + s_, oy), (cx, oy - s_)], fill=col + (255,))
+    layer.alpha_composite(t, (pad, oy + pad))
+    if alpha < 1:
+        layer.putalpha(layer.getchannel("A").point(lambda v: int(v * alpha)))
+    im.paste(layer, (x, y - oy), layer)
+
+
+CAPTION_LINES = 3
+CAPTION_LEADING = 1.28
+
+
+def lower_third(im: Image.Image, text: str, alpha: float) -> None:
+    if not text or alpha <= 0:
+        return
+    x, y, w, size_px = L["caption"]
+    layer = Image.new("RGBA", (u(w + 24), u(size_px * CAPTION_LEADING * CAPTION_LINES + 8)), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.rectangle((0, 0, max(1, u(5)) - 1, layer.height - 1), fill=c(CYAN) + (255,))
+    draw_rich(d, (20, 0), text, size_px, (c(WHITE) + (255,), c(YELLOW) + (255,)), (500, 700), w - 20, CAPTION_LINES, CAPTION_LEADING)
+    if alpha < 1:
+        layer.putalpha(layer.getchannel("A").point(lambda v: int(v * alpha)))
+    im.paste(layer, (u(x), u(y)), layer)
 
 
 def raster_border(im: Image.Image, phase: float, colours: list, alpha: float = 1.0) -> None:
@@ -493,21 +550,6 @@ def raster_border(im: Image.Image, phase: float, colours: list, alpha: float = 1
         else:
             d.rectangle((0, y, b - 1, y + bar - 1), fill=col)
             d.rectangle((W - b, y, W, y + bar - 1), fill=col)
-
-
-def wipe_alpha(dt: float) -> float:
-    return max(0.0, 1.0 - dt / 0.45) if dt >= 0 else 0.0
-
-
-def sparkle(im: Image.Image, at: tuple, dt: float) -> None:
-    if not 0 <= dt < 0.6:
-        return
-    k = dt / 0.6
-    star = pixel_text("*", pixel_scale(16), mix(c(WHITE), c(LGREEN), k))
-    for i in range(4):
-        ang = math.radians(45 + 90 * i)
-        r = u(10 + 46 * k)
-        paste(im, star, (at[0] + math.cos(ang) * r - star.width // 2, at[1] + math.sin(ang) * r - star.height // 2))
 
 
 def card(tag: str, headline: str, line: str, diagram: str, t: float, logo: Image.Image,

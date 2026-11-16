@@ -28,11 +28,28 @@ OUT = ROOT / "build/videos"
 FFMPEG = os.environ.get("FFMPEG", "/opt/homebrew/bin/ffmpeg" if Path("/opt/homebrew/bin/ffmpeg").exists() else "ffmpeg")
 SOUNDTRACK = Path(__file__).resolve().parent / "soundtrack.txt"
 VIDEOS = Path(__file__).resolve().parent / "videos.json"
-FPS = 25
+FPS = 60
+CAMERA_FPS = FPS
+LCD_MS = 40
 TEASER_S = 3.0
 TITLE_S = 1.8
 END_S = 1.5
 RATE = 44118
+CAMERA_MOVE_MS = 900
+CAMERA_HOLD_MS = 1000
+SAME_FRAMING = 0.6
+POINTER_GLIDE_MS = 600
+POINTER_EARLY_MS = 100
+CALLOUT_GLIDE_MS = 600
+CAPTION_FADE_MS = 200
+HEADLINE_FADE_MS = 200
+DIM_FADE_MS = 300
+PANEL_DIM = 0.5
+BEAT_GLOW = 0.4
+XFADE_MS = 300
+LUFS_TARGET = -16.0
+LUFS_TOLERANCE = 1.0
+TRUE_PEAK_MAX_DB = -1.0
 
 
 def sha(*parts: bytes) -> str:
@@ -227,19 +244,21 @@ def plan_of(rid: str, cap: Path, sound: Path) -> dict:
             s["region"] = [r["col"] * 8, r["row"] * 8, (r["col"] + r["cols"]) * 8, (r["row"] + r["rows"]) * 8]
         acts = [a for a in s["inputs"] if a["op"] not in ("wait", "sync")]
         s["acts_end"] = max([a["end_ms"] for a in acts], default=s["ms"])
-        s["next_ms"] = steps[i + 1]["ms"] if i + 1 < len(steps) else n * 40
+        s["next_ms"] = steps[i + 1]["ms"] if i + 1 < len(steps) else n * LCD_MS
     cfg = json.loads(VIDEOS.read_text()).get(rid, {})
     plays = [a["end_ms"] for s in steps for a in s["inputs"] if a["op"] == "press" and a.get("button") == "PLAY"]
     anchor = plays[0] if plays else None
     busiest = max(steps, key=lambda s: len([a for a in s["inputs"] if a["op"] != "wait"])) if steps else None
-    p0 = busiest["ms"] // 40 if busiest else max(0, n - 100)
+    p0 = busiest["ms"] if busiest else max(0, n * LCD_MS - 4000)
     if cfg.get("preview_step"):
-        p0 = next(x for x in steps if x["id"] == cfg["preview_step"])["ms"] // 40
+        p0 = next(x for x in steps if x["id"] == cfg["preview_step"])["ms"]
+    events = events_of(steps)
     return {
-        "id": rid, "title": v["title"], "goal": v["goal"], "frames": n, "cap": str(cap),
-        "sound": str(sound), "steps": steps, "events": events_of(steps), "palette": palette(cap),
+        "id": rid, "title": v["title"], "goal": v["goal"], "frames": n, "main_ms": n * LCD_MS,
+        "cap": str(cap), "sound": str(sound), "steps": steps, "events": events, "palette": palette(cap),
         "version": version(), "cfg": cfg, "bpm": cfg.get("bpm"), "beat_anchor": anchor,
-        "preview": [p0, min(n, p0 + 100)],
+        "preview": [p0, min(n * LCD_MS, p0 + 4000)],
+        "camera": camera_moves(steps), "pointer": pointer_glides(steps, events),
     }
 
 
@@ -265,6 +284,7 @@ def init(plan: dict, scale: float, fmt: str) -> None:
     T.set_format(fmt)
     T.PAL = [tuple(x) for x in plan["palette"]]
     base.cache_clear()
+    P["callouts"] = [callout_place(s) for s in plan["steps"]]
 
 
 @lru_cache(maxsize=8)
@@ -278,36 +298,105 @@ def lcd(i: int) -> Image.Image:
     return Image.open(Path(P["cap"]) / f"frames/{i + 1:05}.png").convert("RGB")
 
 
+def lcd_at(ms: float) -> Image.Image:
+    return lcd(min(P["frames"] - 1, max(0, int(ms // LCD_MS))))
+
+
 @lru_cache(maxsize=64)
 def base(tag: str, headline: str) -> Image.Image:
     return T.frame_base(tag, headline, P["version"], logo(False))
 
 
-def step_at(ms: float) -> int:
+def step_index(steps: list, ms: float) -> int:
     i = 0
-    for k, s in enumerate(P["steps"]):
+    for k, s in enumerate(steps):
         if s["ms"] <= ms:
             i = k
     return i
+
+
+def step_at(ms: float) -> int:
+    return step_index(P["steps"], ms)
 
 
 def is_card(s: dict) -> bool:
     return s.get("focus", {}).get("control") == "card"
 
 
-def zoom_at(ms: float) -> tuple:
-    k = step_at(ms)
-    s = P["steps"][k]
-    reg = s["region"]
-    if not reg:
-        return 1.0, (120, 120), 0.0, None
-    side = max(reg[2] - reg[0], reg[3] - reg[1])
-    target = max(1.0, min(1.6, 0.9 * 240 / side))
-    cin = T.ease((ms - s["acts_end"] - 200) / 500)
-    nxt = P["steps"][k + 1]["region"] if k + 1 < len(P["steps"]) else None
-    cout = 0.0 if nxt == reg else T.ease((ms - (s["next_ms"] - 500)) / 500)
-    a = cin * (1 - cout)
-    return 1 + (target - 1) * a, ((reg[0] + reg[2]) / 2, (reg[1] + reg[3]) / 2), a, reg
+def mode_of(s: dict) -> str | None:
+    return s.get("focus", {}).get("control")
+
+
+def shows_panel(s: dict) -> bool:
+    return mode_of(s) not in ("screen", "device", "card")
+
+
+FULL = (1.0, (120.0, 120.0), None, 0.0)
+
+
+def framing(region: list | None) -> tuple:
+    if not region:
+        return FULL
+    side = max(region[2] - region[0], region[3] - region[1])
+    zoom = T.pixel_zoom(max(1.0, min(1.6, 0.9 * 240 / side)))
+    return (zoom, ((region[0] + region[2]) / 2, (region[1] + region[3]) / 2), tuple(region), 1.0)
+
+
+def overlap(a: tuple, b: tuple) -> float:
+    w = min(a[2], b[2]) - max(a[0], b[0])
+    h = min(a[3], b[3]) - max(a[1], b[1])
+    if w <= 0 or h <= 0:
+        return 0.0
+    area = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - w * h
+    return w * h / area
+
+
+def same_framing(a: tuple, b: tuple) -> bool:
+    if a[2] is None or b[2] is None:
+        return a[2] is b[2]
+    return a[0] == b[0] and overlap(a[2], b[2]) >= SAME_FRAMING
+
+
+def camera_moves(steps: list) -> list:
+    moves, cur, free_at = [], FULL, float("-inf")
+    for s in steps:
+        target = framing(s["region"])
+        if same_framing(target, cur):
+            continue
+        start = max(s["ms"], free_at)
+        if start + CAMERA_MOVE_MS > s["next_ms"]:
+            continue
+        moves.append((start, cur, target))
+        cur = target
+        free_at = start + CAMERA_MOVE_MS + CAMERA_HOLD_MS
+    return moves
+
+
+def lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def between(a: tuple, b: tuple, t: float) -> tuple:
+    zoom = lerp(a[0], b[0], t)
+    centre = (lerp(a[1][0], b[1][0], t), lerp(a[1][1], b[1][1], t))
+    if a[2] is None:
+        return (zoom, centre, b[2], b[3] * t)
+    if b[2] is None:
+        return (zoom, centre, a[2], a[3] * (1 - t))
+    return (zoom, centre, tuple(lerp(x, y, t) for x, y in zip(a[2], b[2])), 1.0)
+
+
+def camera_state(moves: list, ms: float) -> tuple:
+    state = FULL
+    for start, a, b in moves:
+        if start > ms:
+            break
+        state = between(a, b, T.glide((ms - start) / CAMERA_MOVE_MS))
+    return state
+
+
+def camera_at(ms: float) -> tuple:
+    return camera_state(P["camera"], ms)
 
 
 def angle_of(name: str, ms: float) -> float:
@@ -322,7 +411,7 @@ def panel_states(ms: float, k: int) -> dict:
     s = P["steps"][k]
     out = {}
     lo, hi = s["ms"], s["next_ms"]
-    f = primary(s)
+    f = primary(s, P["events"])
     if f:
         out[f] = {"active": 0.0}
     for c, kind, t0, t1, det in P["events"]:
@@ -347,29 +436,42 @@ def panel_states(ms: float, k: int) -> dict:
     return out
 
 
+def pointer_glides(steps: list, events: list) -> list:
+    wanted = []
+    for s in steps:
+        if not shows_panel(s):
+            continue
+        first = primary(s, events)
+        if first:
+            wanted.append((s["ms"], first))
+        for c, kind, t0, t1, det in events:
+            if kind != "key" and s["ms"] <= t0 < s["next_ms"]:
+                wanted.append((max(s["ms"], t0 - POINTER_GLIDE_MS - POINTER_EARLY_MS), c))
+    glides, cur, free_at = [], None, float("-inf")
+    for t, c in sorted(wanted, key=lambda x: x[0]):
+        if c == cur:
+            continue
+        start = max(t, free_at)
+        glides.append((start, cur, c))
+        cur, free_at = c, start + POINTER_GLIDE_MS
+    return glides
+
+
 def pointer_at(ms: float) -> tuple | None:
-    lead, fly = 300, 300
-    targets = [(t0 - lead, c) for c, kind, t0, t1, det in P["events"]]
-    targets.sort(key=lambda x: x[0])
-    prev, cur, since = None, None, 0
-    for t, c in targets:
-        if t <= ms:
-            if c != cur:
-                prev, cur, since = cur, c, t
-        else:
+    here = None
+    for start, a, b in P["pointer"]:
+        if start > ms:
             break
-    if cur is None:
-        if not targets:
-            return None
-        cur, since, prev = targets[0][1], -1e9, None
-    b = T.control_point(cur)
-    if b is None:
-        return None
-    a = T.control_point(prev) if prev else None
-    if a is None:
-        return b
-    e = T.ease((ms - since) / fly)
-    return (a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e)
+        to = T.control_point(b)
+        fro = T.control_point(a) if a else None
+        if to is None:
+            continue
+        if fro is None:
+            here = to
+            continue
+        e = T.glide((ms - start) / POINTER_GLIDE_MS)
+        here = (lerp(fro[0], to[0], e), lerp(fro[1], to[1], e))
+    return here
 
 
 def beat(ms: float) -> float:
@@ -377,82 +479,141 @@ def beat(ms: float) -> float:
     if not bpm or anchor is None or ms < anchor:
         return 0.0
     frac = ((ms - anchor) * bpm / 60000) % 1.0
-    return 0.8 * (1 - frac) ** 3
+    return BEAT_GLOW * (1 - frac) ** 3
 
 
-def primary(s: dict) -> str | None:
-    f = s.get("focus", {}).get("control")
+def primary(s: dict, events: list) -> str | None:
+    f = mode_of(s)
     if f and f not in ("device", "screen", "card"):
         return f
-    for c, kind, t0, t1, det in P["events"]:
+    for c, kind, t0, t1, det in events:
         if s["ms"] <= t0 < s["next_ms"]:
             return c
     return None
 
 
-def compose_main(i: int) -> Image.Image:
-    ms = i * 40
+def callout_place(s: dict) -> tuple | None:
+    if is_card(s) or not s["callout_text"]:
+        return None
+    main = primary(s, P["events"]) if shows_panel(s) else None
+    return T.callout_layout(s["callout_text"], T.highlight_rect(main) if main else None)
+
+
+def callout_at(ms: float) -> tuple | None:
+    k = step_at(ms)
+    to = P["callouts"][k]
+    fro = P["callouts"][k - 1] if k else None
+    if to is None or fro is None:
+        return to
+    e = T.glide((ms - P["steps"][k]["ms"]) / CALLOUT_GLIDE_MS)
+    tick = None
+    if to[2]:
+        tick = (lerp(fro[2][0], to[2][0], e) if fro[2] else to[2][0], to[2][1])
+    return (lerp(fro[0], to[0], e), lerp(fro[1], to[1], e), tick)
+
+
+def caption_at(steps: list, ms: float) -> tuple | None:
+    k = step_index(steps, ms)
+    s = steps[k]
+    dt = ms - s["ms"]
+    if k and dt < CAPTION_FADE_MS:
+        prev = steps[k - 1]
+        return None if is_card(prev) else (prev.get("caption") or "", 1 - dt / CAPTION_FADE_MS)
+    if is_card(s):
+        return None
+    fade_from = CAPTION_FADE_MS if k else 0
+    return (s.get("caption") or "", min(1.0, max(0.0, (dt - fade_from) / CAPTION_FADE_MS)))
+
+
+def dim_target(s: dict) -> float:
+    return PANEL_DIM if shows_panel(s) else 0.0
+
+
+def dim_at(ms: float, k: int) -> float:
+    s = P["steps"][k]
+    was = dim_target(P["steps"][k - 1]) if k else 0.0
+    return lerp(was, dim_target(s), T.ease((ms - s["ms"]) / DIM_FADE_MS))
+
+
+def headline_base(ms: float, k: int) -> Image.Image:
+    steps = P["steps"]
+    s = steps[k]
+    now = base(tag_of(k), s["title"])
+    dt = ms - s["ms"]
+    if not k or dt >= HEADLINE_FADE_MS or is_card(steps[k - 1]):
+        return now.copy()
+    return Image.blend(base(tag_of(k - 1), steps[k - 1]["title"]), now, T.ease(dt / HEADLINE_FADE_MS))
+
+
+def tag_of(k: int) -> str:
+    return P["steps"][k].get("chapter") or f"{k + 1:02} / {len(P['steps']):02}"
+
+
+def compose_main(ms: float) -> Image.Image:
     k = step_at(ms)
     s = P["steps"][k]
-    tag = s.get("chapter") or f"{k + 1:02} / {len(P['steps']):02}"
     if is_card(s):
         diag = s.get("focus", {}).get("callout", "")
-        im = T.card(tag, s["title"], s.get("caption") or "", diag if "<>" in diag else "",
-                    (ms - s["ms"]) / 1000, logo(False), P["version"], lcd(i) if "<>" in diag else None)
-        T.raster_border(im, (ms - s["ms"]) / 450, T.WARM, T.wipe_alpha((ms - s["ms"]) / 1000))
-        return im
-    im = base(tag, s["title"]).copy()
-    z, centre, a, reg = zoom_at(ms)
-    T.put_lcd(im, lcd(i), z, centre)
+        return T.card(tag_of(k), s["title"], s.get("caption") or "", diag if "<>" in diag else "",
+                      (ms - s["ms"]) / 1000, logo(False), P["version"], lcd_at(ms) if "<>" in diag else None)
+    im = headline_base(ms, k)
+    z, centre, box, alpha = camera_at(ms)
+    T.put_lcd(im, lcd_at(ms), z, centre)
     T.beat_glow(im, beat(ms))
     from PIL import ImageDraw
     d = ImageDraw.Draw(im)
-    if reg:
-        p0 = T.lcd_to_frame(reg[0], reg[1], z, centre)
-        p1 = T.lcd_to_frame(reg[2], reg[3], z, centre)
-        T.region_box(d, (*p0, *p1), a)
-        T.sparkle(im, ((p0[0] + p1[0]) // 2, p0[1]), (ms - s["acts_end"] - 700) / 1000)
-    mode = s.get("focus", {}).get("control")
-    main = primary(s) if mode not in ("screen", "device") else None
-    if mode not in ("screen", "device"):
+    if box:
+        p0 = T.lcd_to_frame(box[0], box[1], z, centre)
+        p1 = T.lcd_to_frame(box[2], box[3], z, centre)
+        T.region_box(d, (*p0, *p1), alpha)
+    if shows_panel(s):
         states = panel_states(ms, k)
         lit = {c: st for c, st in states.items() if not (st.get("kind") == "key" and st.get("active", 0) <= 0)}
         keep = [T.highlight_rect(c) for c in lit]
-        dim = 0.5 * T.ease((ms - s["ms"]) / 250) if lit else 0.0
-        T.dim_panel(im, dim, [r for r in keep if r])
+        T.dim_panel(im, dim_at(ms, k) if lit else 0.0, [r for r in keep if r])
         for c, st in lit.items():
             T.control_highlight(im, c, st)
         pt = pointer_at(ms)
         if pt:
             T.pointer(im, pt, 0)
-    T.callout_near(im, s["callout_text"], T.highlight_rect(main) if main else None)
-    T.raster_border(im, (ms - s["ms"]) / 450, T.COOL, T.wipe_alpha((ms - s["ms"]) / 1000) if k else 0)
+    at = callout_at(ms)
+    if at:
+        T.callout(im, s["callout_text"], at)
+    cap = caption_at(P["steps"], ms)
+    if cap:
+        T.lower_third(im, *cap)
     return im
+
+
+def ms_of(j: int) -> float:
+    return j * 1000 / FPS
+
+
+def frames_for(ms: float) -> int:
+    return round(ms * FPS / 1000)
 
 
 def compose(job: tuple) -> bytes:
     kind, j = job
+    ms = ms_of(j)
     if kind == "main":
-        im = compose_main(j)
+        im = compose_main(ms)
     elif kind == "teaser":
-        i = P["frames"] - P["teaser"] + j
+        at = P["main_ms"] - P["teaser_ms"] + ms
         im = base("SIDOU HOW-TO", P["title"]).copy()
-        T.put_lcd(im, lcd(i), 1.0, (120, 120))
-        T.beat_glow(im, beat(i * 40))
-        T.raster_border(im, j / 25, T.WARM, 1.0 if j < 3 else 0.0)
+        T.put_lcd(im, lcd_at(at), 1.0, (120, 120))
+        T.beat_glow(im, beat(at))
     elif kind == "title":
-        im = T.title_card(j / FPS, P["title"], logo(True), TITLE_S)
+        im = T.title_card(ms / 1000, P["title"], logo(True), TITLE_S)
     else:
-        last = P["frames"] - 1
+        last = P["main_ms"] - LCD_MS
         s = P["steps"][-1]
         if is_card(s):
             im = compose_main(last)
         else:
             im = base("READY.", P["title"]).copy()
-            z, centre, _, _ = zoom_at(last * 40)
-            k = T.ease(j / (FPS * 0.6))
-            T.put_lcd(im, lcd(last), z + (1 - z) * k, centre)
-        T.raster_border(im, j / 12, T.WARM, max(0.0, 1 - j / 10))
+            z, centre, _, _ = between(camera_at(last), FULL, T.glide(ms / CAMERA_MOVE_MS))
+            T.put_lcd(im, lcd_at(last), z, centre)
     return im.tobytes()
 
 
@@ -463,9 +624,48 @@ def fmt_srt(ms: float) -> str:
 
 def segments(plan: dict) -> list:
     cfg = plan["cfg"]
-    teaser = min(int(TEASER_S * FPS), plan["frames"]) if cfg.get("teaser", True) else 0
-    title = int(TITLE_S * FPS) if cfg.get("title", True) else 0
-    return [("teaser", teaser), ("title", title), ("main", plan["frames"]), ("end", int(END_S * FPS))]
+    main = frames_for(plan["main_ms"])
+    teaser = min(frames_for(TEASER_S * 1000), main) if cfg.get("teaser", True) else 0
+    title = frames_for(TITLE_S * 1000) if cfg.get("title", True) else 0
+    return [("teaser", teaser), ("title", title), ("main", main), ("end", frames_for(END_S * 1000))]
+
+
+def loudness(media: Path) -> dict:
+    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(media), "-af",
+                        "ebur128=peak=true", "-f", "null", "-"], capture_output=True, text=True, check=True)
+    tail = r.stderr[r.stderr.rindex("Summary:"):]
+    return {"lufs": float(re.search(r"I:\s+(-?[0-9.]+) LUFS", tail).group(1)),
+            "true_peak_dbtp": float(re.search(r"Peak:\s+(-?[0-9.]+|-inf) dBFS", tail).group(1))}
+
+
+def loud_enough(m: dict) -> bool:
+    return abs(m["lufs"] - LUFS_TARGET) <= LUFS_TOLERANCE and m["true_peak_dbtp"] <= TRUE_PEAK_MAX_DB
+
+
+def crossfaded(parts: list, total: int, xfade: int) -> array.array:
+    out = array.array("h", bytes(4 * total))
+    h = xfade // 2
+    for i, (at, src, src_at, n, gain) in enumerate(parts):
+        pre = h if i else 0
+        post = h if i + 1 < len(parts) else 0
+        p = faded(src, src_at - pre, n + pre + post, gain, 2 * pre, 2 * post)
+        o = at - pre
+        for k in range(max(0, -o), min(len(p) // 2, total - o)):
+            for ch in (0, 1):
+                v = out[2 * (o + k) + ch] + p[2 * k + ch]
+                out[2 * (o + k) + ch] = max(-32768, min(32767, v))
+    return out
+
+
+def faded(src: array.array, start: int, n: int, gain: float, fade_in: int, fade_out: int) -> array.array:
+    out = array.array("h", bytes(4 * n))
+    for i in range(n):
+        j = start + i
+        if 0 <= j < len(src) // 2:
+            g = gain * min(1.0, (i + 1) / fade_in if fade_in else 1.0, (n - i) / fade_out if fade_out else 1.0)
+            out[2 * i] = int(src[2 * j] * g)
+            out[2 * i + 1] = int(src[2 * j + 1] * g)
+    return out
 
 
 def loudnorm(src: Path, dst: Path) -> dict:
@@ -514,13 +714,14 @@ def fit_aac_peak(wav: Path) -> float:
 
 
 def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
-    main0 = (segs[0][1] + segs[1][1]) * 40
-    total = sum(n for _, n in segs) * 40
+    seg_ms = [round(ms_of(n)) for _, n in segs]
+    main0 = seg_ms[0] + seg_ms[1]
+    total = sum(seg_ms)
     srt, chap = [], []
-    if segs[0][1]:
+    if seg_ms[0]:
         chap.append((0, "Preview"))
-    if segs[1][1]:
-        chap.append((segs[0][1] * 40, "Title"))
+    if seg_ms[1]:
+        chap.append((seg_ms[0], "Title"))
     chaptered = any(x.get("chapter") for x in plan["steps"])
     for i, s in enumerate(plan["steps"]):
         start, end = main0 + s["ms"], main0 + s["next_ms"]
@@ -530,7 +731,7 @@ def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
         srt.append(f"{i + 1}\n{fmt_srt(start)} --> {fmt_srt(end)}\n{text}\n")
         if s.get("chapter") or not chaptered:
             chap.append((start, T.plain(s.get("chapter") or s["title"])))
-    chap.append((main0 + plan["frames"] * 40, "The end"))
+    chap.append((main0 + seg_ms[2], "The end"))
     (out / f"{rid}.srt").write_text("\n".join(srt))
     meta = [";FFMETADATA1", f"title={plan['title']}"]
     for j, (t, name) in enumerate(chap):
@@ -549,7 +750,7 @@ def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
     def at(ms):
         return round(ms * RATE / 1000)
 
-    n_main = plan["frames"] * 40
+    n_main = seg_ms[2]
     main = piece(a, -off, at(n_main), 1.0, 60)
     beds = [s for s in plan["steps"] if s["id"] in plan["cfg"].get("bed", [])]
     for s in beds:
@@ -558,21 +759,29 @@ def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:
         o = at(s["ms"])
         for i in range(min(2 * n, len(main) - 2 * o)):
             main[2 * o + i] = max(-32768, min(32767, main[2 * o + i] + bed[i]))
+    starts = [sum(seg_ms[:i]) for i in range(4)]
     parts = [
-        piece(a, at(n_main - segs[0][1] * 40) - off, at(segs[0][1] * 40)),
-        piece(st, at(music0 + 4000), at(segs[1][1] * 40), 0.35, at(200)),
-        main,
-        piece(a, at(n_main - segs[3][1] * 40) - off, at(segs[3][1] * 40), 0.8, at(segs[3][1] * 40) // 2),
+        (at(starts[0]), a, at(n_main - seg_ms[0]) - off, at(seg_ms[0]), 1.0),
+        (at(starts[1]), st, at(music0 + 4000), at(seg_ms[1]), 0.35),
+        (at(starts[2]), main, 0, at(n_main), 1.0),
+        (at(starts[3]), a, at(n_main - seg_ms[3]) - off, at(seg_ms[3]), 0.8),
     ]
-    audio = array.array("h")
-    for p in parts:
-        audio.extend(p)
+    audio = crossfaded([p for p in parts if p[3]], at(total), at(XFADE_MS))
     raw = out / f"{rid}.raw.wav"
     write_wav(raw, audio)
     wav = out / f"{rid}.wav"
     loud = loudnorm(raw, wav)
     raw.unlink()
     return mf, wav, chap, loud
+
+
+PREVIEW_MS = 80
+
+
+def preview_frame(plan: dict, j: int) -> bool:
+    ms = ms_of(j)
+    lo, hi = plan["preview"]
+    return lo <= ms < hi and int(ms // PREVIEW_MS) != int(ms_of(j - 1) // PREVIEW_MS)
 
 
 def render(rid: str, fast: bool, jobs: int, formats: list) -> dict:
@@ -582,12 +791,12 @@ def render(rid: str, fast: bool, jobs: int, formats: list) -> dict:
     t_cap = time.monotonic() - t_start
     plan = plan_of(rid, cap, sound)
     segs = segments(plan)
-    plan["teaser"] = segs[0][1]
+    plan["teaser_ms"] = ms_of(segs[0][1])
     OUT.mkdir(parents=True, exist_ok=True)
     mf, wav, chap, loud = outputs(plan, segs, OUT, rid)
     scale = 0.5 if fast else 1.0
     work = [(kind, j) for kind, n in segs for j in range(n)]
-    result = {"id": rid, "seconds": round(len(work) / FPS, 1), "capture_s": round(t_cap, 1),
+    result = {"id": rid, "seconds": round(ms_of(len(work)) / 1000, 1), "capture_s": round(t_cap, 1),
               "loudness_in_lufs": loud["input_i"], "aac_peak_db": loud["aac_peak_db"],
               "chapters": len(chap)}
     for fmt in formats:
@@ -610,12 +819,16 @@ def render(rid: str, fast: bool, jobs: int, formats: list) -> dict:
                 ff.stdin.write(raw)
                 hashes.append(hashlib.sha256(raw).hexdigest())
                 kind, j = work[idx]
-                if fmt == "wide" and kind == "main" and plan["preview"][0] <= j < plan["preview"][1] and j % 2 == 0:
+                if fmt == "wide" and kind == "main" and preview_frame(plan, j):
                     preview.append(Image.frombytes("RGB", (W, H), raw).resize((480, 270), Image.LANCZOS))
         ff.stdin.close()
         if ff.wait() != 0:
             sys.exit(f"make-videos: ffmpeg failed on {name}")
         (OUT / f"{name}.frames.sha256").write_text("\n".join(hashes) + "\n")
+        heard = loudness(mp4)
+        if not loud_enough(heard):
+            sys.exit(f"make-videos: {name} is {heard['lufs']} LUFS, {heard['true_peak_dbtp']} dBTP")
+        result["loudness"] = heard
         result[fmt] = {"mp4": str(mp4.relative_to(ROOT)), "bytes": mp4.stat().st_size,
                        "frames_sha256": hashlib.sha256("".join(hashes).encode()).hexdigest(),
                        "render_s": round(time.monotonic() - t0, 1), "size": f"{W}x{H}"}
