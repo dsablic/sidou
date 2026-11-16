@@ -9,7 +9,7 @@
 #define BLANK_CH ((uint8_t)' ')
 #define BLANK_ATTR GRID_ATTR(GRID_BLACK, GRID_BLACK)
 
-const char* const scene_names[SCENE_PIECES] = {"FIRE", "PLASMA", "SCOPE", "DEMO",
+const char* const scene_names[SCENE_PIECES] = {"DEMO", "FIRE", "PLASMA", "SCOPE",
                                                "RED MOON RITE"};
 
 const uint8_t scene_dist4[GRID_ROWS][GRID_COLS] = {
@@ -358,9 +358,9 @@ static const scene_music REST = {
 
 void scene_begin(scene* s, uint32_t piece) {
     memset(&s->u, 0, sizeof s->u);
-    s->piece = (uint8_t)(piece % SCENE_PETSCII);
+    s->piece = (uint8_t)piece;
     s->frame = 0;
-    s->rng = 0x9E3779B9u * (s->piece + 1u);
+    s->rng = 0x9E3779B9u * (s->piece - SCENE_FIRE + 1u);
     s->filled = GRID_ROWS;
     if (s->piece == SCENE_PLASMA) {
         plasma_start(s);

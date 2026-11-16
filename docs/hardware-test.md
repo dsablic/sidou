@@ -48,12 +48,12 @@ A device session starts only when everything marked *Emulator* passes
 
 ## Ergonomics: SCENE
 
-- [ ] Open SCENE (FIRE) and play nothing: a low red flame flickers along the bottom; it is
-  never dark. On entry, after the card, a toast reads FIRE.
-  *Emulator:* `emu-gate/tests/screen.rs::fire_keeps_a_low_flame_in_silence` (red and light red cells in rows 22-28), `emu-gate/tests/screen.rs::entering_scene_names_the_piece` (toast FIRE once the card is past). *Emulator (no test yet):* the idle flame changes from frame to frame (flicker); *device-only:* how the flame looks on the real LCD.
+- [ ] Open SCENE, SELECT once to FIRE and play nothing: a low red flame flickers along the bottom;
+  it is never dark. On entry, after the card, a toast reads DEMO, then FIRE.
+  *Emulator:* `emu-gate/tests/screen.rs::fire_keeps_a_low_flame_in_silence` (red and light red cells in rows 22-28), `emu-gate/tests/screen.rs::entering_scene_names_the_piece` (toast DEMO once the card is past). *Emulator (no test yet):* the idle flame changes from frame to frame (flicker); *device-only:* how the flame looks on the real LCD.
 - [ ] Turn ALGORITHM clockwise and counter-clockwise: the piece steps like SELECT, with its
   name in a toast.
-  *Emulator:* `emu-gate/tests/screen.rs::algorithm_steps_the_piece` (PLASMA then back to FIRE, name in the toast).
+  *Emulator:* `emu-gate/tests/screen.rs::algorithm_steps_the_piece` (FIRE then back to DEMO, name in the toast).
 
 ## Chord arpeggio (ARP on LIVE)
 
@@ -744,13 +744,13 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
 SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 
-- [ ] It opens on FIRE: black, with a brown ember line at the bottom that
-  holds still in silence.
+- [ ] It opens on DEMO, SIDOU's logo between two drifting starfields; SELECT once to FIRE: black,
+  with a brown ember line at the bottom that holds still in silence.
   *Emulator:* `emu-gate/tests/screen.rs::fire_keeps_a_low_flame_in_silence`,
   `emu-gate/tests/screen.rs::scene_fire_matches_its_golden_image`,
   `sidou-tests/tests/app/scene.rs::a_silent_fire_keeps_a_low_flame`.
-- [ ] SELECT clockwise: PLASMA, SCOPE, DEMO, RED MOON RITE, then
-  FIRE again, each wiping in from the top with its name as a toast;
+- [ ] SELECT clockwise: FIRE, PLASMA, SCOPE, RED MOON RITE, then
+  DEMO again, each wiping in from the top with its name as a toast;
   counter-clockwise goes back. HOME returns to the menu.
   *Emulator:*
   `sidou-tests/tests/app/scene.rs::scene_opens_from_the_menu_and_select_steps_the_pieces`,
@@ -797,7 +797,7 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
   (keys on time); *device-only:* flicker and tearing as seen and any click heard (panel look and
   speaker).
 
-RED MOON RITE (SELECT counter-clockwise from FIRE; [art](art/README.md#red-moon-rite),
+RED MOON RITE (SELECT counter-clockwise from DEMO; [art](art/README.md#red-moon-rite),
 [controls](reference/controls.md#red-moon-rite)): the panel's look of the drawn piece, which
 only the real LCD shows.
 

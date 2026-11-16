@@ -5931,6 +5931,11 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   "meh" and went; DEMO (the logo intro) and SCOPE came in. SELECT's order: FIRE, PLASMA, SCOPE,
   DEMO, RED MOON RITE. FIRE and PLASMA are the PETSCII canvas pieces (`SCENE_PETSCII`); the
   others draw on the tile compositor and share its view path (`scene_view_rite`, `which`).
+- The owner, 2026-11-16, after seeing it: DEMO first. SELECT's order is DEMO, FIRE, PLASMA, SCOPE,
+  RED MOON RITE and a fresh SCENE opens on DEMO (`which` starts at zero; the view still reopens on
+  the piece it was left on). The PETSCII pieces are now ids 1 and 2, so `SCENE_IS_PETSCII` tells
+  the two paths apart; the fire's and the plasma's random seeds count from `SCENE_FIRE`, which
+  keeps every frame of them (and their goldens) as before.
 
 ### SCOPE
 
