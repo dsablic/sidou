@@ -21,7 +21,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song.",
+      "caption": "HOME, SONG, LOAD, and ALGORITHM on the song.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 3.0 s",
       "expect": [
         {
@@ -110,7 +110,7 @@
       "title": "Load *NEON HIGHWAY*"
     },
     {
-      "caption": "The song plays chip A; the keys play chip B on top of it. Both are in the middle: SPREAD is OFF.",
+      "caption": "The song on chip A, your keys on chip B, both centred.",
       "control": "press PLAY, then wait 2.0 s, then press HOME, then wait 0.4 s, then press HOME, then wait 1.2 s, then play 8 notes at 125 BPM",
       "expect": [
         {
@@ -229,7 +229,7 @@
       "title": "*PLAY* and jam"
     },
     {
-      "caption": "HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right.",
+      "caption": "SETTINGS, SPREAD: the song goes left, your keys right.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until SPREAD is selected, then turn ALGORITHM clockwise by 10 detents, then wait 0.6 s, then play 8 notes at 125 BPM",
       "expect": [
         {
@@ -358,7 +358,7 @@
       "title": "*SPREAD* to 100%"
     },
     {
-      "caption": "Back by five steps: both chips are nearer the centre, at the same loudness.",
+      "caption": "Five steps back: both nearer the centre.",
       "control": "turn ALGORITHM counter-clockwise by 5 detents, then wait 0.4 s, then play 6 notes at 125 BPM",
       "expect": [
         {

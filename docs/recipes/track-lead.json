@@ -18,7 +18,7 @@
   ],
   "steps": [
     {
-      "caption": "ALGORITHM to V1, PRESETS to instrument 01, the lead. OCT+ back to the middle.",
+      "caption": "V1, instrument 01, the lead. OCT+ back to the middle.",
       "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.5 s, then turn PRESETS counter-clockwise by 1 detent, then wait 0.4 s, then press OCT+, then wait 2.0 s",
       "expect": [
         {
@@ -81,7 +81,7 @@
       "title": "The *lead's* voice"
     },
     {
-      "caption": "REC on with the song playing: the keys are recorded where the song is.",
+      "caption": "REC with the song playing: notes land where it is.",
       "control": "press REC, then wait 1.5 s",
       "expect": [
         {
@@ -122,7 +122,7 @@
       "title": "*REC* while it plays"
     },
     {
-      "caption": "Four bars over Am, F, C and G. Each note lands on the nearest row.",
+      "caption": "Four bars over Am, F, C and G.",
       "control": "wait for the song's next pattern, then play 23 notes at 125 BPM",
       "expect": [
         {
@@ -309,7 +309,7 @@
       "title": "Play the *lead*"
     },
     {
-      "caption": "REC off. Drums, bass and your lead, round and round.",
+      "caption": "REC off. Drums, bass and your lead.",
       "control": "press REC, then wait 8.5 s",
       "expect": [
         {

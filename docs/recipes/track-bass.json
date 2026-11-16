@@ -20,7 +20,7 @@
   ],
   "steps": [
     {
-      "caption": "Stop, then SEQ: the TRACKER. ALGORITHM shows another voice: V2, the bass's.",
+      "caption": "Stop, SEQ: the TRACKER. ALGORITHM to V2, the bass.",
       "control": "press PLAY, then wait 0.5 s, then press SEQ, then wait 1.2 s, then turn ALGORITHM clockwise by 2 detents, then wait 1.5 s",
       "expect": [
         {
@@ -82,7 +82,7 @@
       "title": "The *TRACKER*"
     },
     {
-      "caption": "REC on: the keys write notes. EDIT + ALGORITHM sets the step to 2, PRESETS the bass instrument, OCT- the octave.",
+      "caption": "REC on; step 2, the bass instrument, an octave down.",
       "control": "press REC, then wait 0.5 s, then hold EDIT and turn ALGORITHM clockwise by 1 detents, then wait 0.4 s, then turn PRESETS counter-clockwise by 11 detents, then wait 0.4 s, then press OCT-, then wait 1.5 s",
       "expect": [
         {
@@ -150,7 +150,7 @@
       "title": "Ready to *write*"
     },
     {
-      "caption": "Each key writes its note on the cursor's row and moves on two rows.",
+      "caption": "Each key writes a note and moves on two rows.",
       "control": "tap A3, A3, A4, A3, E4, A3, G3, A3, F3, F3, F4, F3, C4, F3, E4, F3, then wait 0.8 s",
       "expect": [
         {
@@ -208,7 +208,7 @@
       "title": "*A* minor, *F*"
     },
     {
-      "caption": "Two more bars, and the cursor is back on the first row.",
+      "caption": "Two more bars, back to the first row.",
       "control": "tap C4, C4, C5, C4, G4, C4, B3, C4, G3, G3, G4, G3, D4, G3, F4, G3, then wait 0.8 s",
       "expect": [
         {
@@ -302,7 +302,7 @@
       "title": "*C*, *G*"
     },
     {
-      "caption": "REC off, PLAY: the beat and the bassline go round together.",
+      "caption": "REC off, PLAY: the beat and the bass together.",
       "control": "press REC, then wait 0.4 s, then press PLAY, then wait 8.0 s",
       "expect": [
         {

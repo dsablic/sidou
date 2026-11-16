@@ -17,7 +17,7 @@
   ],
   "steps": [
     {
-      "caption": "ARP switches the chord arpeggio on. The badge under the band says so, large: a note every three frames, up, one octave.",
+      "caption": "ARP turns the chord arpeggio on; the badge says how.",
       "control": "Press ARP",
       "expect": [
         {
@@ -69,7 +69,7 @@
       "title": "Press *ARP*"
     },
     {
-      "caption": "One voice plays all three notes in turn, one you can follow. The other two voices stay free.",
+      "caption": "One voice plays all three notes in turn. Two stay free.",
       "control": "Hold the note keys C, E and G down",
       "expect": [
         {
@@ -118,7 +118,7 @@
       "title": "Hold a *chord*"
     },
     {
-      "caption": "Hold ARP and turn K1 back to 1F: a note every frame, fifty a second, the C64's buzzy chord.",
+      "caption": "ARP + K1 to 1F: fifty notes a second, the C64's buzz.",
       "control": "Hold ARP and turn K1 two clicks counter-clockwise",
       "expect": [
         {
@@ -172,7 +172,7 @@
       "title": "*ARP* + K1: the rate"
     },
     {
-      "caption": "K2 turns it round: down, up and down, or as you played it.",
+      "caption": "K2 changes the order: down, up and down, or as played.",
       "control": "Hold ARP and turn K2 two clicks clockwise",
       "expect": [
         {
@@ -226,7 +226,7 @@
       "title": "*ARP* + K2: the order"
     },
     {
-      "caption": "K3 spreads the chord over two octaves.",
+      "caption": "K3 spreads it over two octaves.",
       "control": "Hold ARP and turn K3 a click clockwise",
       "expect": [
         {
@@ -280,7 +280,7 @@
       "title": "*ARP* + K3: two octaves"
     },
     {
-      "caption": "Let go of the keys: the one voice's release rings out.",
+      "caption": "Let go: the one voice rings out.",
       "control": "Let go of the note keys",
       "expect": [
         {
@@ -323,7 +323,7 @@
       "title": "Let *go*"
     },
     {
-      "caption": "The keys play chords on three voices again. ARP's settings stay with the preset.",
+      "caption": "ARP off: chords on three voices again.",
       "control": "Press ARP, then hold a chord",
       "expect": [
         {

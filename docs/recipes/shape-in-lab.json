@@ -97,7 +97,7 @@
       "title": "The sound *as it is*"
     },
     {
-      "caption": "ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 10.",
+      "caption": "ENV opens LAB at its envelope, drawn to scale.",
       "control": "press ENV, then wait 1.0 s",
       "expect": [
         {
@@ -137,7 +137,7 @@
       "title": "*ENV* opens LAB"
     },
     {
-      "caption": "K1 to K4 are attack, decay, sustain and release; the curve moves as they turn.",
+      "caption": "K1 to K4: attack, decay, sustain, release.",
       "control": "turn K1 slowly clockwise by 5 detents over 0.9 s, then turn K4 slowly clockwise by 2 detents over 0.6 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -228,7 +228,7 @@
       "title": "Turn the *cards*"
     },
     {
-      "caption": "SELECT back one page: OSC, the waveform drawn at its pulse width. ALGORITHM changes the waveform, K1 the width.",
+      "caption": "OSC: ALGORITHM picks the wave, K1 its width.",
       "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then turn K1 slowly clockwise by 15 detents over 1.2 s, then play 4 notes at 120 BPM",
       "expect": [
         {
@@ -318,7 +318,7 @@
       "title": "The *oscillator*"
     },
     {
-      "caption": "SELECT forward two pages: the filter's response, with its cutoff and its resonance peak.",
+      "caption": "FILTER: the response, its cutoff and its peak.",
       "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then turn K1 slowly counter-clockwise by 45 detents over 1.5 s, then turn K2 slowly clockwise by 8 detents over 0.8 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -419,7 +419,7 @@
       "title": "The *filter* page"
     },
     {
-      "caption": "SELECT past FILTER ENV to MOD: the vibrato and the PWM as waves over a second, and K2 deepens the vibrato.",
+      "caption": "MOD: vibrato and PWM as waves; K2 deepens the vibrato.",
       "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then turn K2 slowly clockwise by 30 detents over 1.2 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -514,7 +514,7 @@
       "title": "*MOD*: the vibrato"
     },
     {
-      "caption": "SELECT past LFO to FX: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect.",
+      "caption": "FX: three slots. SCL picks one, ALGORITHM its effect.",
       "control": "turn SELECT clockwise by 2 detents, then wait 0.7 s, then press SCL, then wait 0.4 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -620,7 +620,7 @@
       "title": "*FX*: a chain"
     },
     {
-      "caption": "Tap EDIT: the sound as you loaded it. Tap again: your edit.",
+      "caption": "Tap EDIT: the sound as loaded. Again: your edit.",
       "control": "press EDIT, then wait 0.5 s, then play 4 notes at 120 BPM, then press EDIT, then wait 0.5 s, then play 4 notes at 120 BPM",
       "expect": [
         {
@@ -724,7 +724,7 @@
       "title": "*A/B*"
     },
     {
-      "caption": "EDIT + ARP varies this page a little, never to silence, never the same twice.",
+      "caption": "EDIT + ARP varies this page a little.",
       "control": "hold EDIT and press ARP, then wait 0.2 s, then play 4 notes at 120 BPM, then hold EDIT and press ARP, then wait 0.2 s, then play 4 notes at 120 BPM, then wait 2.6 s",
       "expect": [
         {
@@ -834,7 +834,7 @@
       "title": "*Vary* it"
     },
     {
-      "caption": "One press: the next free USER slot, with a name.",
+      "caption": "SAVE keeps it in the next USER slot.",
       "control": "press SAVE, then wait 1.6 s",
       "expect": [
         {
@@ -958,7 +958,7 @@
       "title": "Back on *LIVE*"
     },
     {
-      "caption": "USER sounds come after the built-in ones and DICE: PRESETS two back, two on, and LAB 01 is there.",
+      "caption": "On PRESETS after the built-in ones: LAB 01.",
       "control": "turn PRESETS counter-clockwise by 2 detents, then wait 1.0 s, then play 3 notes at 120 BPM, then turn PRESETS clockwise by 2 detents, then wait 1.0 s, then play 7 notes at 120 BPM",
       "expect": [
         {

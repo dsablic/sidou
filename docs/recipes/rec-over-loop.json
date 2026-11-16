@@ -18,7 +18,7 @@
   ],
   "steps": [
     {
-      "caption": "SEQ twice: the song's patterns, one voice at a time. V1 is SIDOU LOOP's lead.",
+      "caption": "SEQ twice: the patterns. V1 is SIDOU LOOP's lead.",
       "control": "press SEQ, then wait 0.9 s, then press SEQ, then wait 1.5 s",
       "expect": [
         {
@@ -107,7 +107,7 @@
       "title": "*PLAY* the loop"
     },
     {
-      "caption": "REC turns red in the header: what you play now goes into the pattern.",
+      "caption": "REC: what you play now goes into the pattern.",
       "control": "press REC, then wait 1.5 s",
       "expect": [
         {
@@ -148,7 +148,7 @@
       "title": "*REC* on"
     },
     {
-      "caption": "Play along. Each note lands on the row the song is on, nearest the beat.",
+      "caption": "Play along: each note lands on the nearest row.",
       "control": "wait for the song's next pattern, then play 12 notes at 125 BPM",
       "expect": [
         {
@@ -265,7 +265,7 @@
       "title": "Play your *lead*"
     },
     {
-      "caption": "REC again stops recording. The loop comes round with your notes in it.",
+      "caption": "REC again stops. The loop comes round with your notes.",
       "control": "press REC, then wait 5.5 s",
       "expect": [
         {

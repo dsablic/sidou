@@ -960,6 +960,7 @@ pub struct Ctx {
     pub remembered: Option<Params>,
     pub intended: Option<String>,
     pub off_course: bool,
+    pub heard_before: Option<Vec<f32>>,
 }
 
 pub fn first_sound_ms(x: &[f32], silence_db: f64) -> Option<f64> {
@@ -1273,7 +1274,10 @@ pub fn run_step(
     let params_before = d.params();
     r.remembered_before = ctx.remembered.as_ref() == Some(&params_before);
     let audio_from = d.audio_mark();
-    let pre = d.audio_since(audio_from.saturating_sub((FS * 0.4) as usize));
+    let pre = ctx
+        .heard_before
+        .take()
+        .unwrap_or_else(|| d.audio_since(audio_from.saturating_sub((FS * 0.4) as usize)));
     let mut waited = 0u64;
     let mut efforts = Vec::new();
     let mut detents = 0i32;
@@ -1561,6 +1565,8 @@ pub fn run_journey(
                 .max()
                 .unwrap_or(shown_from);
             let caption = s.caption.as_deref().unwrap_or("");
+            ctx.heard_before =
+                Some(d.audio_since(d.audio_mark().saturating_sub((FS * 0.4) as usize)));
             d.run(crate::capture::pad_ms(
                 shown_from,
                 acts_end,

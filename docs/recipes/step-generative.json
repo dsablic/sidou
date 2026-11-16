@@ -22,7 +22,7 @@
   ],
   "steps": [
     {
-      "caption": "SEQ round the song pages to STEP: lane V1, the lead you recorded.",
+      "caption": "SEQ to STEP: lane V1, the lead you recorded.",
       "control": "press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 0.4 s, then press SEQ, then wait 1.5 s",
       "expect": [
         {
@@ -92,7 +92,7 @@
       "title": "The lead in *STEP*"
     },
     {
-      "caption": "GLO + key 2 and GLO + key 3 mute the bass and the drums, so the lead is heard alone.",
+      "caption": "GLO + keys 2 and 3: the lead alone.",
       "control": "hold GLO and press note key F#3, then wait 0.4 s, then hold GLO and press note key G3, then wait 2.5 s",
       "expect": [
         {
@@ -148,7 +148,7 @@
       "title": "Just the *lead*"
     },
     {
-      "caption": "Hold step 1: PRESETS moves its note to an A, the song's key, and ALGORITHM sets its chance, 50%: it plays one pass in two.",
+      "caption": "Hold step 1: PRESETS sets its note, ALGORITHM a 50% chance.",
       "control": "wait for the song's next pattern, then hold note key F3, then turn PRESETS counter-clockwise by 7 detents, then turn ALGORITHM counter-clockwise by 10 detents, then wait 0.9 s, then let go of note key F3, then wait 3.0 s",
       "expect": [
         {
@@ -211,7 +211,7 @@
       "title": "A *chance* to play"
     },
     {
-      "caption": "EDIT + SCL: a new pattern for the lane, the minor pentatonic on its A, on the eighths. Each press is another.",
+      "caption": "EDIT + SCL: a new pentatonic pattern each press.",
       "control": "hold EDIT and press SCL, then wait 0.1 s",
       "expect": [
         {
@@ -258,7 +258,7 @@
       "title": "*DICE*"
     },
     {
-      "caption": "The pattern is written one row at a time, as plain GoatTracker notes, and plays at once.",
+      "caption": "The new pattern is plain GoatTracker notes.",
       "control": "wait 5.0 s",
       "expect": [
         {
@@ -296,7 +296,7 @@
       "title": "A new *lead*"
     },
     {
-      "caption": "EDIT + ARP: two small changes each time, a note nudged, taken away or added.",
+      "caption": "EDIT + ARP: two small changes each time.",
       "control": "hold EDIT and press ARP, then wait 2.5 s, then hold EDIT and press ARP, then wait 0.1 s",
       "expect": [
         {
@@ -352,7 +352,7 @@
       "title": "*MUTATE*"
     },
     {
-      "caption": "GLO + 2 and GLO + 3 again: the drums and the bass under the new lead.",
+      "caption": "GLO + 2 and 3 again: everyone back in.",
       "control": "hold GLO and press note key F#3, then wait 0.4 s, then hold GLO and press note key G3, then wait 6.0 s",
       "expect": [
         {

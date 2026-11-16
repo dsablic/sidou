@@ -20,65 +20,65 @@ journey first-sound | First sound | poweron
   prereq The FM-1 running SIDOU, just switched on; nothing else plugged in but headphones or speakers.
   skills playing the keys; skipping the boot; reading LIVE's header
   related shape-a-sound; mute-and-solo
-  step press-a-key | Press *any* key | No waiting for the boot: a key sounds at once, and LIVE takes over. | note A4 900 | sound; level -45 -8; do Press the note key marked A (the middle of the keys); focus A4; callout PRESS A KEY
-  step boot-ends | Meet *LIVE* | The top line says the sound, SAW LEAD. Below: the three voices, the knobs and the chip. | wait 4500 | view live; text SAW LEAD; value octave 0 0; do Wait a moment: the title card ends by itself; screen 0 0 30 2; callout LIVE
-  step play-a-chord | Three voices, *three* keys | SIDOU plays three voices, like the C64's chip. Hold a chord. | note C4 E4 G4 1800; wait 600 | sound; do Press three keys at once; screen 0 2 30 12; callout HOLD THREE KEYS
-  step play-a-tune | Play a *tune* | The keys are F to G, two octaves and a bit. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; do Play a few notes; callout PLAY THE KEYS
-  step octave-up | *OCT+* for higher | OCT+ shifts every key up an octave, and says so. | press OCT+; wait 200 | toast; text OCTAVE; value octave 1 1; do Press OCT+; screen 0 26 30 4; callout PRESS OCT+
-  step play-higher | Up *there* | The same tune, an octave up. OCT- brings it back. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4; wait 600 | sound; do Play a few notes; callout PLAY THE KEYS
+  step press-a-key | Press *any* key | No waiting for the boot: a key sounds at once. | note A4 900 | sound; level -45 -8; do Press the note key marked A (the middle of the keys); focus A4; callout PRESS A KEY
+  step boot-ends | Meet *LIVE* | The top line names the sound. Below: voices, knobs, chip. | wait 4500 | view live; text SAW LEAD; value octave 0 0; do Wait a moment: the title card ends by itself; screen 0 0 30 2; callout LIVE
+  step play-a-chord | Three voices, *three* keys | Three voices, like the C64's chip. Hold a chord. | note C4 E4 G4 1800; wait 600 | sound; do Press three keys at once; screen 0 2 30 12; callout HOLD THREE KEYS
+  step play-a-tune | Play a *tune* | The keys run F to G, two octaves and a bit. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; do Play a few notes; callout PLAY THE KEYS
+  step octave-up | *OCT+* for higher | OCT+ moves every key up an octave. | press OCT+; wait 200 | toast; text OCTAVE; value octave 1 1; do Press OCT+; screen 0 26 30 4; callout PRESS OCT+
+  step play-higher | Up *there* | The same tune, higher. OCT- brings it back. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4; wait 600 | sound; do Play a few notes; callout PLAY THE KEYS
 
 journey shape-a-sound | Shape a sound with K1 to K4
   goal Open and close the filter, add resonance and change the sound while a chord holds.
   prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
   skills K1 cutoff; K2 resonance; PRESETS; holding a note while turning
   related first-sound; mute-and-solo
-  step hold-a-note | Hold a *chord* | Hold three keys and keep holding them while you turn the knobs. | down A3; down C4; down E4; wait 1500 | sound; do Hold the note keys A, C and E down; callout HOLD A CHORD
-  step close-the-filter | *K1* closes the filter | Turn K1 counter-clockwise, slowly: the sound goes dark and warm. | sweep K1 -60 3000; wait 1500 | darker; change; value cutoff 0 1100; do Turn K1 counter-clockwise about a third of a turn; screen 0 15 30 7
-  step open-the-filter | And *opens* it | Turn it back up and past: bright again, all the way. | sweep K1 100 3000; wait 1200 | brighter; value cutoff 1100 2047; do Turn K1 clockwise about a full turn; screen 0 15 30 7
-  step add-resonance | *K2*: resonance | K2 makes the filter ring at its cutoff. Sweep K1 again to hear it sing. | sweep K2 10 1200; sweep K1 -40 2000; sweep K1 40 2000 | change; value resonance 10 15; do Turn K2 clockwise about a quarter turn, then K1 down and up; screen 0 15 30 7; callout TURN K2, THEN K1
-  step next-sound | *PRESETS*: another sound | The big knob picks the next preset, PWM BASS. Your edits to SAW LEAD are kept. | turn PRESETS 1; wait 2500 | text PWM BASS; value preset 1 1; sound; do Turn PRESETS one click clockwise; screen 0 0 30 2
-  step let-go | Let *go* | Let go of the keys: the release rings out. | up A3; up C4; up E4; wait 1500 | silent; do Let go of the note keys; callout LET GO
+  step hold-a-note | Hold a *chord* | Hold three keys while you turn the knobs. | down A3; down C4; down E4; wait 1500 | sound; do Hold the note keys A, C and E down; callout HOLD A CHORD
+  step close-the-filter | *K1* closes the filter | K1 down, slowly: the sound goes dark and warm. | sweep K1 -60 3000; wait 1500 | darker; change; value cutoff 0 1100; do Turn K1 counter-clockwise about a third of a turn; screen 0 15 30 7
+  step open-the-filter | And *opens* it | Back up and past: bright again. | sweep K1 100 3000; wait 1200 | brighter; value cutoff 1100 2047; do Turn K1 clockwise about a full turn; screen 0 15 30 7
+  step add-resonance | *K2*: resonance | K2 makes the filter ring. Sweep K1 to hear it sing. | sweep K2 10 1200; sweep K1 -40 2000; sweep K1 40 2000 | change; value resonance 10 15; do Turn K2 clockwise about a quarter turn, then K1 down and up; screen 0 15 30 7; callout TURN K2, THEN K1
+  step next-sound | *PRESETS*: another sound | PRESETS: the next sound, PWM BASS. Your edits are kept. | turn PRESETS 1; wait 2500 | text PWM BASS; value preset 1 1; sound; do Turn PRESETS one click clockwise; screen 0 0 30 2
+  step let-go | Let *go* | Let go: the release rings out. | up A3; up C4; up E4; wait 1500 | silent; do Let go of the note keys; callout LET GO
 
 journey chord-arpeggio | Chord arpeggios with ARP
   goal Play a chord as C64 tunes do: one voice stepping through its notes, up to fifty times a second.
   prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
   skills ARP; holding a chord; ARP held with K1, K2 and K3
   related first-sound; shape-a-sound
-  step arp-on | Press *ARP* | ARP switches the chord arpeggio on. The badge under the band says so, large: a note every three frames, up, one octave. | press ARP; wait 800 | text ARP; text 3F UP 1OCT; value arp_on 1 1; do Press ARP; screen 0 27 30 2; focus ARP; callout PRESS ARP
-  step hold-a-chord | Hold a *chord* | One voice plays all three notes in turn, one you can follow. The other two voices stay free. | down C4; down E4; down G4; wait 2500 | sound; do Hold the note keys C, E and G down; screen 0 2 30 12; callout HOLD A CHORD
-  step faster | *ARP* + K1: the rate | Hold ARP and turn K1 back to 1F: a note every frame, fifty a second, the C64's buzzy chord. | holdturn ARP K1 -2; wait 2500 | value arp_rate 0 0; text 1F UP 1OCT; sound; do Hold ARP and turn K1 two clicks counter-clockwise; screen 0 14 30 7; focus K1; callout HOLD ARP + TURN K1
-  step order | *ARP* + K2: the order | K2 turns it round: down, up and down, or as you played it. | holdturn ARP K2 2; wait 2500 | value arp_order 2 2; text 1F UD 1OCT; sound; do Hold ARP and turn K2 two clicks clockwise; screen 0 14 30 7; focus K2; callout HOLD ARP + TURN K2
-  step span | *ARP* + K3: two octaves | K3 spreads the chord over two octaves. | holdturn ARP K3 1; wait 2500 | value arp_span 2 2; text 1F UD 2OCT; sound; do Hold ARP and turn K3 a click clockwise; screen 0 14 30 7; focus K3; callout HOLD ARP + TURN K3
-  step let-go | Let *go* | Let go of the keys: the one voice's release rings out. | up C4; up E4; up G4; wait 1500 | silent; do Let go of the note keys; callout LET GO
-  step arp-off | *ARP* again: off | The keys play chords on three voices again. ARP's settings stay with the preset. | press ARP; wait 800; note C4 E4 G4 1500 | absent ARP; value arp_on 0 0; sound; do Press ARP, then hold a chord; screen 0 2 30 19; focus ARP; callout PRESS ARP
+  step arp-on | Press *ARP* | ARP turns the chord arpeggio on; the badge says how. | press ARP; wait 800 | text ARP; text 3F UP 1OCT; value arp_on 1 1; do Press ARP; screen 0 27 30 2; focus ARP; callout PRESS ARP
+  step hold-a-chord | Hold a *chord* | One voice plays all three notes in turn. Two stay free. | down C4; down E4; down G4; wait 2500 | sound; do Hold the note keys C, E and G down; screen 0 2 30 12; callout HOLD A CHORD
+  step faster | *ARP* + K1: the rate | ARP + K1 to 1F: fifty notes a second, the C64's buzz. | holdturn ARP K1 -2; wait 2500 | value arp_rate 0 0; text 1F UP 1OCT; sound; do Hold ARP and turn K1 two clicks counter-clockwise; screen 0 14 30 7; focus K1; callout HOLD ARP + TURN K1
+  step order | *ARP* + K2: the order | K2 changes the order: down, up and down, or as played. | holdturn ARP K2 2; wait 2500 | value arp_order 2 2; text 1F UD 1OCT; sound; do Hold ARP and turn K2 two clicks clockwise; screen 0 14 30 7; focus K2; callout HOLD ARP + TURN K2
+  step span | *ARP* + K3: two octaves | K3 spreads it over two octaves. | holdturn ARP K3 1; wait 2500 | value arp_span 2 2; text 1F UD 2OCT; sound; do Hold ARP and turn K3 a click clockwise; screen 0 14 30 7; focus K3; callout HOLD ARP + TURN K3
+  step let-go | Let *go* | Let go: the one voice rings out. | up C4; up E4; up G4; wait 1500 | silent; do Let go of the note keys; callout LET GO
+  step arp-off | *ARP* again: off | ARP off: chords on three voices again. | press ARP; wait 800; note C4 E4 G4 1500 | absent ARP; value arp_on 0 0; sound; do Press ARP, then hold a chord; screen 0 2 30 19; focus ARP; callout PRESS ARP
 
 journey send-to-song | Send a LAB sound to the song
   goal Shape a sound in LAB while the song plays, send it into the song as a GoatTracker 2 instrument, find it on INSTR, pull it back and replace it.
   prereq On LIVE after the boot, SIDOU LOOP the song loaded: its lowest free instrument is 06.
   skills LAB; REC sends a LAB sound to the song; the hint line; INSTR; ENV on INSTR pulls the instrument into LAB; EDIT + REC replaces INSTR's instrument
   related shape-in-lab; lift-a-sound; whats-new
-  step open | *ENV* opens LAB | ENV on LIVE opens LAB at its envelope page, with SAW LEAD. Listen first. | press ENV; wait 800; play 120 A3:2 C4:2 E4:2 A4:4 | view lab; text ENVELOPE; sound; focus ENV; callout PRESS ENV
-  step play | The song plays *on* | PLAY in LAB plays SIDOU LOOP; the keys play your sound over it. | press PLAY; wait 1000; sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | sound; focus PLAY; callout PLAY, THEN THE KEYS
-  step shape | *Shape* it | K2 shortens the decay. SELECT to FILTER, and K1 closes the filter a little. | sweep K2 -3 600; turn SELECT 1; wait 500; sweep K1 -20 900; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | text FILTER; sound; focus K1; callout TURN K2, SELECT, TURN K1
-  step send | *REC* sends it | REC: the sound goes into the song's lowest free instrument as a plain GoatTracker 2 one, a byte at a time, so the song plays on. | press REC; wait 1300 | text SENT AS I06; sound; focus REC; callout PRESS REC
-  step hint | What it *approximates* | For six seconds the hint line says what GoatTracker could only come close to, or what stayed behind. | wait 3000 | text APPROX; sound; screen 0 26 30 4; focus screen; callout THE HINT LINE
-  step instr | On *INSTR* | SEQ round to INSTR: it opens on 06, SAW LEAD, a song instrument now. The foot says what each program plays. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 800; turn SELECT 2; wait 1600; turn SELECT 2; wait 1600 | view song_pages_instr; text SAW LEAD; big LP; sound; screen 0 0 30 30; focus SELECT; callout SEQ TO INSTR, SELECT
-  step pull | *ENV* pulls it back | ENV on INSTR takes it into LAB again. Sent and not edited since, it comes back exactly: PULLED I06. | press ENV; wait 1300 | view lab; text PULLED I06; sound; focus ENV; callout PRESS ENV ON INSTR
+  step open | *ENV* opens LAB | ENV on LIVE opens LAB with SAW LEAD. Listen first. | press ENV; wait 800; play 120 A3:2 C4:2 E4:2 A4:4 | view lab; text ENVELOPE; sound; focus ENV; callout PRESS ENV
+  step play | The song plays *on* | PLAY starts SIDOU LOOP; your sound plays over it. | press PLAY; wait 1000; sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | sound; focus PLAY; callout PLAY, THEN THE KEYS
+  step shape | *Shape* it | K2 shortens the decay; on FILTER, K1 closes it a little. | sweep K2 -3 600; turn SELECT 1; wait 500; sweep K1 -20 900; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | text FILTER; sound; focus K1; callout TURN K2, SELECT, TURN K1
+  step send | *REC* sends it | REC sends it into the song: SENT AS I06. | press REC; wait 1300 | text SENT AS I06; sound; focus REC; callout PRESS REC
+  step hint | What it *approximates* | The hint line says what GoatTracker only comes close to. | wait 1500 | text APPROX; sound; screen 0 26 30 4; focus screen; callout THE HINT LINE
+  step instr | On *INSTR* | SEQ round to INSTR: 06, SAW LEAD, now a song instrument. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 800; turn SELECT 2; wait 1600; turn SELECT 2; wait 1600 | view song_pages_instr; text SAW LEAD; big LP; sound; screen 0 0 30 30; focus SELECT; callout SEQ TO INSTR, SELECT
+  step pull | *ENV* pulls it back | ENV on INSTR brings it back to LAB, exactly: PULLED I06. | press ENV; wait 1300 | view lab; text PULLED I06; sound; focus ENV; callout PRESS ENV ON INSTR
   step longer | A longer *release* | K4 lets the notes ring on. | sweep K4 4 800; sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | sound; focus K4; callout TURN K4
-  step replace | *EDIT + REC* replaces | EDIT + REC writes over INSTR's instrument instead. It asks first, REPLACE I06?, and EDIT + REC again does it. | holdpress EDIT REC; wait 1500; holdpress EDIT REC; wait 1300 | text SENT AS I06; sound; focus REC; callout HOLD EDIT + REC, TWICE
+  step replace | *EDIT + REC* replaces | EDIT + REC replaces it. It asks first; again does it. | holdpress EDIT REC; wait 1500; holdpress EDIT REC; wait 1300 | text SENT AS I06; sound; focus REC; callout HOLD EDIT + REC, TWICE
 
 journey mute-and-solo | Mute and solo while a song plays
   goal Play the built-in song and mute or solo a voice without stopping it.
   prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
   skills opening the song views; PLAY; GLO mutes; GLO solos
   related first-sound; shape-a-sound
-  step open-the-song | Open the *song* | SEQ opens STEP over LIVE, SEQ again the TRACKER. | press SEQ; wait 900; press SEQ; wait 900 | view tracker; do Press SEQ twice; callout PRESS SEQ TWICE
-  step play-the-song | Press *PLAY* | SIDOU LOOP plays: the rows move, the strips on the right show the other voices. | press PLAY; wait 3500 | sound; do Press PLAY; screen 0 0 30 30
-  step mute-voice-2 | *Mute* voice 2 | Hold GLO and press the second key: the bass goes quiet, its number turns grey. | holdkey GLO F#3; wait 3000 | quieter; do Hold GLO and press note key 2; screen 0 0 30 3
-  step let-voice-2-back | And *back* | The same keys again, and the bass is back in. | holdkey GLO F#3; wait 2500 | louder; do Hold GLO and press note key 2 again; screen 0 0 30 3
-  step solo-voice-1 | *Solo* the lead | GLO and the fourth key: only voice 1 plays, and SOL says so. | holdkey GLO G#3; wait 3000 | text SOL; quieter; do Hold GLO and press note key 4; screen 0 0 30 3
+  step open-the-song | Open the *song* | SEQ opens STEP, SEQ again the TRACKER. | press SEQ; wait 900; press SEQ; wait 900 | view tracker; do Press SEQ twice; callout PRESS SEQ TWICE
+  step play-the-song | Press *PLAY* | SIDOU LOOP plays; the strips show the other voices. | press PLAY; wait 3500 | sound; do Press PLAY; screen 0 0 30 30
+  step mute-voice-2 | *Mute* voice 2 | GLO + the second key: the bass goes quiet. | holdkey GLO F#3; wait 3000 | quieter; do Hold GLO and press note key 2; screen 0 0 30 3
+  step let-voice-2-back | And *back* | The same keys again: the bass is back. | holdkey GLO F#3; wait 2500 | louder; do Hold GLO and press note key 2 again; screen 0 0 30 3
+  step solo-voice-1 | *Solo* the lead | GLO + the fourth key: only voice 1, SOL says so. | holdkey GLO G#3; wait 3000 | text SOL; quieter; do Hold GLO and press note key 4; screen 0 0 30 3
   step unsolo-voice-1 | Everyone *back* | Again to unsolo. | holdkey GLO G#3; wait 2500 | absent SOL; louder; do Hold GLO and press note key 4 again; screen 0 0 30 3
-  step stop | *Stop* | PLAY again stops it; each voice's release rings on. | press PLAY; wait 1500 | silent; do Press PLAY
+  step stop | *Stop* | PLAY stops it; the release rings on. | press PLAY; wait 1500 | silent; do Press PLAY
   step back | Back to *LIVE* | HOME goes back one view. | press HOME; wait 1200 | view live; do Press HOME
 
 journey step-a-beat | A beat with the drum kit
@@ -86,25 +86,25 @@ journey step-a-beat | A beat with the drum kit
   prereq On LIVE after the boot.
   skills a new song; STEP; step keys; a drum picked by name; the pages; digi drums
   related track-bass; save-and-load; step-generative
-  step new-song | A *new* song | In the menu, SONG and NEW: three empty voices, with a lead, a bass and a drum kit. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1200 | view song_menu; absent BUSY; screen 0 0 30 15; callout SONG > NEW
-  step open-step | Open *STEP* | SEQ opens STEP. SELECT picks lane V3, PRESETS its instrument, by name: 03 KICK. | press SEQ; wait 1000; turn SELECT 2; wait 600; turn PRESETS 2; wait 1500 | view step; text I03; screen 0 2 30 13; callout SEQ, SELECT, PRESETS
-  step kicks | Kicks on *1* and *9* | The sixteen leftmost keys are the steps. Tap 1 and 9: a kick on each. | taps F3 C#4 300; wait 1500 | rows 3 0 0 8; screen 0 2 30 13; callout TAP STEPS 1 AND 9
-  step snares | A *snare* on 5 and 13 | PRESETS one on: 04 SNARE. The steps you tap now play it: 5 and 13. | turn PRESETS 1; wait 900; taps A3 F4 300; wait 1200 | rows 3 0 0 4 8 12; text I04; screen 0 2 30 13; callout PRESETS, TAP 5 AND 13
-  step hats | *Hats* in between | 05 CL HAT on 3, 7 and 11, and 06 OP HAT, the open one, on 15. | turn PRESETS 1; wait 700; taps G3 B3 D#4 300; turn PRESETS 1; wait 700; taps G4 300; wait 1200 | rows 3 0 0 2 4 6 8 10 12 14; text I06; screen 0 2 30 13; callout PRESETS, TAP THE HATS
-  step pages | *Four* pages | A pattern is 64 steps: ALGORITHM pages through them. The beat again on pages 2 and 3, and a fill on the toms to end. | turn ALGORITHM 1; wait 400; taps G4 150; turn PRESETS -1; taps G3 B3 D#4 150; turn PRESETS -1; taps A3 F4 150; turn PRESETS -1; taps F3 C#4 150; wait 300; turn ALGORITHM 1; wait 400; taps F3 C#4 150; turn PRESETS 1; taps A3 F4 150; turn PRESETS 1; taps G3 B3 D#4 150; turn PRESETS 1; taps G4 150; wait 300; turn ALGORITHM 1; wait 400; turn PRESETS -1; taps G3 B3 D#4 150; turn PRESETS -1; taps A3 150; turn PRESETS 5; taps F4 150; turn PRESETS -1; taps G4 150; turn PRESETS -5; taps F3 C#4 150; wait 300; turn ALGORITHM -3; wait 1200 | rows 3 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62; text I03; screen 0 0 30 3; callout ALGORITHM: PAGE, TAP
-  step play | Press *PLAY* | The kit on one voice, as C64 songs play their drums. The lit step runs along the keys. | press PLAY; wait 4500 | sound; screen 0 2 30 13
-  step digi | A *digi* drum | 0B to 0E are digi drums, samples played as C64 tunes play them. PRESETS to 0D DG CLAP, then tap 16 on each page as it plays. | turn PRESETS 10; wait 900; sync; wait 300; taps G#4 150; wait 1710; taps G#4 150; wait 1710; taps G#4 150; wait 1710; taps G#4 150; wait 3500 | sound; rows 3 0 0 2 4 6 8 10 12 14 15 16 18 20 22 24 26 28 30 31 32 34 36 38 40 42 44 46 47 48 50 52 54 56 58 60 62 63; text I0D; screen 0 2 30 13; callout PRESETS 0D, TAP 16
+  step new-song | A *new* song | SONG, NEW: three empty voices, a lead, a bass and drums. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1200 | view song_menu; absent BUSY; screen 0 0 30 15; callout SONG > NEW
+  step open-step | Open *STEP* | SEQ opens STEP. Lane V3, instrument 03 KICK. | press SEQ; wait 1000; turn SELECT 2; wait 600; turn PRESETS 2; wait 1500 | view step; text I03; screen 0 2 30 13; callout SEQ, SELECT, PRESETS
+  step kicks | Kicks on *1* and *9* | The keys are the steps. Tap 1 and 9: two kicks. | taps F3 C#4 300; wait 1500 | rows 3 0 0 8; screen 0 2 30 13; callout TAP STEPS 1 AND 9
+  step snares | A *snare* on 5 and 13 | PRESETS to 04 SNARE, on 5 and 13. | turn PRESETS 1; wait 900; taps A3 F4 300; wait 1200 | rows 3 0 0 4 8 12; text I04; screen 0 2 30 13; callout PRESETS, TAP 5 AND 13
+  step hats | *Hats* in between | Closed hats on 3, 7 and 11; an open hat on 15. | turn PRESETS 1; wait 700; taps G3 B3 D#4 300; turn PRESETS 1; wait 700; taps G4 300; wait 1200 | rows 3 0 0 2 4 6 8 10 12 14; text I06; screen 0 2 30 13; callout PRESETS, TAP THE HATS
+  step pages | *Four* pages | ALGORITHM pages through 64 steps: the beat, then a tom fill. | turn ALGORITHM 1; wait 400; taps G4 150; turn PRESETS -1; taps G3 B3 D#4 150; turn PRESETS -1; taps A3 F4 150; turn PRESETS -1; taps F3 C#4 150; wait 300; turn ALGORITHM 1; wait 400; taps F3 C#4 150; turn PRESETS 1; taps A3 F4 150; turn PRESETS 1; taps G3 B3 D#4 150; turn PRESETS 1; taps G4 150; wait 300; turn ALGORITHM 1; wait 400; turn PRESETS -1; taps G3 B3 D#4 150; turn PRESETS -1; taps A3 150; turn PRESETS 5; taps F4 150; turn PRESETS -1; taps G4 150; turn PRESETS -5; taps F3 C#4 150; wait 300; turn ALGORITHM -3; wait 1200 | rows 3 0 0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62; text I03; screen 0 0 30 3; callout ALGORITHM: PAGE, TAP
+  step play | Press *PLAY* | The whole kit on one voice, as C64 songs do it. | press PLAY; wait 4500 | sound; screen 0 2 30 13
+  step digi | A *digi* drum | 0B to 0E are digi drums. 0D DG CLAP on 16 of each page. | turn PRESETS 10; wait 900; sync; wait 300; taps G#4 150; wait 1710; taps G#4 150; wait 1710; taps G#4 150; wait 1710; taps G#4 150; wait 3500 | sound; rows 3 0 0 2 4 6 8 10 12 14 15 16 18 20 22 24 26 28 30 31 32 34 36 38 40 42 44 46 47 48 50 52 54 56 58 60 62 63; text I0D; screen 0 2 30 13; callout PRESETS 0D, TAP 16
 
 journey rec-over-loop | Record with REC over a playing loop
   goal Record a melody into the song while the loop plays, in time.
   prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
   skills TRACKER; PLAY; REC; recording in time
   related step-a-beat; mute-and-solo
-  step open-tracker | Open the *TRACKER* | SEQ twice: the song's patterns, one voice at a time. V1 is SIDOU LOOP's lead. | press SEQ; wait 900; press SEQ; wait 1500 | view tracker; screen 0 0 30 3; callout PRESS SEQ TWICE
+  step open-tracker | Open the *TRACKER* | SEQ twice: the patterns. V1 is SIDOU LOOP's lead. | press SEQ; wait 900; press SEQ; wait 1500 | view tracker; screen 0 0 30 3; callout PRESS SEQ TWICE
   step play | *PLAY* the loop | Am, F, C, G: eight bars that go round. | press PLAY; wait 4500 | sound; screen 0 2 30 24
-  step rec-on | *REC* on | REC turns red in the header: what you play now goes into the pattern. | press REC; wait 1500 | text REC; screen 0 0 30 3; callout PRESS REC
-  step play-a-lead | Play your *lead* | Play along. Each note lands on the row the song is on, nearest the beat. | sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 F4:2 A4:2 C5:4 B4:2 A4:2 G4:4 | sound; change; screen 0 2 30 24; callout PLAY THE KEYS
-  step rec-off | *REC* off, and listen | REC again stops recording. The loop comes round with your notes in it. | press REC; wait 5500 | absent REC; sound; screen 0 2 30 24; callout PRESS REC
+  step rec-on | *REC* on | REC: what you play now goes into the pattern. | press REC; wait 1500 | text REC; screen 0 0 30 3; callout PRESS REC
+  step play-a-lead | Play your *lead* | Play along: each note lands on the nearest row. | sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 F4:2 A4:2 C5:4 B4:2 A4:2 G4:4 | sound; change; screen 0 2 30 24; callout PLAY THE KEYS
+  step rec-off | *REC* off, and listen | REC again stops. The loop comes round with your notes. | press REC; wait 5500 | absent REC; sound; screen 0 2 30 24; callout PRESS REC
   step stop | *Stop* | PLAY stops the song. SAVE would keep it. | press PLAY; wait 1500 | silent; callout PRESS PLAY
 
 journey save-and-load | Save a song and load it back
@@ -113,12 +113,12 @@ journey save-and-load | Save a song and load it back
   skills SAVE; SAVE AS; naming a song; SONG LOAD
   related step-a-beat
   after step-a-beat
-  step save | Press *SAVE* | A new song has no name yet, so SAVE opens SAVE AS. | press PLAY; wait 500; press SAVE; wait 1800 | view song_menu; text SAVE; screen 0 6 30 12; callout PRESS SAVE
-  step name | Give it a *name* | SELECT moves the cursor, ALGORITHM changes the letter: BEAT 1. | turn ALGORITHM -12; turn SELECT 2; turn ALGORITHM -22; turn SELECT 1; turn ALGORITHM 52; turn SELECT 1; turn ALGORITHM -51; turn SELECT 1; turn ALGORITHM -30; turn SELECT 1; turn ALGORITHM -46; turn SELECT 1; turn ALGORITHM -39; wait 1500 | text BEAT 1; screen 0 6 30 12; callout SELECT + ALGORITHM
-  step write | *Save* it | SAVE writes it to the store: SONG SAVED. | press SAVE; wait 2500 | toast; text SAVED; callout PRESS SAVE
-  step new | Start *another* | HOME back to SONG, then NEW: the beat is gone from the song views. | press HOME; wait 900; turn SELECT -3; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; rows 3 0; screen 0 6 30 12; callout NEW
-  step load | *LOAD* it back | LOAD lists SIDOU LOOP, built in, then the songs in the store. BEAT 1 is there. | turn SELECT -1; wait 300; turn ALGORITHM 1; wait 1500 | text BEAT 1; screen 0 6 30 12; callout LOAD
-  step loaded | And it is *back* | SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SAVE AGAIN, and it is done. | turn SELECT 1; wait 300; turn ALGORITHM 1; wait 2100; press SAVE; wait 1500 | absent BUSY; rows 3 0 0 2 4 6 8 10 12 14 15 16 18 20 22 24 26 28 30 31 32 34 36 38 40 42 44 46 47 48 50 52 54 56 58 60 62 63; screen 0 0 30 15; callout ALGORITHM, SAVE AGAIN
+  step save | Press *SAVE* | A new song has no name, so SAVE opens SAVE AS. | press PLAY; wait 500; press SAVE; wait 1800 | view song_menu; text SAVE; screen 0 6 30 12; callout PRESS SAVE
+  step name | Give it a *name* | SELECT moves, ALGORITHM changes the letter: BEAT 1. | turn ALGORITHM -12; turn SELECT 2; turn ALGORITHM -22; turn SELECT 1; turn ALGORITHM 52; turn SELECT 1; turn ALGORITHM -51; turn SELECT 1; turn ALGORITHM -30; turn SELECT 1; turn ALGORITHM -46; turn SELECT 1; turn ALGORITHM -39; wait 1500 | text BEAT 1; screen 0 6 30 12; callout SELECT + ALGORITHM
+  step write | *Save* it | SAVE writes it: SONG SAVED. | press SAVE; wait 2500 | toast; text SAVED; callout PRESS SAVE
+  step new | Start *another* | HOME, SONG, NEW: the beat is gone. | press HOME; wait 900; turn SELECT -3; wait 300; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; rows 3 0; screen 0 6 30 12; callout NEW
+  step load | *LOAD* it back | LOAD lists the songs in the store. BEAT 1 is there. | turn SELECT -1; wait 300; turn ALGORITHM 1; wait 1500 | text BEAT 1; screen 0 6 30 12; callout LOAD
+  step loaded | And it is *back* | ALGORITHM loads it, after SAVE AGAIN for the unsaved song. | turn SELECT 1; wait 300; turn ALGORITHM 1; wait 2100; press SAVE; wait 1500 | absent BUSY; rows 3 0 0 2 4 6 8 10 12 14 15 16 18 20 22 24 26 28 30 31 32 34 36 38 40 42 44 46 47 48 50 52 54 56 58 60 62 63; screen 0 0 30 15; callout ALGORITHM, SAVE AGAIN
   step play-it | The same *beat* | SEQ and PLAY: BEAT 1, as you left it. | press SEQ; wait 1000; press PLAY; wait 4000 | sound; view step; screen 0 2 30 13; callout SEQ, PLAY
 
 journey chip-character | Shape the chip's character
@@ -126,12 +126,12 @@ journey chip-character | Shape the chip's character
   prereq On LIVE after the boot, SAW LEAD.
   skills CHIP; AGE; DAC; THUMP; BLEED
   related shape-a-sound; add-an-effect
-  step open-chip | Open *CHIP* | HOME for the menu: CHIP is the first line, ALGORITHM opens it. | press HOME; wait 500; turn ALGORITHM 1; wait 3200 | view chip; screen 0 0 30 15; callout HOME, ALGORITHM
-  step clean | A *clean* chip | All four at 0: the 6581 as reSIDfp plays it. Listen first. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; screen 0 8 30 8; callout PLAY THE KEYS
-  step age | *AGE*: an older chip | K1 ages it: the filter drifts darker and the 6581 grows rougher. | sweep K1 64 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value age 50 127; sound; screen 0 8 30 8; callout TURN K1: AGE
-  step dac | *DAC*: worn converters | K2 wears the voice DACs: grit on saws, uneven steps as notes fade. | sweep K2 90 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value dac 60 127; sound; screen 0 8 30 8; callout TURN K2: DAC
-  step thump | *THUMP* on every note | K3 adds the 6581's thump at each note's start. | sweep K3 100 1500; play 120 A3:1 . A3:1 . C4:1 . E4:2 A3:1 . A3:1 . G3:1 . F3:2 | value thump 60 127; sound; screen 0 8 30 8; callout TURN K3: THUMP
-  step bleed | *BLEED* past the filter | K4 lets the voices leak past the filter: bright, dry, a little dirty. | sweep K4 90 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value bleed 60 127; sound; screen 0 8 30 8; callout TURN K4: BLEED
+  step open-chip | Open *CHIP* | HOME, CHIP, and ALGORITHM opens it. | press HOME; wait 500; turn ALGORITHM 1; wait 3200 | view chip; screen 0 0 30 15; callout HOME, ALGORITHM
+  step clean | A *clean* chip | All four at 0: the 6581 as reSIDfp plays it. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; screen 0 8 30 8; callout PLAY THE KEYS
+  step age | *AGE*: an older chip | K1 ages it: darker filter, rougher chip. | sweep K1 64 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value age 50 127; sound; screen 0 8 30 8; callout TURN K1: AGE
+  step dac | *DAC*: worn converters | K2 wears the DACs: grit on saws, uneven fades. | sweep K2 90 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value dac 60 127; sound; screen 0 8 30 8; callout TURN K2: DAC
+  step thump | *THUMP* on every note | K3 adds the 6581's thump at each note. | sweep K3 100 1500; play 120 A3:1 . A3:1 . C4:1 . E4:2 A3:1 . A3:1 . G3:1 . F3:2 | value thump 60 127; sound; screen 0 8 30 8; callout TURN K3: THUMP
+  step bleed | *BLEED* past the filter | K4 leaks the voices past the filter. | sweep K4 90 1500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | value bleed 60 127; sound; screen 0 8 30 8; callout TURN K4: BLEED
 
 journey add-an-effect | Add an effect
   goal Pick an effect slot, choose its algorithm and turn it with EDIT and the knobs.
@@ -139,9 +139,9 @@ journey add-an-effect | Add an effect
   skills SELECT; ALGORITHM; EDIT + K1-K4; the effect slots
   related chip-character; shape-a-sound
   step dry | *Dry* | First the sound as it is. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | sound; callout PLAY THE KEYS
-  step slot | *SELECT*: pick a slot | SELECT pages TONE, DIST, MOD, FX. Three for FX: the echoes and rooms. | turn SELECT 3; wait 1500 | text FX; screen 0 22 30 8; callout TURN SELECT TO FX
-  step delay | *ALGORITHM*: an algorithm | ALGORITHM steps the slot's algorithm: DELAY, ready to hear. | turn ALGORITHM 1; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text DELAY; sound; screen 0 22 30 8; callout TURN ALGORITHM
-  step more | *EDIT* + K1 for more | Hold EDIT: K1 to K4 turn the slot. K1 is the feedback, K4 the mix. | holdturn EDIT K1 24; holdturn EDIT K4 20; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; screen 0 15 30 7; callout HOLD EDIT + TURN K1
+  step slot | *SELECT*: pick a slot | SELECT pages to FX: echoes and rooms. | turn SELECT 3; wait 1500 | text FX; screen 0 22 30 8; callout TURN SELECT TO FX
+  step delay | *ALGORITHM*: an algorithm | ALGORITHM picks DELAY. | turn ALGORITHM 1; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text DELAY; sound; screen 0 22 30 8; callout TURN ALGORITHM
+  step more | *EDIT* + K1 for more | Hold EDIT: K1 is the feedback, K4 the mix. | holdturn EDIT K1 24; holdturn EDIT K4 20; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; screen 0 15 30 7; callout HOLD EDIT + TURN K1
   step reverb | A *room* | ALGORITHM two more: REVERB. | turn ALGORITHM 2; wait 500; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 E4:2 | text REVERB; sound; screen 0 22 30 8; callout TURN ALGORITHM TWO MORE
 
 journey midi-learn | MIDI learn on a knob
@@ -150,10 +150,10 @@ journey midi-learn | MIDI learn on a knob
   skills SAVE + a knob; MIDI learn; CC
   related shape-a-sound
   step hold-a-chord | Hold a *chord* | Something to hear: hold three keys. | down A3; down C4; down E4; wait 1500 | sound; callout HOLD A CHORD
-  step learn | *SAVE* + K1 | Hold SAVE and turn K1: MIDI LEARN opens and waits for a CC. The cutoff does not move. | holdturn SAVE K1 1; wait 2000 | view learn; text LEARN; screen 0 0 30 30; callout HOLD SAVE + TURN K1
-  step send | Turn your *controller* | The first CC that comes in is learned: LEARNED CC 21, CUTOFF. | cc 21 20; wait 300 | text LEARNED; screen 0 0 30 30; callout TURN A CONTROLLER KNOB
-  step sweep | It turns the *cutoff* | From now on that knob is K1's cutoff, saved with the settings. | cc 21 30; wait 150; cc 21 45; wait 150; cc 21 60; wait 150; cc 21 75; wait 150; cc 21 90; wait 150; cc 21 105; wait 150; cc 21 127; wait 1500 | brighter; value cutoff 1500 2047; screen 0 15 30 7; callout CC 21 > CUTOFF
-  step sweep-down | And *back* down | Turn your controller back: the filter closes, as K1 would close it. | cc 21 110; wait 200; cc 21 95; wait 200; cc 21 80; wait 200; cc 21 65; wait 200; cc 21 50; wait 200; cc 21 40; wait 200; cc 21 30; wait 200; cc 21 20; wait 200; wait 1500 | darker; value cutoff 0 1300; screen 0 15 30 7; callout CC 21 > CUTOFF
+  step learn | *SAVE* + K1 | Hold SAVE, turn K1: MIDI LEARN waits for a CC. | holdturn SAVE K1 1; wait 2000 | view learn; text LEARN; screen 0 0 30 30; callout HOLD SAVE + TURN K1
+  step send | Turn your *controller* | The first CC in is learned: CC 21, CUTOFF. | cc 21 20; wait 300 | text LEARNED; screen 0 0 30 30; callout TURN A CONTROLLER KNOB
+  step sweep | It turns the *cutoff* | Now that knob turns the cutoff, saved with the settings. | cc 21 30; wait 150; cc 21 45; wait 150; cc 21 60; wait 150; cc 21 75; wait 150; cc 21 90; wait 150; cc 21 105; wait 150; cc 21 127; wait 1500 | brighter; value cutoff 1500 2047; screen 0 15 30 7; callout CC 21 > CUTOFF
+  step sweep-down | And *back* down | Turn it back: the filter closes. | cc 21 110; wait 200; cc 21 95; wait 200; cc 21 80; wait 200; cc 21 65; wait 200; cc 21 50; wait 200; cc 21 40; wait 200; cc 21 30; wait 200; cc 21 20; wait 200; wait 1500 | darker; value cutoff 0 1300; screen 0 15 30 7; callout CC 21 > CUTOFF
   step let-go | Let *go* | Let go of the keys. | up A3; up C4; up E4; wait 1200 | silent; callout LET GO
 
 journey track-bass | A bassline in TRACKER
@@ -162,11 +162,11 @@ journey track-bass | A bassline in TRACKER
   skills TRACKER; REC with the song stopped; the edit step; the current instrument; OCT-
   related step-a-beat; track-lead
   after step-a-beat
-  step open-tracker | The *TRACKER* | Stop, then SEQ: the TRACKER. ALGORITHM shows another voice: V2, the bass's. | press PLAY; wait 500; press SEQ; wait 1200; turn ALGORITHM 2; wait 1500 | view tracker; text PAT 01; screen 0 0 30 3; callout SEQ, ALGORITHM
-  step set-up | Ready to *write* | REC on: the keys write notes. EDIT + ALGORITHM sets the step to 2, PRESETS the bass instrument, OCT- the octave. | press REC; wait 500; holdturn EDIT ALGORITHM 1; wait 400; turn PRESETS -11; wait 400; press OCT-; wait 1500 | text REC; screen 0 0 30 3; callout REC, EDIT+ALG, PRESETS, OCT-
-  step bars-1-2 | *A* minor, *F* | Each key writes its note on the cursor's row and moves on two rows. | taps A3 A3 A4 A3 E4 A3 G3 A3 F3 F3 F4 F3 C4 F3 E4 F3 220; wait 800 | change; screen 0 2 30 24; callout PLAY THE NOTES
-  step bars-3-4 | *C*, *G* | Two more bars, and the cursor is back on the first row. | taps C4 C4 C5 C4 G4 C4 B3 C4 G3 G3 G4 G3 D4 G3 F4 G3 220; wait 800 | notes 2 0 A-2 A-2 A-3 A-2 E-3 A-2 G-2 A-2 F-2 F-2 F-3 F-2 C-3 F-2 E-3 F-2 C-3 C-3 C-4 C-3 G-3 C-3 B-2 C-3 G-2 G-2 G-3 G-2 D-3 G-2 F-3 G-2; screen 0 2 30 24; callout PLAY THE NOTES
-  step listen | *Drums* and *bass* | REC off, PLAY: the beat and the bassline go round together. | press REC; wait 400; press PLAY; wait 8000 | sound; absent REC; screen 0 2 30 24; callout REC OFF, PLAY
+  step open-tracker | The *TRACKER* | Stop, SEQ: the TRACKER. ALGORITHM to V2, the bass. | press PLAY; wait 500; press SEQ; wait 1200; turn ALGORITHM 2; wait 1500 | view tracker; text PAT 01; screen 0 0 30 3; callout SEQ, ALGORITHM
+  step set-up | Ready to *write* | REC on; step 2, the bass instrument, an octave down. | press REC; wait 500; holdturn EDIT ALGORITHM 1; wait 400; turn PRESETS -11; wait 400; press OCT-; wait 1500 | text REC; screen 0 0 30 3; callout REC, EDIT+ALG, PRESETS, OCT-
+  step bars-1-2 | *A* minor, *F* | Each key writes a note and moves on two rows. | taps A3 A3 A4 A3 E4 A3 G3 A3 F3 F3 F4 F3 C4 F3 E4 F3 220; wait 800 | change; screen 0 2 30 24; callout PLAY THE NOTES
+  step bars-3-4 | *C*, *G* | Two more bars, back to the first row. | taps C4 C4 C5 C4 G4 C4 B3 C4 G3 G3 G4 G3 D4 G3 F4 G3 220; wait 800 | notes 2 0 A-2 A-2 A-3 A-2 E-3 A-2 G-2 A-2 F-2 F-2 F-3 F-2 C-3 F-2 E-3 F-2 C-3 C-3 C-4 C-3 G-3 C-3 B-2 C-3 G-2 G-2 G-3 G-2 D-3 G-2 F-3 G-2; screen 0 2 30 24; callout PLAY THE NOTES
+  step listen | *Drums* and *bass* | REC off, PLAY: the beat and the bass together. | press REC; wait 400; press PLAY; wait 8000 | sound; absent REC; screen 0 2 30 24; callout REC OFF, PLAY
 
 journey track-lead | Record a lead with REC
   goal Record a lead over the beat and the bass while they play.
@@ -174,10 +174,10 @@ journey track-lead | Record a lead with REC
   skills REC while the song plays; recording in time; the lead's voice and instrument
   related track-bass; rec-over-loop
   after track-bass
-  step lead-voice | The *lead's* voice | ALGORITHM to V1, PRESETS to instrument 01, the lead. OCT+ back to the middle. | turn ALGORITHM 2; wait 500; turn PRESETS -1; wait 400; press OCT+; wait 2000 | text PAT 00; sound; screen 0 0 30 3; callout ALGORITHM, PRESETS, OCT+
-  step rec | *REC* while it plays | REC on with the song playing: the keys are recorded where the song is. | press REC; wait 1500 | text REC; screen 0 0 30 3; callout PRESS REC
-  step melody | Play the *lead* | Four bars over Am, F, C and G. Each note lands on the nearest row. | sync; play 125 E5:4 C5:2 A4:2 B4:2 C5:2 A4:4 F4:2 A4:2 C5:4 A4:2 C5:2 D5:2 C5:2 E5:4 G5:2 E5:2 D5:2 C5:2 G4:4 B4:2 C5:2 D5:4 G4:4 .:4 | sound; change; screen 0 2 30 24; callout PLAY THE KEYS
-  step listen | Your *song* | REC off. Drums, bass and your lead, round and round. | press REC; wait 8500 | sound; absent REC; screen 0 0 30 30; callout REC OFF
+  step lead-voice | The *lead's* voice | V1, instrument 01, the lead. OCT+ back to the middle. | turn ALGORITHM 2; wait 500; turn PRESETS -1; wait 400; press OCT+; wait 2000 | text PAT 00; sound; screen 0 0 30 3; callout ALGORITHM, PRESETS, OCT+
+  step rec | *REC* while it plays | REC with the song playing: notes land where it is. | press REC; wait 1500 | text REC; screen 0 0 30 3; callout PRESS REC
+  step melody | Play the *lead* | Four bars over Am, F, C and G. | sync; play 125 E5:4 C5:2 A4:2 B4:2 C5:2 A4:4 F4:2 A4:2 C5:4 A4:2 C5:2 D5:2 C5:2 E5:4 G5:2 E5:2 D5:2 C5:2 G4:4 B4:2 C5:2 D5:4 G4:4 .:4 | sound; change; screen 0 2 30 24; callout PLAY THE KEYS
+  step listen | Your *song* | REC off. Drums, bass and your lead. | press REC; wait 8500 | sound; absent REC; screen 0 0 30 30; callout REC OFF
 
 journey play-over-a-song | Play over a song
   goal Load a showcase song, play it, and jam over it on the second chip: shape it, add an effect, mute a voice and record.
@@ -185,13 +185,13 @@ journey play-over-a-song | Play over a song
   skills loading a song; PLAY; KEYS AUTO; K1; effects; GLO; REC
   related mute-and-solo; add-an-effect; rec-over-loop
   songs neon-highway
-  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD: SIDOU LOOP, built in, then the store's songs. SELECT to one, ALGORITHM loads it. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD: SELECT a song, ALGORITHM loads it. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
   step play | *PLAY*: chip A | E minor at 125 BPM, on the first SID. | press PLAY; wait 3000; press HOME; wait 400; press HOME; wait 2500 | sound; view live; screen 0 0 30 2; callout PLAY, HOME
-  step jam | *Jam* on chip B | The keys play the second SID on top. LIVE says KEYS:B. | sync; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | sound; screen 0 22 30 8; callout PLAY THE KEYS
-  step shape | *K1* on your sound | The knobs shape the keys' sound, not the song's. | sweep K1 -36 1500; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:4 | sound; value cutoff 0 1300; screen 0 15 30 7; callout TURN K1
-  step echo | An *echo* | SELECT to FX, ALGORITHM: DELAY on the mix. | turn SELECT 3; turn ALGORITHM 1; wait 300; play 125 E5:4 D5:4 B4:4 G4:4 | text DELAY; sound; screen 0 22 30 8; callout SELECT TO FX, ALGORITHM
-  step mute | *Mute* a voice | GLO and the first key: voice 1 of the song goes quiet. Again: back. | holdkey GLO F3; wait 2500; holdkey GLO F3; wait 1500 | sound; screen 0 26 30 4; callout HOLD GLO + KEY 1
-  step record | *REC* your jam | SEQ to TRACKER, REC, and play: your notes go into the song. | press SEQ; wait 700; press SEQ; wait 800; press REC; sync; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 C5:2 B4:2 A4:2 G4:2 F#4:4 E4:4; press REC; wait 3000 | view tracker; sound; screen 0 2 30 24; callout SEQ, REC, PLAY THE KEYS
+  step jam | *Jam* on chip B | The keys play the second SID on top: KEYS:B. | sync; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | sound; screen 0 22 30 8; callout PLAY THE KEYS
+  step shape | *K1* on your sound | The knobs shape your sound, not the song's. | sweep K1 -36 1500; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:4 | sound; value cutoff 0 1300; screen 0 15 30 7; callout TURN K1
+  step echo | An *echo* | SELECT to FX, ALGORITHM: DELAY. | turn SELECT 3; turn ALGORITHM 1; wait 300; play 125 E5:4 D5:4 B4:4 G4:4 | text DELAY; sound; screen 0 22 30 8; callout SELECT TO FX, ALGORITHM
+  step mute | *Mute* a voice | GLO + the first key mutes the song's voice 1. Again: back. | holdkey GLO F3; wait 2500; holdkey GLO F3; wait 1500 | sound; screen 0 26 30 4; callout HOLD GLO + KEY 1
+  step record | *REC* your jam | TRACKER, REC, play: your notes go into the song. | press SEQ; wait 700; press SEQ; wait 800; press REC; sync; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 C5:2 B4:2 A4:2 G4:2 F#4:4 E4:4; press REC; wait 3000 | view tracker; sound; screen 0 2 30 24; callout SEQ, REC, PLAY THE KEYS
 
 journey remix-a-song | Remix a showcase song
   goal Open a showcase song in the song views, change it, mute a voice, and save it under a new name.
@@ -199,14 +199,14 @@ journey remix-a-song | Remix a showcase song
   skills SONG LOAD; STEP; GLO; SAVE AS
   related play-over-a-song; save-and-load
   songs paper-lanterns
-  step load | Load *PAPER LANTERNS* | HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
-  step open | Open it in *STEP* | SEQ, then PLAY: its patterns light up as they play. | press SEQ; wait 900; press PLAY; wait 4000 | view step; sound; screen 0 2 30 13; callout SEQ, PLAY
-  step change | *Change* a pattern | Tap steps to add or take away notes, while it plays. | sync; taps G3 B3 D#4 G4 250; wait 3500 | change; sound; screen 0 2 30 13; callout TAP THE STEPS
-  step instrument | Another *instrument* | PRESETS gives the lane a new instrument; the steps you tap next play it. | turn PRESETS 1; wait 600; taps A3 C#4 250; wait 3000 | sound; screen 0 2 30 13; callout PRESETS, TAP
-  step mute | *Mute* a voice | GLO and the second key mutes voice 2. | holdkey GLO F#3; wait 3500 | sound; screen 0 0 30 3; callout HOLD GLO + KEY 2
-  step save-as | *SAVE AS* | Stop. HOME to the menu: SONG, SAVE AS, and the name is the song's. | press PLAY; wait 300; press HOME; wait 900; turn SELECT 2; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; text PAPER; screen 0 6 30 12; callout HOME, SONG > SAVE AS
-  step rename | A *new* name | SELECT to the end, ALGORITHM a 2: PAPER LANTERNS 2. | turn SELECT 15; wait 300; turn ALGORITHM 18; wait 1500 | text NTERNS 2; screen 0 6 30 12; callout SELECT + ALGORITHM
-  step write | *Saved* | SAVE writes the remix; the original stays as it was. | press SAVE; wait 2500 | text SAVED; callout PRESS SAVE
+  step load | Load *PAPER LANTERNS* | HOME, SONG, LOAD, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 5000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step open | Open it in *STEP* | SEQ, PLAY: its patterns light up as they play. | press SEQ; wait 900; press PLAY; wait 4000 | view step; sound; screen 0 2 30 13; callout SEQ, PLAY
+  step change | *Change* a pattern | Tap steps to add or take away notes. | sync; taps G3 B3 D#4 G4 250; wait 3500 | change; sound; screen 0 2 30 13; callout TAP THE STEPS
+  step instrument | Another *instrument* | PRESETS: a new instrument for the next steps. | turn PRESETS 1; wait 600; taps A3 C#4 250; wait 3000 | sound; screen 0 2 30 13; callout PRESETS, TAP
+  step mute | *Mute* a voice | GLO + the second key mutes voice 2. | holdkey GLO F#3; wait 3500 | sound; screen 0 0 30 3; callout HOLD GLO + KEY 2
+  step save-as | *SAVE AS* | Stop. SONG, SAVE AS: the name is the song's. | press PLAY; wait 300; press HOME; wait 900; turn SELECT 2; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; text PAPER; screen 0 6 30 12; callout HOME, SONG > SAVE AS
+  step rename | A *new* name | A 2 at the end: PAPER LANTERNS 2. | turn SELECT 15; wait 300; turn ALGORITHM 18; wait 1500 | text NTERNS 2; screen 0 6 30 12; callout SELECT + ALGORITHM
+  step write | *Saved* | SAVE writes the remix; the original stays. | press SAVE; wait 2500 | text SAVED; callout PRESS SAVE
 
 journey chip-spread | Two SIDs, left and right
   goal Put the two SID chips apart in stereo: a song on chip A to the left, your keys on chip B to the right.
@@ -214,10 +214,10 @@ journey chip-spread | Two SIDs, left and right
   skills loading a song; KEYS AUTO; SETTINGS; SPREAD
   related play-over-a-song; first-sound
   songs neon-highway
-  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 3000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
-  step play | *PLAY* and jam | The song plays chip A; the keys play chip B on top of it. Both are in the middle: SPREAD is OFF. | press PLAY; wait 2000; press HOME; wait 400; press HOME; wait 1200; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 | sound; view live; text KEYS:B; screen 0 22 30 8; callout PLAY, THE KEYS
-  step spread | *SPREAD* to 100% | HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 125 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
-  step half | Halfway: *50%* | Back by five steps: both chips are nearer the centre, at the same loudness. | turn ALGORITHM -5; wait 400; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 | text 50%; sound; screen 0 2 30 14; focus ALGORITHM; callout ALGORITHM -5
+  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 3000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step play | *PLAY* and jam | The song on chip A, your keys on chip B, both centred. | press PLAY; wait 2000; press HOME; wait 400; press HOME; wait 1200; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 | sound; view live; text KEYS:B; screen 0 22 30 8; callout PLAY, THE KEYS
+  step spread | *SPREAD* to 100% | SETTINGS, SPREAD: the song goes left, your keys right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 125 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
+  step half | Halfway: *50%* | Five steps back: both nearer the centre. | turn ALGORITHM -5; wait 400; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 | text 50%; sound; screen 0 2 30 14; focus ALGORITHM; callout ALGORITHM -5
 
 journey shape-in-lab | Shape a sound in LAB and keep it
   goal Open LAB from LIVE, shape one sound page by page, compare it with the original, vary it, keep it and find it again on PRESETS.
@@ -225,17 +225,17 @@ journey shape-in-lab | Shape a sound in LAB and keep it
   skills ENV opens LAB; K1-K4 cards; SELECT pages; SCL; EDIT A/B; EDIT + ARP vary; SAVE keeps; PRESETS
   related shape-a-sound; add-an-effect
   step dry | The sound *as it is* | SAW LEAD on LIVE: a plain saw. Listen first. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; callout PLAY THE KEYS
-  step open | *ENV* opens LAB | ENV on LIVE opens LAB at its envelope page: the curve is drawn to scale, the page is 2 of 10. | press ENV; wait 1000 | text ENVELOPE; text 2/10; focus ENV; callout PRESS ENV
-  step envelope | Turn the *cards* | K1 to K4 are attack, decay, sustain and release; the curve moves as they turn. | sweep K1 5 900; sweep K4 2 600; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; change; focus K1; callout TURN K1 TO K4
-  step osc | The *oscillator* | SELECT back one page: OSC, the waveform drawn at its pulse width. ALGORITHM changes the waveform, K1 the width. | turn SELECT -1; wait 700; turn ALGORITHM 1; wait 500; sweep K1 15 1200; play 120 A3:2 C4:2 E4:2 A4:4 | text OSC; text 1/10; sound; focus SELECT; callout TURN SELECT, ALGORITHM
-  step filter | The *filter* page | SELECT forward two pages: the filter's response, with its cutoff and its resonance peak. | turn SELECT 2; wait 700; sweep K1 -45 1500; sweep K2 8 800; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FILTER; darker; focus SELECT; callout TURN SELECT
-  step mod | *MOD*: the vibrato | SELECT past FILTER ENV to MOD: the vibrato and the PWM as waves over a second, and K2 deepens the vibrato. | turn SELECT 2; wait 700; sweep K2 30 1200; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text MOD; sound; focus SELECT; callout TURN SELECT
-  step fx | *FX*: a chain | SELECT past LFO to FX: the three effect slots as a chain. SCL moves to the next slot, ALGORITHM picks its effect. | turn SELECT 2; wait 700; press SCL; wait 400; turn ALGORITHM 1; wait 700; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FX; sound; focus ALGORITHM; callout SCL, ALGORITHM
-  step ab | *A/B* | Tap EDIT: the sound as you loaded it. Tap again: your edit. | press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4; press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4 | sound; focus EDIT; callout TAP EDIT: A / B
-  step vary | *Vary* it | EDIT + ARP varies this page a little, never to silence, never the same twice. | holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; wait 2600 | sound; focus ARP; callout HOLD EDIT + PRESS ARP
-  step keep | *SAVE* keeps it | One press: the next free USER slot, with a name. | press SAVE; wait 1600 | text KEPT AS U01; focus SAVE; callout PRESS SAVE
+  step open | *ENV* opens LAB | ENV opens LAB at its envelope, drawn to scale. | press ENV; wait 1000 | text ENVELOPE; text 2/10; focus ENV; callout PRESS ENV
+  step envelope | Turn the *cards* | K1 to K4: attack, decay, sustain, release. | sweep K1 5 900; sweep K4 2 600; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | sound; change; focus K1; callout TURN K1 TO K4
+  step osc | The *oscillator* | OSC: ALGORITHM picks the wave, K1 its width. | turn SELECT -1; wait 700; turn ALGORITHM 1; wait 500; sweep K1 15 1200; play 120 A3:2 C4:2 E4:2 A4:4 | text OSC; text 1/10; sound; focus SELECT; callout TURN SELECT, ALGORITHM
+  step filter | The *filter* page | FILTER: the response, its cutoff and its peak. | turn SELECT 2; wait 700; sweep K1 -45 1500; sweep K2 8 800; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FILTER; darker; focus SELECT; callout TURN SELECT
+  step mod | *MOD*: the vibrato | MOD: vibrato and PWM as waves; K2 deepens the vibrato. | turn SELECT 2; wait 700; sweep K2 30 1200; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text MOD; sound; focus SELECT; callout TURN SELECT
+  step fx | *FX*: a chain | FX: three slots. SCL picks one, ALGORITHM its effect. | turn SELECT 2; wait 700; press SCL; wait 400; turn ALGORITHM 1; wait 700; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text FX; sound; focus ALGORITHM; callout SCL, ALGORITHM
+  step ab | *A/B* | Tap EDIT: the sound as loaded. Again: your edit. | press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4; press EDIT; wait 500; play 120 A3:2 C4:2 E4:2 A4:4 | sound; focus EDIT; callout TAP EDIT: A / B
+  step vary | *Vary* it | EDIT + ARP varies this page a little. | holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; holdpress EDIT ARP; wait 200; play 120 A3:2 C4:2 E4:2 A4:4; wait 2600 | sound; focus ARP; callout HOLD EDIT + PRESS ARP
+  step keep | *SAVE* keeps it | SAVE keeps it in the next USER slot. | press SAVE; wait 1600 | text KEPT AS U01; focus SAVE; callout PRESS SAVE
   step live | Back on *LIVE* | HOME: LIVE plays the sound you kept. | press HOME; wait 1000; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text LAB 01; sound; focus HOME; callout PRESS HOME
-  step presets | Find it on *PRESETS* | USER sounds come after the built-in ones and DICE: PRESETS two back, two on, and LAB 01 is there. | turn PRESETS -2; wait 1000; play 120 A3:2 C4:2 E4:4; turn PRESETS 2; wait 1000; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text LAB 01; sound; focus PRESETS; callout PRESETS: TWO BACK, TWO ON
+  step presets | Find it on *PRESETS* | On PRESETS after the built-in ones: LAB 01. | turn PRESETS -2; wait 1000; play 120 A3:2 C4:2 E4:4; turn PRESETS 2; wait 1000; play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:4 | text LAB 01; sound; focus PRESETS; callout PRESETS: TWO BACK, TWO ON
 
 journey play-a-sid | Play a .sid tune
   goal Play a .sid tune from the store: pick it in SIDS, change its song, mute and solo its voices, pause and stop.
@@ -243,15 +243,15 @@ journey play-a-sid | Play a .sid tune
   skills SIDS; ALGORITHM plays and steps songs; GLO mutes and solos; EDIT + PLAY pauses; PLAY stops
   related mute-and-solo; shape-in-lab
   tunes chrome-comet; dojo
-  step menu | The menu's *SIDS* | HOME for the menu: SIDS plays the .sid files in the store. | press HOME; wait 500; select-item SIDS; wait 600 | text SIDS; screen 0 0 30 30; focus SELECT; callout HOME, TURN SELECT TO SIDS
-  step list | The *tunes* | SAVE opens the list: every .sid in the store. | press SAVE; wait 1500 | view sid_view_browser; text DOJO; focus SAVE; callout PRESS SAVE
-  step pick | *Pick* one | SELECT moves to DOJO, a GoatTracker tune by Cadaver. | turn SELECT 1; wait 900 | text DOJO; focus SELECT; callout TURN SELECT
-  step play | *Play* it | ALGORITHM clockwise plays it: NOW PLAYING, the song, the time, the three voices' levels. | turn ALGORITHM 1; wait 4500 | text PLAYING; text SONG 1/4; sound; focus ALGORITHM; callout TURN ALGORITHM
-  step next | Another *song* | DOJO holds four songs. ALGORITHM steps to the next. | turn ALGORITHM 1; wait 4500 | text SONG 2/4; sound; focus ALGORITHM; callout TURN ALGORITHM
-  step mute | *Mute* a voice | GLO and the second key: voice 2 goes quiet, MUT on the screen. The same keys again bring it back. | holdkey GLO F#3; wait 3500 | text MUT; sound; focus GLO; callout HOLD GLO + KEY 2
-  step solo | *Solo* a voice | GLO and the fourth key: only voice 1 plays, SOL says so. The same keys again let the others in. | holdkey GLO F#3; wait 300; holdkey GLO G#3; wait 3500 | text SOL; sound; focus GLO; callout HOLD GLO + KEY 4
-  step pause | *Pause* | EDIT + PLAY pauses the tune, and again carries on from where it was. | holdkey GLO G#3; wait 600; holdpress EDIT PLAY; wait 1800; holdpress EDIT PLAY; wait 3000 | text PLAYING; sound; focus EDIT; callout HOLD EDIT + PRESS PLAY
-  step stop | *Stop* | PLAY stops it. HOME goes back to the list. | press PLAY; wait 1500 | text STOPPED; silent; focus PLAY; callout PRESS PLAY
+  step menu | The menu's *SIDS* | HOME, SIDS: the .sid files in the store. | press HOME; wait 500; select-item SIDS; wait 600 | text SIDS; screen 0 0 30 30; focus SELECT; callout HOME, TURN SELECT TO SIDS
+  step list | The *tunes* | SAVE opens the list. | press SAVE; wait 1500 | view sid_view_browser; text DOJO; focus SAVE; callout PRESS SAVE
+  step pick | *Pick* one | SELECT to DOJO, by Cadaver. | turn SELECT 1; wait 900 | text DOJO; focus SELECT; callout TURN SELECT
+  step play | *Play* it | ALGORITHM plays it: song, time, the voices' levels. | turn ALGORITHM 1; wait 4500 | text PLAYING; text SONG 1/4; sound; focus ALGORITHM; callout TURN ALGORITHM
+  step next | Another *song* | DOJO has four songs. ALGORITHM steps on. | turn ALGORITHM 1; wait 4500 | text SONG 2/4; sound; focus ALGORITHM; callout TURN ALGORITHM
+  step mute | *Mute* a voice | GLO + the second key mutes voice 2: MUT. | holdkey GLO F#3; wait 3500 | text MUT; sound; focus GLO; callout HOLD GLO + KEY 2
+  step solo | *Solo* a voice | GLO + the fourth key solos voice 1: SOL. | holdkey GLO F#3; wait 300; holdkey GLO G#3; wait 3500 | text SOL; sound; focus GLO; callout HOLD GLO + KEY 4
+  step pause | *Pause* | EDIT + PLAY pauses, and again carries on. | holdkey GLO G#3; wait 600; holdpress EDIT PLAY; wait 1800; holdpress EDIT PLAY; wait 3000 | text PLAYING; sound; focus EDIT; callout HOLD EDIT + PRESS PLAY
+  step stop | *Stop* | PLAY stops it. | press PLAY; wait 1500 | text STOPPED; silent; focus PLAY; callout PRESS PLAY
 
 journey lift-a-sound | Lift a sound from a .sid
   goal Take a voice's sound out of a .sid tune into LAB: REC, the voice's key, then play it, shape it and keep it as a USER sound.
@@ -259,13 +259,13 @@ journey lift-a-sound | Lift a sound from a .sid
   skills SIDS; REC asks which voice to lift; a note key answers; the lifted sound in LAB; SAVE keeps a USER sound; HOME back to the tune
   related play-a-sid; shape-in-lab; send-to-song; whats-new
   tunes consultant
-  step play | A *.sid* tune | HOME, SIDS, SAVE for the list: ALGORITHM plays THE CONSULTANT. | press HOME; wait 500; select-item SIDS; press SAVE; wait 1200; turn ALGORITHM 1; wait 2600 | view sid_view_playing; text PLAYING; sound; focus ALGORITHM; callout MENU > SIDS, ALGORITHM
-  step ask | *REC* asks | REC: which voice? Keys 1 to 3 light up as the answers, and the bars show which voice plays what. | press REC; wait 1500 | big LIFT WHICH; big VOICE? 1 2 3; sound; focus REC; callout PRESS REC
-  step pick | A *key* answers | Key 2: voice 2's last note, the bass, from the last second of the tune, opens in LAB as LIFTED V2. | note F#3 300; wait 1500 | view lab; text LIFTED V2; sound; focus F#3; callout PRESS KEY 2
-  step keys | *Play* it | The keys play the lifted sound over the tune. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 A3:4; wait 600 | view lab; sound; focus A3; callout PLAY THE KEYS
-  step shape | *Shape* it | SELECT to ENVELOPE, and K4 lengthens its release, as for any LAB sound. | turn SELECT 1; wait 500; sweep K4 3 600; play 120 A3:2 C4:2 E4:4; wait 600 | text ENVELOPE; sound; focus K4; callout SELECT, TURN K4
-  step keep | *SAVE* keeps it | SAVE: a USER sound under its name, for PRESETS to find later. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
-  step back | *HOME*: back to the tune | HOME: NOW PLAYING, the tune still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
+  step play | A *.sid* tune | HOME, SIDS: ALGORITHM plays THE CONSULTANT. | press HOME; wait 500; select-item SIDS; press SAVE; wait 1200; turn ALGORITHM 1; wait 2600 | view sid_view_playing; text PLAYING; sound; focus ALGORITHM; callout MENU > SIDS, ALGORITHM
+  step ask | *REC* asks | REC asks which voice; keys 1 to 3 answer. | press REC; wait 1500 | big LIFT WHICH; big VOICE? 1 2 3; sound; focus REC; callout PRESS REC
+  step pick | A *key* answers | Key 2: the bass's last note opens in LAB. | note F#3 300; wait 1500 | view lab; text LIFTED V2; sound; focus F#3; callout PRESS KEY 2
+  step keys | *Play* it | The keys play it over the tune. | play 120 A3:2 C4:2 E4:2 A4:2 G4:2 E4:2 C4:2 A3:4; wait 600 | view lab; sound; focus A3; callout PLAY THE KEYS
+  step shape | *Shape* it | K4 on ENVELOPE lengthens its release. | turn SELECT 1; wait 500; sweep K4 3 600; play 120 A3:2 C4:2 E4:4; wait 600 | text ENVELOPE; sound; focus K4; callout SELECT, TURN K4
+  step keep | *SAVE* keeps it | SAVE keeps it as a USER sound. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
+  step back | *HOME*: back to the tune | HOME: back to the tune, still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
 journey whats-new | What's new in SIDOU 1.20
   goal See SIDOU 1.20's highlights: a Bluetooth keyboard picked on DEVICES, SCENE opening on DEMO, SCOPE's traces, RED MOON RITE's art from the store fighting to the keys, LAB's glowing card and the mod wheel's vibrato.
@@ -273,15 +273,16 @@ journey whats-new | What's new in SIDOU 1.20
   skills SETTINGS; BLUETOOTH KEYBOARD; DEVICES; SCENE; DEMO; SCOPE; RED MOON RITE; art packs; LAB; the MIDI page's WHEEL
   related sidou-intro; shape-in-lab; chord-arpeggio
   art red-moon-rite
-  step keyboard | A *Bluetooth keyboard* | HOME, SETTINGS, BLUETOOTH: ALGORITHM turns it past ON to KEYBOARD, and SAVE opens DEVICES, the Bluetooth MIDI keyboards nearby with their signal bars. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout SETTINGS > BLUETOOTH KEYBOARD, SAVE
-  step pair | Paired, kept, *back by itself* | SAVE on a keyboard connects it: SIDOU pairs when it asks (a passkey shows large to type), keeps the bond, and connects again after a power cycle or when it comes back in range. | wait 5600 | view devices; focus card; callout DEVICES > SAVE > KEYBOARD MICROKEY AIR
-  step demo | SCENE opens on *DEMO* | HOME, SCENE: DEMO first, the SIDOU logo between starfields that speed up and glow with what is played. | press HOME; wait 500; press HOME; wait 500; select-item SCENE; turn ALGORITHM 1; wait 2500; play 150 C4:2 E4:2 G4:2 C5:2 G4:2 E4:2 C4:4 | view scene; sound; focus screen; callout SCENE > DEMO
-  step scope | *SCOPE*: the voices traced | SELECT to SCOPE: the three voices of the chip the keys play, as glowing oscilloscope traces. A held note stands still. | turn SELECT 3; wait 1500; down F3; wait 600; down C4; wait 600; down A4; wait 2400; up F3; up C4; up A4; wait 400 | view scene; sound; focus SELECT; callout SELECT TO SCOPE, HOLD A CHORD
-  step duel | RED MOON RITE *fights to the keys* | SELECT to RED MOON RITE, its art a file in the store. Any notes play it: a note attacks, high notes chop overhead, low notes sweep low, a chord flares the torches, a fast run is a flurry. | turn SELECT 1; wait 1500; play 150 A4:2 E5:2 F3:2 C4:2 E5:1 D5:1 C5:1 B4:1 A4:1 G4:1 F4:1 E4:1 A4+C5+E5:4 F3:4 E5:2 G3:2 G5:2 F3:4 | view scene; sound; focus screen; callout PLAY THE KEYS > RED MOON RITE
-  step art | Your own *art* | The site's art pack builder (art.html) puts your PNGs on the fighters, swords, skies and arena, previews the duel with the firmware's own code and sends the pack to the FM-1. | wait 5000 | view scene; focus card; callout YOUR PNGS > ART PACK > RED MOON RITE
-  step glow | LAB's card *glows* | HOME twice, ENV: LAB. The card a knob turns glows in its colour for a second. | press HOME; wait 500; press HOME; wait 900; press ENV; wait 1200; sweep K1 -8 800; play 150 A3:2 C4:2 E4:4 | view lab; sound; focus K1; callout PRESS ENV, TURN K1
-  step wheel | The mod wheel's *vibrato* | The mod wheel adds vibrato on every sound. The MIDI page's WHEEL row picks what it moves: VIBRATO, PULSE or CUTOFF. | press HOME; wait 600; press HOME; wait 600; select-item MIDI; turn ALGORITHM 1; wait 800; turn SELECT 8; wait 500; down A4; wait 500; cc 1 40; wait 300; cc 1 90; wait 1200; cc 1 127; wait 800; up A4; cc 1 0; wait 400 | view midi; text WHEEL; text VIBRATO; sound; focus screen; callout MENU > MIDI > WHEEL VIBRATO
-  step get-it | Get *SIDOU 1.20* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 3200 | view midi; focus card
+  step keyboard | A *Bluetooth keyboard* | SETTINGS, BLUETOOTH, KEYBOARD: DEVICES lists keyboards nearby. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout SETTINGS > BLUETOOTH
+  step pair | Paired, kept, *back by itself* | SAVE connects one; SIDOU keeps it and reconnects by itself. | wait 5600 | view devices; focus card; callout DEVICES > SAVE > KEYBOARD MICROKEY AIR
+  step demo | SCENE opens on *DEMO* | SCENE opens on DEMO: the logo glows with what you play. | press HOME; wait 500; press HOME; wait 500; select-item SCENE; turn ALGORITHM 1; wait 1500; play 150 C4+E4+G4:4 A3+C4+E4:4 F3+A3+C4:4 G3+B3+D4:4 C4:2 E4:2 G4:2 C5:2 | view scene; sound; focus screen; callout SCENE > DEMO
+  step fire | *FIRE* | FIRE: a flame for each voice. | turn SELECT 1; wait 600; play 150 A3+C4+E4:4 F3+A3+C4:4 C4:2 E4:2 G4:2 C5:2 E5:4 C5:4 | view scene; sound; focus screen; callout SELECT > FIRE
+  step plasma | *PLASMA* | PLASMA swells with the music. | turn SELECT 1; wait 600; play 150 D4+F4+A4:4 C4+E4+G4:4 A3+C4+E4:4 G3+B3+D4:4 E5:2 D5:2 C5:2 A4:2 | view scene; sound; focus screen; callout SELECT > PLASMA
+  step duel | RED MOON RITE *fights to the keys* | RED MOON RITE: your notes are the fighter's moves. | turn SELECT 2; wait 1500; play 150 A4:2 E5:2 F3:2 C4:2 E5:1 D5:1 C5:1 B4:1 A4:1 G4:1 F4:1 E4:1 A4+C5+E5:4 F3:4 E5:2 G3:2 G5:2 F3:4 | view scene; sound; focus screen; callout PLAY: RED MOON RITE
+  step art | Your own *art* | The site's art pack builder puts your own PNGs in the duel. | wait 5000 | view scene; focus card; callout YOUR PNGS > ART PACK > RED MOON RITE
+  step glow | LAB's card *glows* | In LAB, the card a knob turns glows. | press HOME; wait 500; press HOME; wait 900; press ENV; wait 1200; sweep K1 -8 800; play 150 A3:2 C4:2 E4:4 | view lab; sound; focus K1; callout PRESS ENV, TURN K1
+  step wheel | The mod wheel's *vibrato* | The mod wheel adds vibrato; MIDI's WHEEL row picks what it moves. | press HOME; wait 600; press HOME; wait 600; select-item MIDI; turn ALGORITHM 1; wait 800; turn SELECT 8; wait 500; down A4; wait 500; cc 1 40; wait 300; cc 1 90; wait 1200; cc 1 127; wait 800; up A4; cc 1 0; wait 400 | view midi; text WHEEL; text VIBRATO; sound; focus screen; callout MIDI > WHEEL
+  step get-it | Get *SIDOU 1.20* | dsablic.github.io/sidou and github.com/dsablic/sidou/releases | wait 3200 | view midi; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
@@ -290,17 +291,17 @@ journey sidou-intro | SIDOU in a minute | poweron
   related first-sound; mute-and-solo; play-over-a-song
   songs chrome-comet
   art red-moon-rite
-  step boot | *SIDOU* for the FM-1 | SIDOU: GPL firmware that makes the M-VAVE FM-1 a C64 SID music machine. | hold HOME 2500; wait 3500 | change; focus screen; callout LOAD"SIDOU",8,1
-  step load | Songs are *GoatTracker 2* files | SONG, LOAD: the store holds GoatTracker 2 .sng files. | press HOME; wait 600; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
-  step tracker | Write C64 songs in a *tracker* | SEQ twice: the TRACKER, GoatTracker's layout. PLAY, then REC: what you play goes into the pattern. | press SEQ; wait 600; press SEQ; wait 600; press PLAY; wait 1800; press REC; play 150 D5:2 C5:2 A4:4 G4:2 A4:2 F4:4; press REC; wait 800 | view tracker; sound; screen 0 2 30 24; focus REC; callout SEQ, PLAY, REC
-  step goattracker | The same *.sng*, both ways | It opens in GoatTracker 2.77 and comes back; the player matches GoatTracker's, register for register. | wait 5500 | sound; focus card; callout SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2
-  step step-locks | STEP, with *locks* | SEQ round the pages to STEP. Hold a step and turn K1: a cutoff LOCK on that step alone. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 1300; down F3; turn K1 12; wait 1000; up F3; wait 1500 | view step; sound; screen 0 15 30 15; focus K1; callout HOLD A STEP + TURN K1
-  step two-sids | A song on one SID, you on the *other* | The song plays chip A, a 6581. The keys play chip B: ALGORITHM makes it an 8580. | press HOME; wait 500; press HOME; wait 500; press HOME; wait 900; turn ALGORITHM 1; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view live; text KEYS:B; sound; screen 0 22 30 8; focus ALGORITHM; callout ALGORITHM, THEN THE KEYS
-  step spread | Two SIDs, *left* and right | SETTINGS, SPREAD to 100%: the song stays on chip A, on the left, your keys on chip B, on the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view settings; text SPREAD; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
-  step character | Dial the chip like an *amp* | CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs. | press HOME; wait 600; select-item CHIP; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
-  step arp | *Chords* as C64 arpeggios | ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
-  step scene | A *scene* that plays along | RED MOON RITE duels to the song's drums and bass. | press HOME; wait 500; turn SELECT 2; turn ALGORITHM 1; wait 2800; turn SELECT 4; wait 3500 | view scene; sound; focus screen; callout SCENE > RED MOON RITE
-  step next | And *.sid* files, and LAB | SIDS plays .sid tunes from the store; LAB shapes one sound and keeps it. Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases | wait 5000 | sound; focus card
+  step boot | *SIDOU* for the FM-1 | SIDOU makes the M-VAVE FM-1 a C64 SID music machine. | hold HOME 2500; wait 3500 | change; focus screen; callout LOAD"SIDOU",8,1
+  step load | Songs are *GoatTracker 2* files | Songs are GoatTracker 2 .sng files. | press HOME; wait 600; press HOME; wait 500; select-item SONG; turn ALGORITHM 1; turn ALGORITHM 1; wait 900; turn SELECT 1; wait 300; turn ALGORITHM 1; wait 1500 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step tracker | Write C64 songs in a *tracker* | The TRACKER: PLAY, REC, and what you play goes in. | press SEQ; wait 600; press SEQ; wait 600; press PLAY; wait 1800; press REC; play 150 D5:2 C5:2 A4:4 G4:2 A4:2 F4:4; press REC; wait 800 | view tracker; sound; screen 0 2 30 24; focus REC; callout SEQ, PLAY, REC
+  step goattracker | The same *.sng*, both ways | The same file opens in GoatTracker 2.77 and comes back. | wait 5500 | sound; focus card; callout SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2
+  step step-locks | STEP, with *locks* | STEP: hold a step, turn K1, a lock on that step alone. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 1300; down F3; turn K1 12; wait 1000; up F3; wait 1500 | view step; sound; screen 0 15 30 15; focus K1; callout HOLD A STEP + TURN K1
+  step two-sids | A song on one SID, you on the *other* | The song on chip A, a 6581; your keys on chip B, an 8580. | press HOME; wait 500; press HOME; wait 500; press HOME; wait 900; turn ALGORITHM 1; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view live; text KEYS:B; sound; screen 0 22 30 8; focus ALGORITHM; callout ALGORITHM, THEN THE KEYS
+  step spread | Two SIDs, *left* and right | SPREAD: the song on the left, your keys on the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view settings; text SPREAD; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
+  step character | Dial the chip like an *amp* | CHIP: profiles and AGE, DAC, THUMP and BLEED. | press HOME; wait 600; select-item CHIP; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
+  step arp | *Chords* as C64 arpeggios | ARP: a held chord as one fast C64 arpeggio. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
+  step scene | A *scene* that plays along | RED MOON RITE duels to the song. | press HOME; wait 500; turn SELECT 2; turn ALGORITHM 1; wait 2800; turn SELECT 4; wait 3500 | view scene; sound; focus screen; callout SCENE > RED MOON RITE
+  step next | And *.sid* files, and LAB | .sid tunes, LAB and more: dsablic.github.io/sidou | wait 5000 | sound; focus card
 
 journey first-run | A fresh install has a song to play
   goal Find something to play on a fresh install, whose store is empty: LOAD lists SIDOU LOOP, built in.
@@ -328,10 +329,10 @@ journey step-generative | Generative STEP: chance, DICE and MUTATE
   skills STEP; GLO mutes; a step's chance; DICE; MUTATE; a held step's note
   related track-lead; step-a-beat; mute-and-solo
   after track-lead
-  step open-step | The lead in *STEP* | SEQ round the song pages to STEP: lane V1, the lead you recorded. | press SEQ; wait 400; press SEQ; wait 400; press SEQ; wait 400; press SEQ; wait 1500 | view step; sound; screen 0 2 30 13; focus SEQ; callout SEQ TO STEP
-  step mute | Just the *lead* | GLO + key 2 and GLO + key 3 mute the bass and the drums, so the lead is heard alone. | holdkey GLO F#3; wait 400; holdkey GLO G3; wait 2500 | quieter; sound; screen 0 0 30 3; focus GLO; callout HOLD GLO + KEYS 2, 3
-  step chance | A *chance* to play | Hold step 1: PRESETS moves its note to an A, the song's key, and ALGORITHM sets its chance, 50%: it plays one pass in two. | sync; down F3; turn PRESETS -7; turn ALGORITHM -10; wait 900; up F3; wait 3000 | sound; screen 0 2 30 13; focus ALGORITHM; callout HOLD 1 + PRESETS, ALGORITHM
-  step dice | *DICE* | EDIT + SCL: a new pattern for the lane, the minor pentatonic on its A, on the eighths. Each press is another. | holdpress EDIT SCL; wait 100 | text NEW PATTERN; sound; screen 0 2 30 13; focus SCL; callout HOLD EDIT + SCL
-  step new-lead | A new *lead* | The pattern is written one row at a time, as plain GoatTracker notes, and plays at once. | wait 5000 | sound; screen 0 2 30 13; focus screen; callout THE NEW PATTERN
-  step mutate | *MUTATE* | EDIT + ARP: two small changes each time, a note nudged, taken away or added. | holdpress EDIT ARP; wait 2500; holdpress EDIT ARP; wait 100 | text MUTATED; sound; screen 0 2 30 13; focus ARP; callout HOLD EDIT + ARP
-  step all-in | Everyone *back* | GLO + 2 and GLO + 3 again: the drums and the bass under the new lead. | holdkey GLO F#3; wait 400; holdkey GLO G3; wait 6000 | louder; sound; screen 0 0 30 30; focus GLO; callout HOLD GLO + KEYS 2, 3
+  step open-step | The lead in *STEP* | SEQ to STEP: lane V1, the lead you recorded. | press SEQ; wait 400; press SEQ; wait 400; press SEQ; wait 400; press SEQ; wait 1500 | view step; sound; screen 0 2 30 13; focus SEQ; callout SEQ TO STEP
+  step mute | Just the *lead* | GLO + keys 2 and 3: the lead alone. | holdkey GLO F#3; wait 400; holdkey GLO G3; wait 2500 | quieter; sound; screen 0 0 30 3; focus GLO; callout HOLD GLO + KEYS 2, 3
+  step chance | A *chance* to play | Hold step 1: PRESETS sets its note, ALGORITHM a 50% chance. | sync; down F3; turn PRESETS -7; turn ALGORITHM -10; wait 900; up F3; wait 3000 | sound; screen 0 2 30 13; focus ALGORITHM; callout HOLD 1 + PRESETS, ALGORITHM
+  step dice | *DICE* | EDIT + SCL: a new pentatonic pattern each press. | holdpress EDIT SCL; wait 100 | text NEW PATTERN; sound; screen 0 2 30 13; focus SCL; callout HOLD EDIT + SCL
+  step new-lead | A new *lead* | The new pattern is plain GoatTracker notes. | wait 5000 | sound; screen 0 2 30 13; focus screen; callout THE NEW PATTERN
+  step mutate | *MUTATE* | EDIT + ARP: two small changes each time. | holdpress EDIT ARP; wait 2500; holdpress EDIT ARP; wait 100 | text MUTATED; sound; screen 0 2 30 13; focus ARP; callout HOLD EDIT + ARP
+  step all-in | Everyone *back* | GLO + 2 and 3 again: everyone back in. | holdkey GLO F#3; wait 400; holdkey GLO G3; wait 6000 | louder; sound; screen 0 0 30 30; focus GLO; callout HOLD GLO + KEYS 2, 3

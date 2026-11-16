@@ -21,7 +21,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME, SONG, LOAD, SELECT past the built-in SIDOU LOOP, and ALGORITHM on the song.",
+      "caption": "HOME, SONG, LOAD, and ALGORITHM on the song.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 5.0 s",
       "expect": [
         {
@@ -110,7 +110,7 @@
       "title": "Load *PAPER LANTERNS*"
     },
     {
-      "caption": "SEQ, then PLAY: its patterns light up as they play.",
+      "caption": "SEQ, PLAY: its patterns light up as they play.",
       "control": "press SEQ, then wait 0.9 s, then press PLAY, then wait 4.0 s",
       "expect": [
         {
@@ -163,7 +163,7 @@
       "title": "Open it in *STEP*"
     },
     {
-      "caption": "Tap steps to add or take away notes, while it plays.",
+      "caption": "Tap steps to add or take away notes.",
       "control": "wait for the song's next pattern, then tap G3, B3, D#4, G4, then wait 3.5 s",
       "expect": [
         {
@@ -216,7 +216,7 @@
       "title": "*Change* a pattern"
     },
     {
-      "caption": "PRESETS gives the lane a new instrument; the steps you tap next play it.",
+      "caption": "PRESETS: a new instrument for the next steps.",
       "control": "turn PRESETS clockwise by 1 detent, then wait 0.6 s, then tap A3, C#4, then wait 3.0 s",
       "expect": [
         {
@@ -270,7 +270,7 @@
       "title": "Another *instrument*"
     },
     {
-      "caption": "GLO and the second key mutes voice 2.",
+      "caption": "GLO + the second key mutes voice 2.",
       "control": "hold GLO and press note key F#3, then wait 3.5 s",
       "expect": [
         {
@@ -312,7 +312,7 @@
       "title": "*Mute* a voice"
     },
     {
-      "caption": "Stop. HOME to the menu: SONG, SAVE AS, and the name is the song's.",
+      "caption": "Stop. SONG, SAVE AS: the name is the song's.",
       "control": "press PLAY, then wait 0.3 s, then press HOME, then wait 0.9 s, then turn SELECT clockwise by 2 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
@@ -383,7 +383,7 @@
       "title": "*SAVE AS*"
     },
     {
-      "caption": "SELECT to the end, ALGORITHM a 2: PAPER LANTERNS 2.",
+      "caption": "A 2 at the end: PAPER LANTERNS 2.",
       "control": "turn SELECT clockwise by 15 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 18 detents, then wait 1.5 s",
       "expect": [
         {
@@ -434,7 +434,7 @@
       "title": "A *new* name"
     },
     {
-      "caption": "SAVE writes the remix; the original stays as it was.",
+      "caption": "SAVE writes the remix; the original stays.",
       "control": "press SAVE, then wait 2.5 s",
       "expect": [
         {

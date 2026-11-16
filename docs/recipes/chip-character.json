@@ -19,7 +19,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME for the menu: CHIP is the first line, ALGORITHM opens it.",
+      "caption": "HOME, CHIP, and ALGORITHM opens it.",
       "control": "press HOME, then wait 0.5 s, then turn ALGORITHM clockwise by 1 detent, then wait 3.2 s",
       "expect": [
         {
@@ -69,7 +69,7 @@
       "title": "Open *CHIP*"
     },
     {
-      "caption": "All four at 0: the 6581 as reSIDfp plays it. Listen first.",
+      "caption": "All four at 0: the 6581 as reSIDfp plays it.",
       "control": "play 15 notes at 120 BPM",
       "expect": [
         {
@@ -198,7 +198,7 @@
       "title": "A *clean* chip"
     },
     {
-      "caption": "K1 ages it: the filter drifts darker and the 6581 grows rougher.",
+      "caption": "K1 ages it: darker filter, rougher chip.",
       "control": "turn K1 slowly clockwise by 64 detents over 1.5 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -291,7 +291,7 @@
       "title": "*AGE*: an older chip"
     },
     {
-      "caption": "K2 wears the voice DACs: grit on saws, uneven steps as notes fade.",
+      "caption": "K2 wears the DACs: grit on saws, uneven fades.",
       "control": "turn K2 slowly clockwise by 90 detents over 1.5 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -384,7 +384,7 @@
       "title": "*DAC*: worn converters"
     },
     {
-      "caption": "K3 adds the 6581's thump at each note's start.",
+      "caption": "K3 adds the 6581's thump at each note.",
       "control": "turn K3 slowly clockwise by 100 detents over 1.5 s, then play 8 notes at 120 BPM",
       "expect": [
         {
@@ -507,7 +507,7 @@
       "title": "*THUMP* on every note"
     },
     {
-      "caption": "K4 lets the voices leak past the filter: bright, dry, a little dirty.",
+      "caption": "K4 leaks the voices past the filter.",
       "control": "turn K4 slowly clockwise by 90 detents over 1.5 s, then play 7 notes at 120 BPM",
       "expect": [
         {

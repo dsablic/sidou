@@ -28,7 +28,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME, SETTINGS, BLUETOOTH: ALGORITHM turns it past ON to KEYBOARD, and SAVE opens DEVICES, the Bluetooth MIDI keyboards nearby with their signal bars.",
+      "caption": "SETTINGS, BLUETOOTH, KEYBOARD: DEVICES lists keyboards nearby.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until BLUETOOTH is selected, then turn ALGORITHM clockwise by 2 detents, then wait 1.5 s, then press SAVE, then wait 2.0 s",
       "expect": [
         {
@@ -41,7 +41,7 @@
         }
       ],
       "focus": {
-        "callout": "SETTINGS > BLUETOOTH KEYBOARD, SAVE",
+        "callout": "SETTINGS > BLUETOOTH",
         "control": "SAVE"
       },
       "harness": {
@@ -101,7 +101,7 @@
       "title": "A *Bluetooth keyboard*"
     },
     {
-      "caption": "SAVE on a keyboard connects it: SIDOU pairs when it asks (a passkey shows large to type), keeps the bond, and connects again after a power cycle or when it comes back in range.",
+      "caption": "SAVE connects one; SIDOU keeps it and reconnects by itself.",
       "control": "wait 5.6 s",
       "expect": [
         {
@@ -133,8 +133,8 @@
       "title": "Paired, kept, *back by itself*"
     },
     {
-      "caption": "HOME, SCENE: DEMO first, the SIDOU logo between starfields that speed up and glow with what is played.",
-      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SCENE is selected, then turn ALGORITHM clockwise by 1 detent, then wait 2.5 s, then play 7 notes at 150 BPM",
+      "caption": "SCENE opens on DEMO: the logo glows with what you play.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then turn SELECT until SCENE is selected, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s, then play 8 notes at 150 BPM",
       "expect": [
         {
           "kind": "view",
@@ -186,12 +186,131 @@
           "op": "turn"
         },
         {
-          "ms": 2500,
+          "ms": 1500,
           "op": "wait"
         },
         {
           "bpm": 150,
           "events": [
+            {
+              "notes": [
+                "C4",
+                "E4",
+                "G4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "A3",
+                "C4",
+                "E4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "F3",
+                "A3",
+                "C4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G3",
+                "B3",
+                "D4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "SCENE opens on *DEMO*"
+    },
+    {
+      "caption": "FIRE: a flame for each voice.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.6 s, then play 8 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SELECT > FIRE",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "fire",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "A3",
+                "C4",
+                "E4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "F3",
+                "A3",
+                "C4"
+              ],
+              "sixteenths": 4
+            },
             {
               "notes": [
                 "C4"
@@ -218,19 +337,13 @@
             },
             {
               "notes": [
-                "G4"
+                "E5"
               ],
-              "sixteenths": 2
+              "sixteenths": 4
             },
             {
               "notes": [
-                "E4"
-              ],
-              "sixteenths": 2
-            },
-            {
-              "notes": [
-                "C4"
+                "C5"
               ],
               "sixteenths": 4
             }
@@ -239,11 +352,11 @@
         }
       ],
       "needs": [],
-      "title": "SCENE opens on *DEMO*"
+      "title": "*FIRE*"
     },
     {
-      "caption": "SELECT to SCOPE: the three voices of the chip the keys play, as glowing oscilloscope traces. A held note stands still.",
-      "control": "turn SELECT clockwise by 3 detents, then wait 1.5 s, then hold note key F3, then wait 0.6 s, then hold note key C4, then wait 0.6 s, then hold note key A4, then wait 2.4 s, then let go of note key F3, then let go of note key C4, then let go of note key A4, then wait 0.4 s",
+      "caption": "PLASMA swells with the music.",
+      "control": "turn SELECT clockwise by 1 detent, then wait 0.6 s, then play 8 notes at 150 BPM",
       "expect": [
         {
           "kind": "view",
@@ -255,8 +368,8 @@
         }
       ],
       "focus": {
-        "callout": "SELECT TO SCOPE, HOLD A CHORD",
-        "control": "SELECT"
+        "callout": "SELECT > PLASMA",
+        "control": "screen"
       },
       "harness": {
         "clip_ms": null,
@@ -267,64 +380,86 @@
         "remember": false,
         "task": null
       },
-      "id": "scope",
+      "id": "plasma",
       "inputs": [
         {
-          "detents": 3,
+          "detents": 1,
           "encoder": "SELECT",
           "op": "turn"
         },
         {
-          "ms": 1500,
-          "op": "wait"
-        },
-        {
-          "note": "F3",
-          "op": "down"
-        },
-        {
           "ms": 600,
           "op": "wait"
         },
         {
-          "note": "C4",
-          "op": "down"
-        },
-        {
-          "ms": 600,
-          "op": "wait"
-        },
-        {
-          "note": "A4",
-          "op": "down"
-        },
-        {
-          "ms": 2400,
-          "op": "wait"
-        },
-        {
-          "note": "F3",
-          "op": "up"
-        },
-        {
-          "note": "C4",
-          "op": "up"
-        },
-        {
-          "note": "A4",
-          "op": "up"
-        },
-        {
-          "ms": 400,
-          "op": "wait"
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "D4",
+                "F4",
+                "A4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "C4",
+                "E4",
+                "G4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "A3",
+                "C4",
+                "E4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G3",
+                "B3",
+                "D4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
         }
       ],
       "needs": [],
-      "title": "*SCOPE*: the voices traced"
+      "title": "*PLASMA*"
     },
     {
-      "caption": "SELECT to RED MOON RITE, its art a file in the store. Any notes play it: a note attacks, high notes chop overhead, low notes sweep low, a chord flares the torches, a fast run is a flurry.",
-      "control": "turn SELECT clockwise by 1 detent, then wait 1.5 s, then play 18 notes at 150 BPM",
+      "caption": "RED MOON RITE: your notes are the fighter's moves.",
+      "control": "turn SELECT clockwise by 2 detents, then wait 1.5 s, then play 18 notes at 150 BPM",
       "expect": [
         {
           "kind": "view",
@@ -336,7 +471,7 @@
         }
       ],
       "focus": {
-        "callout": "PLAY THE KEYS > RED MOON RITE",
+        "callout": "PLAY: RED MOON RITE",
         "control": "screen"
       },
       "harness": {
@@ -351,7 +486,7 @@
       "id": "duel",
       "inputs": [
         {
-          "detents": 1,
+          "detents": 2,
           "encoder": "SELECT",
           "op": "turn"
         },
@@ -480,7 +615,7 @@
       "title": "RED MOON RITE *fights to the keys*"
     },
     {
-      "caption": "The site's art pack builder (art.html) puts your PNGs on the fighters, swords, skies and arena, previews the duel with the firmware's own code and sends the pack to the FM-1.",
+      "caption": "The site's art pack builder puts your own PNGs in the duel.",
       "control": "wait 5.0 s",
       "expect": [
         {
@@ -512,7 +647,7 @@
       "title": "Your own *art*"
     },
     {
-      "caption": "HOME twice, ENV: LAB. The card a knob turns glows in its colour for a second.",
+      "caption": "In LAB, the card a knob turns glows.",
       "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press ENV, then wait 1.2 s, then turn K1 slowly counter-clockwise by 8 detents over 0.8 s, then play 3 notes at 150 BPM",
       "expect": [
         {
@@ -598,7 +733,7 @@
       "title": "LAB's card *glows*"
     },
     {
-      "caption": "The mod wheel adds vibrato on every sound. The MIDI page's WHEEL row picks what it moves: VIBRATO, PULSE or CUTOFF.",
+      "caption": "The mod wheel adds vibrato; MIDI's WHEEL row picks what it moves.",
       "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn SELECT until MIDI is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.8 s, then turn SELECT clockwise by 8 detents, then wait 0.5 s, then hold note key A4, then wait 0.5 s, then send MIDI, then wait 0.3 s, then send MIDI, then wait 1.2 s, then send MIDI, then wait 0.8 s, then let go of note key A4, then send MIDI, then wait 0.4 s",
       "expect": [
         {
@@ -619,7 +754,7 @@
         }
       ],
       "focus": {
-        "callout": "MENU > MIDI > WHEEL VIBRATO",
+        "callout": "MIDI > WHEEL",
         "control": "screen"
       },
       "harness": {
@@ -736,7 +871,7 @@
       "title": "The mod wheel's *vibrato*"
     },
     {
-      "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
+      "caption": "dsablic.github.io/sidou and github.com/dsablic/sidou/releases",
       "control": "wait 3.2 s",
       "expect": [
         {

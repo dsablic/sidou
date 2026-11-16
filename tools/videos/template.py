@@ -27,13 +27,13 @@ WARM = [BROWN, RED, ORANGE, LRED, YELLOW, WHITE, YELLOW, LRED, ORANGE, RED, BROW
 LAYOUTS = {
     "wide": {"size": (1920, 1080), "border": 36, "logo": (72, 62, 1.0), "version": (1848, 76),
              "tag": (72, 142, 24), "headline": (72, 178, 1010, 72), "lcd": (1128, 250, 720),
-             "panel": (50, 336, 0.72), "callout": 32, "caption": (72, 930, 1000, 28)},
+             "panel": (50, 336, 0.72), "callout": 32, "caption": (72, 930, 1000, 28, 3)},
     "square": {"size": (1080, 1080), "border": 24, "logo": (40, 34, 0.6), "version": (1040, 40),
                "tag": (40, 80, 16), "headline": (40, 100, 1000, 36), "lcd": (300, 180, 480),
-               "panel": (297, 690, 0.38), "callout": 24, "caption": (40, 998, 1000, 17)},
+               "panel": (309, 690, 0.36), "callout": 24, "caption": (40, 990, 1000, 21, 2)},
     "vertical": {"size": (1080, 1920), "border": 36, "logo": (90, 90, 1.0), "version": (990, 104),
                  "tag": (90, 190, 24), "headline": (90, 228, 900, 64), "lcd": (180, 420, 720),
-                 "panel": (66, 1180, 0.74), "callout": 32, "caption": (90, 1770, 900, 30)},
+                 "panel": (66, 1180, 0.74), "callout": 32, "caption": (90, 1800, 900, 30, 2)},
 }
 L = LAYOUTS["wide"]
 
@@ -471,21 +471,21 @@ def callout_layout(text: str, rect: tuple | None) -> tuple:
     else:
         cx = (rect[0] + rect[2]) // 2
         gap = u(30)
-        x = min(max(b, cx - w // 2), W - b - w)
         lx, ly, ls = L["lcd"]
-        screen = (u(lx - 18), u(ly - 18), u(lx + ls + 18), u(ly + ls + 18))
+        screens = [(u(lx - 18), u(ly - 18), u(lx + ls + 18), u(ly + ls + 18)), panel_rect(panel.BEZEL)]
 
-        def clear(yy):
-            over = x < screen[2] and x + w > screen[0] and yy < screen[3] and yy + h > screen[1]
-            return yy >= b and yy + h <= H - b and not over
+        def clear(xx, yy):
+            hit = any(xx < r[2] and xx + w > r[0] and yy < r[3] and yy + h > r[1] for r in screens)
+            return b <= xx and xx + w <= W - b and yy >= b and yy + h <= H - b and not hit
 
-        if cx < screen[0] and x + w > screen[0] - u(16):
-            x = max(b, screen[0] - u(16) - w)
-        elif cx > screen[2] and x < screen[2] + u(16):
-            x = min(W - b - w, screen[2] + u(16))
-        y, up = rect[1] - gap - h, True
-        if not clear(y) and clear(rect[3] + gap):
-            y, up = rect[3] + gap, False
+        def xs():
+            centred = min(max(b, cx - w // 2), W - b - w)
+            yield centred
+            for r in screens:
+                yield r[2] + u(16) if cx > r[2] else r[0] - u(16) - w
+
+        spots = [(xx, yy, up) for yy, up in ((rect[1] - gap - h, True), (rect[3] + gap, False)) for xx in xs()]
+        x, y, up = next(((xx, yy, up) for xx, yy, up in spots if clear(xx, yy)), spots[0])
         tick = (cx, up)
     return (x, y, tick)
 
@@ -517,18 +517,18 @@ def callout(im: Image.Image, text: str, at: tuple, alpha: float = 1.0) -> None:
     im.paste(layer, (x, y - oy), layer)
 
 
-CAPTION_LINES = 3
 CAPTION_LEADING = 1.28
 
 
 def lower_third(im: Image.Image, text: str, alpha: float) -> None:
     if not text or alpha <= 0:
         return
-    x, y, w, size_px = L["caption"]
-    layer = Image.new("RGBA", (u(w + 24), u(size_px * CAPTION_LEADING * CAPTION_LINES + 8)), (0, 0, 0, 0))
+    x, y, w, size_px, lines = L["caption"]
+    layer = Image.new("RGBA", (u(w + 24), u(size_px * CAPTION_LEADING * lines + 8)), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    d.rectangle((0, 0, max(1, u(5)) - 1, layer.height - 1), fill=c(CYAN) + (255,))
-    draw_rich(d, (20, 0), text, size_px, (c(WHITE) + (255,), c(YELLOW) + (255,)), (500, 700), w - 20, CAPTION_LINES, CAPTION_LEADING)
+    end = draw_rich(d, (20, 0), text, size_px, (c(WHITE) + (255,), c(YELLOW) + (255,)), (500, 700), w - 20,
+                    lines, CAPTION_LEADING)
+    d.rectangle((0, 0, max(1, u(5)) - 1, end - u(size_px * (CAPTION_LEADING - 1))), fill=c(CYAN) + (255,))
     if alpha < 1:
         layer.putalpha(layer.getchannel("A").point(lambda v: int(v * alpha)))
     im.paste(layer, (u(x), u(y)), layer)
