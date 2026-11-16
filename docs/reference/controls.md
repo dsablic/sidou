@@ -1296,7 +1296,8 @@ range set by RPN 0 are kept. Every parameter has an NRPN, and all but the bend r
 expression targets a CC: the map, generated from the code, is [midi.md](midi.md). LAB's cards
 that are no parameter (FILTER ENV, LAYERS, TABLE) have an NRPN each in group 7, numbered by card
 (7/0..7/19, LFO's at 7/15..19), the card's position as the value, as if the card were turned there. The
-numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
+numbers M1a and M1c set are kept: 1 the mod wheel (the vibrato depth; the pulse width
+or the cutoff with the MIDI page's WHEEL), 7 volume, 71 resonance, 74 cutoff, and
 the effect slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116:
 algorithm, Amount, A, B, Mix). CC 27..30 are the [chord arpeggio](#chord-arpeggio)'s (on, rate,
 order, span). CC 120 and 123 release every note. The chip model (CC 25,
@@ -1647,10 +1648,10 @@ From the menu (HOME, MIDI): MIDI's mode and its options, a menu like the main on
 moves the cursor, ALGORITHM changes the value under it, HOME goes back). The modes are in
 [midi.md](midi.md), Modes; the clock in Clock and transport. A change of MODE or CHANNEL
 releases what MIDI was playing. The page's setup stays in RAM and is not included in saved
-settings; a song carries its own mode in its `MIDI` chunk.
+settings, except WHEEL, which is kept with them; a song carries its own mode in its `MIDI` chunk.
 
 MIDI follows STATUS in the large main menu. The options page shows six rows at 2×, like the
-main menu; its title bar says which of the ten items is selected, and it scrolls to CLOCK and
+main menu; its title bar says which of the eleven items is selected, and it scrolls to CLOCK and
 CLOCK OUT. It opens in a cut, the title bar and the help first and then its lines two a frame
 (four frames, 0.16 s: a frame of it stays within the page's `ui_poll` bound). Turning ALGORITHM
 names the selected item
@@ -1665,6 +1666,7 @@ and its value in the large value popup; closing it restores the page underneath.
 | CHORD 2, CHORD 3 | +0..+24 (+4, +7) | the stored chord: semitones above the note on voices 2 and 3 |
 | ARP RATE | CLOCK, 1..32 FR (3 FR) | frames an arpeggio step; CLOCK: every 16th of the MIDI clock |
 | ROWS/BEAT | 1..16 (4) | the song's rows a beat, for following and sending the MIDI clock |
+| WHEEL | VIBRATO (default), PULSE, CUTOFF | what the mod wheel (CC 1) moves: the vibrato depth (adds), the pulse width (sets it) or the cutoff (opens the filter); the same setting as NRPN 6/2, kept across power cycles with the other settings; a new target starts the wheel at 0 |
 | CLOCK | AUTO (default), FOLLOW, OFF | AUTO: the song follows a MIDI clock and transport while one arrives, and carries on at the last tempo when it stops; FOLLOW: the same, but the song stops with the clock; OFF: the song on its own frames, MIDI's start and stop ignored |
 | CLOCK OUT | OFF (default), ON | the song's clock out over USB, 24 a beat, with start, stop and continue, while no clock comes in |
 

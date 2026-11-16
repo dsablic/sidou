@@ -88,7 +88,7 @@ typedef struct {
     uint32_t (*devices)(void* ctx, int fresh, const char** names, uint8_t* bars);
     void (*pick)(void* ctx, uint32_t i);
 } views_radio;
-#define VIEWS_MIDI_ITEMS 10u
+#define VIEWS_MIDI_ITEMS 11u
 #define VIEWS_MIDI_LOOK 14u
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 #define VIEWS_LOOK (18u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)

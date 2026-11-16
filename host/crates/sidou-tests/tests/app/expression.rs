@@ -368,15 +368,51 @@ fn the_vibrato_moves_at_most_4_times_depth_times_rate_over_100_cents_a_tick() {
 }
 
 #[test]
-fn the_wheel_sets_the_pulse_width_by_default() {
+fn the_wheel_adds_vibrato_depth_by_default_and_leaves_the_pulse_width() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    assert_eq!(rig.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_PULSE_WIDTH);
+    assert_eq!(rig.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_VIBRATO);
     rig.note_on(C4);
-    rig.cc(LIVE_CC_MOD_WHEEL, 0);
-    assert_eq!(rig.live.pulse_width, 0);
-    assert_eq!(rig.voice_pw(0), 0, "at once, as M1a");
+    let pw = rig.voice_pw(0);
     rig.cc(LIVE_CC_MOD_WHEEL, 127);
-    assert_eq!(rig.voice_pw(0), 4095);
+    assert_eq!(rig.live.mod_wheel, 127);
+    rig.tick();
+    rig.tick();
+    assert_ne!(
+        rig.voice_freq(0),
+        freq_at(C4, 0),
+        "the wheel bends the pitch"
+    );
+    assert_eq!(rig.voice_pw(0), pw);
+}
+
+#[test]
+fn the_wheel_on_pulse_width_sweeps_an_audible_range_and_never_silences_a_pulse() {
+    let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_preset(PWM_BASS);
+    rig.set_param(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
+    rig.note_on(C4);
+    let thin = LIVE_PULSE_FIRST;
+    let mut previous = 0;
+    for wheel in 0..=127u8 {
+        rig.cc(LIVE_CC_MOD_WHEEL, wheel);
+        rig.tick();
+        let width = rig.voice_pw(0);
+        assert!(
+            (thin..=LIVE_PULSE_WIDTH_MAX + 1 - thin).contains(&u32::from(width)),
+            "wheel {wheel}: width {width}"
+        );
+        let set = u32::from(rig.live.pulse_width);
+        assert!(set >= previous, "wheel {wheel}: monotone");
+        previous = set;
+        assert_eq!(rig.reg(0x04) & 0x40, 0x40, "the pulse stays on");
+    }
+    rig.cc(LIVE_CC_MOD_WHEEL, 0);
+    assert_eq!(u32::from(rig.live.pulse_width), thin);
+    rig.cc(LIVE_CC_MOD_WHEEL, 127);
+    assert_eq!(
+        u32::from(rig.live.pulse_width),
+        LIVE_PULSE_WIDTH_MAX + 1 - thin
+    );
     rig.clear();
     for _ in 0..10 {
         rig.tick();
@@ -627,7 +663,7 @@ fn a_program_change_resets_the_expression_settings_and_keeps_the_controllers() {
     for (param, want) in [
         (LIVE_PARAM_BEND_RANGE, 2),
         (LIVE_PARAM_VELOCITY_TARGET, 0),
-        (LIVE_PARAM_MOD_TARGET, 0),
+        (LIVE_PARAM_MOD_TARGET, LIVE_MOD_VIBRATO),
         (LIVE_PARAM_PRESSURE_TARGET, 0),
         (LIVE_PARAM_VIBRATO_RATE, LIVE_VIBRATO_RATE_DEFAULT),
         (LIVE_PARAM_VIBRATO_DEPTH, 0),

@@ -239,6 +239,7 @@ fn the_midi_page_names_each_edited_value_in_the_popup() {
         ("CHORD 3", "+8"),
         ("ARP RATE", "4 FR"),
         ("ROWS/BEAT", "5"),
+        ("WHEEL", "PULSE"),
         ("CLOCK", "FOLLOW"),
         ("CLOCK OUT", "ON"),
     ]

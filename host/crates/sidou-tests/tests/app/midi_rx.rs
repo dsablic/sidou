@@ -137,9 +137,9 @@ fn ccs_follow_the_default_mapping() {
     assert_eq!(m.live().resonance, 0);
 
     m.trs(&[0xB0, 1, 127]);
-    assert_eq!(m.live().pulse_width, 4095);
+    assert_eq!(m.live().mod_wheel, 127);
     m.trs(&[0xB0, 1, 0]);
-    assert_eq!(m.live().pulse_width, 0);
+    assert_eq!(m.live().mod_wheel, 0);
 
     m.trs(&[0xB0, 7, 0]);
     assert_eq!(m.live().volume, 0);

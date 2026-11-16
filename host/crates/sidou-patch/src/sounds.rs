@@ -29,6 +29,7 @@ impl Shape {
         s[LAB_SOUND_AD as usize] = ad;
         s[LAB_SOUND_SR as usize] = sr;
         s[LAB_SOUND_BEND_RANGE as usize] = LIVE_BEND_RANGE_DEFAULT as u8;
+        s[LAB_SOUND_MOD as usize] = LIVE_MOD_VIBRATO as u8;
         s[(LAB_SOUND_ARP + LIVE_ARP_RATE) as usize] = LIVE_ARP_RATE_DEFAULT as u8;
         s[(LAB_SOUND_ARP + LIVE_ARP_SPAN) as usize] = 1;
         Shape(s).pulse(2048).filter(LP, 2047, 0, 0)

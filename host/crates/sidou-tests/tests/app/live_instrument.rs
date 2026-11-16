@@ -682,8 +682,6 @@ fn ccs_drive_the_parameters() {
     assert_eq!(rig.live.cutoff, 0);
     rig.cc(LIVE_CC_RESONANCE, 127);
     assert_eq!(rig.live.resonance, 15);
-    rig.cc(LIVE_CC_PULSE_WIDTH, 127);
-    assert_eq!(u32::from(rig.live.pulse_width), LIVE_PULSE_WIDTH_MAX);
     rig.cc(LIVE_CC_VOLUME, 0);
     assert_eq!((rig.live.master, rig.live.volume), (0, 0));
     rig.cc(LIVE_CC_VOLUME, 127);

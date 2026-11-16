@@ -5405,6 +5405,28 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   changed stays within 4.6k (walked parameters find their CC by halves, about 100 a packet).
 - emu-gate tests/usb.rs, sidou-tests tests/app/usb.rs, tests/app/midi.rs, tests/app/sysex.rs.
 
+### The mod wheel's default and the WHEEL row
+
+- The wheel (CC 1) moved the pulse width by default, which only a pulse sound shows; a keyboard's
+  wheel seemed to do nothing. The default target is the vibrato depth, General MIDI's meaning,
+  audible on every sound. The enum values stay (pulse 0, vibrato 1, cutoff 2: NRPN 6/2, the
+  patch JSON and the sound format use them); the MIDI page's WHEEL row lists VIBRATO, PULSE,
+  CUTOFF, so the default is first, and maps its position to the target.
+- The row is NRPN 6/2's parameter itself (`live_param_set`, so a new target starts the wheel at
+  0), not a second setting. The settings record already carried it (parameter 31); the row only
+  marks the settings dirty. Record version 10 has version 9's layout; an older record's stored
+  PULSE reads as VIBRATO, because the old default and a deliberate choice are the same byte. A
+  sound or patch that names a target keeps it; one that names none (`patch_json_defaults`, the
+  factory sixteen) gets VIBRATO. `DICE_HASH` changed for that byte alone.
+- The pulse width keeps NRPN 0/2 and has CC 1 only while the wheel's target is PULSE (the
+  map's rule, unchanged). Under PULSE the wheel no longer spans the SID's 0..4095: at 0 the
+  pulse width is 0, a pulse waveform is silent, and a wheel left at the bottom sounded like a
+  dead FM-1 (found on PWM BASS). It spans `LIVE_PULSE_FIRST` (128) to 4096 minus that (3968),
+  the edges the PWM LFO already keeps away from (`pw_effective`), thin but audible; the
+  wheel's centre is the square. Only the wheel's mapping changed: NRPN 0/2 and learned CCs
+  set the raw width. The pulse width's CC 1 on MIDI out still scales 0..4095, so a loop-back
+  lands inside the audible range, not on the same number.
+
 ### Tests: Live Link
 
 - Live Link's tests run on USB frames (`usb_frames`), so their panel presses are timed in
