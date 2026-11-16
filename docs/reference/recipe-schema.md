@@ -41,10 +41,13 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   `.sid` (`["dojo"]`), put into the store before power-on as a SysEx PUT of type 2 leaves them
   (the file's own bytes under its store name, DOJO), so SIDS lists them. The recipe plays one
   from the menu's SIDS like a player would.
+- `prerequisites.art` (optional): an art pack, a file name of `assets/art/` without `.sidart`
+  (`["red-moon-rite"]`), put into the store before power-on as the Library's RED MOON RITE art
+  button leaves it, so SCENE's RED MOON RITE draws the duel instead of the logo intro.
 - `prerequisites.after` (optional): another recipe's id. Its steps (and its own `after`
   chain's) run first, checked but not filmed, so this recipe starts where that one ends (a
-  bassline after the beat, a lead after the bassline) instead of repeating it. Its songs are
-  put into the store too. A chain cannot go round in a circle or start at power-on.
+  bassline after the beat, a lead after the bassline) instead of repeating it. Its songs, tunes
+  and art are put into the store too. A chain cannot go round in a circle or start at power-on.
 - `related` ids must exist (the lint checks).
 
 ### Step

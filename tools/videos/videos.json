@@ -12,7 +12,7 @@
   "whats-new": {
     "teaser": false,
     "bed": [],
-    "preview_step": "play"
+    "preview_step": "duel"
   },
   "rec-over-loop": {
     "bpm": 125

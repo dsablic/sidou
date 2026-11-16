@@ -82,3 +82,16 @@ fn the_text_song_the_videos_store_is_the_docs_example() {
     let sng = ergo::device::showcase_song("three-parts").unwrap();
     assert!(sng.starts_with(b"GTS5"));
 }
+
+#[test]
+fn a_recipes_art_pack_is_in_the_store_as_the_library_sends_it() {
+    let Some(build) = ergo::common::build_dir() else {
+        ergo::common::skip_message("the recipes' art pack");
+        return;
+    };
+    let d = ergo::device::Dev::power_on_with(&build, &[], &[], &["red-moon-rite".to_string()]);
+    let (kind, pack) = ergo::common::stored_file(&d.m.soc.flash.mem, sidou_sysex::art::NAME)
+        .expect("the art pack in the store");
+    assert_eq!(u32::from(kind), sidou_sys::STORE_FILE_ART);
+    assert_eq!(pack, ergo::common::shipped_art());
+}

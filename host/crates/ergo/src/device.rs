@@ -118,7 +118,7 @@ impl Dev {
         }
     }
 
-    pub fn power_on_with(build: &Path, songs: &[String], tunes: &[String]) -> Dev {
+    pub fn power_on_with(build: &Path, songs: &[String], tunes: &[String], art: &[String]) -> Dev {
         let mut d = Dev::power_on(build);
         for name in songs {
             let bytes = showcase_song(name).expect("a showcase song");
@@ -134,6 +134,15 @@ impl Dev {
                 &mut d.m.soc.flash.mem,
                 &title,
                 sidou_sys::STORE_FILE_SID as u8,
+                &bytes,
+            );
+        }
+        for name in art {
+            let bytes = art_pack(name).expect("an art pack");
+            put_file(
+                &mut d.m.soc.flash.mem,
+                sidou_sysex::art::NAME,
+                sidou_sys::STORE_FILE_ART as u8,
                 &bytes,
             );
         }
@@ -636,19 +645,28 @@ fn song_from_text(name: &str, path: &Path) -> Result<Vec<u8>, String> {
 }
 
 pub fn starter_tune(name: &str) -> Result<Vec<u8>, String> {
+    asset("tune", "starter", name, "sid")
+}
+
+pub fn art_pack(name: &str) -> Result<Vec<u8>, String> {
+    asset("art pack", "art", name, "sidart")
+}
+
+fn asset(what: &str, dir: &str, name: &str, ext: &str) -> Result<Vec<u8>, String> {
     if name.is_empty()
         || !name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     {
         return Err(format!(
-            "tune {name}: a file name of assets/starter, without .sid"
+            "{what} {name}: a file name of assets/{dir}, without .{ext}"
         ));
     }
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../assets/starter")
-        .join(format!("{name}.sid"));
-    std::fs::read(&path).map_err(|e| format!("tune {name}: {}: {e}", path.display()))
+        .join("../../../assets")
+        .join(dir)
+        .join(format!("{name}.{ext}"));
+    std::fs::read(&path).map_err(|e| format!("{what} {name}: {}: {e}", path.display()))
 }
 
 pub fn store_name(name: &str) -> String {

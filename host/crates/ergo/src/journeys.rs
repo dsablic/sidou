@@ -169,10 +169,12 @@ pub struct Journey {
     pub related: Vec<String>,
     pub songs: Vec<String>,
     pub tunes: Vec<String>,
+    pub art: Vec<String>,
     pub after: Option<String>,
     pub prelude: Vec<Step>,
     pub prelude_songs: Vec<String>,
     pub prelude_tunes: Vec<String>,
+    pub prelude_art: Vec<String>,
     pub steps: Vec<Step>,
 }
 
@@ -195,6 +197,7 @@ pub fn resolve_after(js: &mut [Journey]) -> Result<(), String> {
         j.prelude.clear();
         j.prelude_songs.clear();
         j.prelude_tunes.clear();
+        j.prelude_art.clear();
         for p in chain.iter().rev() {
             if p.poweron {
                 return Err(format!("{}: `after` {} starts at power-on", j.id, p.id));
@@ -202,6 +205,7 @@ pub fn resolve_after(js: &mut [Journey]) -> Result<(), String> {
             j.prelude.extend(p.steps.iter().cloned());
             j.prelude_songs.extend(p.songs.iter().cloned());
             j.prelude_tunes.extend(p.tunes.iter().cloned());
+            j.prelude_art.extend(p.art.iter().cloned());
         }
         if j.poweron && j.after.is_some() {
             return Err(format!(
@@ -483,14 +487,16 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 related: Vec::new(),
                 songs: Vec::new(),
                 tunes: Vec::new(),
+                art: Vec::new(),
                 after: None,
                 prelude: Vec::new(),
                 prelude_songs: Vec::new(),
                 prelude_tunes: Vec::new(),
+                prelude_art: Vec::new(),
                 steps: Vec::new(),
             });
         } else if let Some((k, v)) = [
-            "goal", "prereq", "skills", "related", "songs", "tunes", "after",
+            "goal", "prereq", "skills", "related", "songs", "tunes", "art", "after",
         ]
         .iter()
         .find_map(|k| {
@@ -522,6 +528,12 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                     j.tunes = list(v);
                     for name in &j.tunes {
                         crate::device::starter_tune(name).map_err(at)?;
+                    }
+                }
+                "art" => {
+                    j.art = list(v);
+                    for name in &j.art {
+                        crate::device::art_pack(name).map_err(at)?;
                     }
                 }
                 _ => j.related = list(v),
@@ -1462,14 +1474,20 @@ pub fn run_journey(
             tunes.push(s.clone());
         }
     }
-    let mut d = if songs.is_empty() && tunes.is_empty() {
+    let mut art = j.prelude_art.clone();
+    for s in &j.art {
+        if !art.contains(s) {
+            art.push(s.clone());
+        }
+    }
+    let mut d = if songs.is_empty() && tunes.is_empty() && art.is_empty() {
         if j.poweron {
             Dev::power_on(build)
         } else {
             Dev::boot(build)
         }
     } else {
-        let mut d = Dev::power_on_with(build, &songs, &tunes);
+        let mut d = Dev::power_on_with(build, &songs, &tunes, &art);
         if !j.poweron {
             crate::common::run_past_boot(&mut d.m, &d.fw);
             d.m.run_ms(300);
@@ -1669,7 +1687,7 @@ mod tests {
     #[test]
     fn after_runs_a_chain_first_and_refuses_a_circle() {
         let t = concat!(
-            "journey a | A\nsongs chrome-comet\nstep a1 | A1 | c | wait 1 | sound\n",
+            "journey a | A\nsongs chrome-comet\nart red-moon-rite\nstep a1 | A1 | c | wait 1 | sound\n",
             "journey b | B\nafter a\nstep b1 | B1 | c | wait 1 | sound\n",
             "journey c | C\nafter b\nstep c1 | C1 | c | wait 1 | sound\n",
         );
@@ -1678,6 +1696,7 @@ mod tests {
         let ids: Vec<_> = c.prelude.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["a1", "b1"]);
         assert_eq!(c.prelude_songs, ["chrome-comet"]);
+        assert_eq!(c.prelude_art, ["red-moon-rite"]);
         assert!(c.songs.is_empty());
         let circle = "journey a | A\nafter b\nstep a1 | A | c | wait 1 | sound\njourney b | B\nafter a\nstep b1 | B | c | wait 1 | sound\n";
         assert!(parse_table(circle).unwrap_err().contains("circle"));
@@ -1685,6 +1704,7 @@ mod tests {
             parse_table("journey a | A\nafter nope\nstep a1 | A | c | wait 1 | sound\n").is_err()
         );
         assert!(parse_table("journey a | A\nsongs no-such-song\n").is_err());
+        assert!(parse_table("journey a | A\nart no-such-pack\n").is_err());
     }
 
     #[test]
