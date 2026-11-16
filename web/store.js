@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { SysexError, crc32, validName } from "./sysex.js";
+import { MAGIC as ART_MAGIC, packRefusal } from "./sidart.js";
 import { unzip, zip } from "./zip.js";
 
 export const MANIFEST = "sidou-backup.json";
@@ -8,13 +9,6 @@ export const MAX_FILE = 65536;
 export const USER_SOUNDS = "USER SOUNDS";
 export const ART_NAME = "RED MOON RITE";
 export const STORE_FILE_ART = 5;
-const ART_MAGIC = "SIDOUART";
-const ART_HEAD = 32;
-const ART_SLOTS = [[1, 64, 124, 8], [2, 64, 124, 8], [3, 64, 124, 4], [4, 64, 124, 4], [5, 42, 84, 8], [6, 16, 44, 1],
-  [7, 240, 124, 3], [8, 240, 240, 1], [9, 240, 16, 1], [10, 240, 16, 1], [11, 240, 16, 1], [12, 6, 5, 1]];
-const ART_FRAMES = ART_SLOTS.reduce((n, s) => n + s[3], 0);
-const ART_SMALLEST = ART_HEAD + 4 * ART_SLOTS.length + 12 * ART_FRAMES + 4;
-const CRC_RESIDUE = 0x2144df1c;
 const NAK_MALFORMED = 1;
 const NAK_NOT_FOUND = 6;
 const NAK_IO = 7;
@@ -41,18 +35,7 @@ export class LibraryError extends Error {
   }
 }
 
-export function artRefusal(bytes) {
-  if (bytes.length < ART_SMALLEST || bytes.length > MAX_FILE) return "too short, or over the store's 65,536 bytes a file";
-  if (String.fromCharCode(...bytes.subarray(0, 8)) !== ART_MAGIC) return "not a SIDOU art pack (.sidart)";
-  if (bytes[8] !== 1) return "a newer art pack format than this page reads";
-  if (bytes[9] !== 1) return "art for another scene than RED MOON RITE";
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const slotsMatch = bytes[10] === ART_SLOTS.length && bytes[11] === ART_FRAMES && view.getUint32(12, true) === bytes.length &&
-    ART_SLOTS.every((s, k) => s.every((v, i) => bytes[ART_HEAD + 4 * k + i] === v));
-  if (!slotsMatch) return "its slots are not RED MOON RITE's: every image at its size and frame count";
-  if ((crc32(bytes) >>> 0) !== CRC_RESIDUE) return "its CRC does not match its bytes";
-  return null;
-}
+export const artRefusal = packRefusal;
 
 export function typeOfFile(filename, bytes) {
   if (String.fromCharCode(...bytes.subarray(0, 8)) === ART_MAGIC) return STORE_FILE_ART;
