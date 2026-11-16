@@ -695,6 +695,8 @@ try {
     if (!(await link.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the Live Link page scrolls sideways at phone width");
     await link.close();
   }
+
+  await checkArtPage(browser);
 } finally {
   await browser.close();
 }
@@ -742,4 +744,93 @@ function fakeLinkMidi(fx) {
   const outputs = new Map([["o1", { id: "o1", name: "Other Synth", send: (b) => log.other.push(Array.from(b)) }],
     ["o2", { id: "o2", name: "SIDOU FM-1", send: device }]]);
   navigator.requestMIDIAccess = async (opts) => { log.requested = opts; return { inputs, outputs, onstatechange: null }; };
+}
+
+async function checkArtPage(browser) {
+  const { readFileSync } = await import("node:fs");
+  const art = await browser.newPage({ viewport: { width: 390, height: 900 }, acceptDownloads: true });
+  art.on("console", (m) => { if (m.type() === "error") fail(`art page console error: ${m.text()}`); });
+  art.on("pageerror", (e) => fail(`art page error: ${e.message}`));
+  art.on("requestfailed", (r) => fail(`art page request failed: ${r.url()}`));
+  art.on("response", (r) => { if (r.status() >= 400) fail(`art page HTTP ${r.status()}: ${r.url()}`); });
+  art.on("dialog", (d) => d.accept());
+  await art.addInitScript(fakeMidi);
+  await art.goto(new URL("art.html", url).href);
+  const packState = () => art.locator("#pack-state").textContent();
+  try {
+    await art.waitForFunction(() => /accept it/.test(document.getElementById("pack-state").textContent), null, { timeout: 10_000 });
+  } catch {
+    fail(`the art page did not build SIDOU's pack: ${await packState()}`);
+    return;
+  }
+  if (await art.locator("#slots .slot").count() !== 12) fail("the art page does not show RED MOON RITE's twelve slots");
+  const shipped = new Uint8Array(await (await fetch(new URL("art/red-moon-rite.sidart", url))).arrayBuffer());
+  const downloaded = async (button) => {
+    const [d] = await Promise.all([art.waitForEvent("download"), art.locator(button).click()]);
+    return { name: d.suggestedFilename(), bytes: new Uint8Array(readFileSync(await d.path())) };
+  };
+  const built = await downloaded("#download");
+  if (built.name !== "red-moon-rite.sidart" || Buffer.compare(built.bytes, shipped) !== 0) fail(`the page's build of SIDOU's art is not the shipped pack byte for byte (${built.name}, ${built.bytes.length} bytes)`);
+  await art.waitForFunction(() => /^Frame \d+/.test(document.getElementById("frame").textContent) && Number(document.getElementById("frame").textContent.split(" ")[1]) > 10, null, { timeout: 5_000 })
+    .catch(() => fail("the art page's preview does not play"));
+  const corner = () => art.evaluate(() => Array.from(document.getElementById("screen").getContext("2d").getImageData(0, 239, 1, 1).data));
+  const before = await corner();
+  if (before[3] !== 255) fail(`the preview's screen is not drawn: ${before}`);
+
+  const arena = art.locator('.slot[data-slot="arena"]');
+  await arena.locator('input[type="file"]').setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: await pngOf(art, 64, 124, [0, 0, 0, 255]) });
+  if (!/takes a 240 × 240 PNG, one frame of 240 × 240; this one is 64 × 124/.test(await arena.locator('[role="status"]').textContent())) fail(`a wrong-sized PNG is not refused in words: ${await arena.locator('[role="status"]').textContent()}`);
+
+  const template = await downloaded('.slot[data-slot="arena"] button:text("Template PNG")');
+  if (template.name !== "arena.png") fail(`the arena's template is ${template.name}`);
+  const repainted = await art.evaluate(async (png) => {
+    const bitmap = await createImageBitmap(new Blob([new Uint8Array(png)], { type: "image/png" }));
+    const c = Object.assign(document.createElement("canvas"), { width: bitmap.width, height: bitmap.height });
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0);
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.fillStyle = "rgb(250, 252, 248)";
+    ctx.fillRect(0, 120, 240, 120);
+    return Array.from(new Uint8Array(await (await new Promise((r) => c.toBlob(r, "image/png"))).arrayBuffer()));
+  }, Array.from(template.bytes));
+  await arena.locator('input[type="file"]').setInputFiles({ name: "white-floor.png", mimeType: "image/png", buffer: Buffer.from(repainted) });
+  try {
+    await art.waitForFunction(() => /1 slot of yours/.test(document.getElementById("pack-state").textContent), null, { timeout: 5_000 });
+  } catch {
+    fail(`the repainted arena was not built into the pack: ${await packState()} / ${await arena.locator('[role="status"]').textContent()}`);
+  }
+  if (!/pixels moved to the nearest of the 16 colours/.test(await arena.locator('[role="status"]').textContent())) fail("the art page does not say the off-palette colour was reduced");
+  if (await arena.locator(".compare").isHidden()) fail("the art page does not show the PNG before and after its palette reduction");
+  await art.waitForTimeout(300);
+  const after = await corner();
+  if (after.slice(0, 3).join() !== "255,255,255") fail(`the preview does not draw the repainted arena: the corner is ${after}`);
+  await art.locator("#name").fill("my rite");
+  const named = await downloaded("#download");
+  if (named.name !== "my-rite.sidart" || String.fromCharCode(...named.bytes.subarray(16, 23)) !== "MY RITE") fail(`the pack's name is not in its header: ${named.name}`);
+  await art.locator("#name").fill(" BAD");
+  if (!/does not start with a space/.test(await art.locator("#name-why").textContent())) fail("a bad pack name is not refused in words");
+  await art.locator("#name").fill("MY RITE");
+
+  await art.locator("#connect").click();
+  await art.waitForFunction(() => /no RED MOON RITE art yet/.test(document.getElementById("device").textContent), null, { timeout: 10_000 })
+    .catch(async () => fail(`the art page did not find the FM-1: ${await art.locator("#device").textContent()}`));
+  await art.locator("#send").click();
+  await art.waitForFunction(() => /MY RITE sent/.test(document.getElementById("device").textContent), null, { timeout: 20_000 })
+    .catch(async () => fail(`the art page did not send the pack: ${await art.locator("#device").textContent()}`));
+  const put = await art.evaluate(() => (window.__midi.puts || []).map((p) => ({ name: p.name, type: p.type, data: p.data })).at(-1));
+  if (put?.name !== "RED MOON RITE" || put.type !== 5 || Buffer.compare(Buffer.from(put.data), Buffer.from(named.bytes)) !== 0) fail(`the art page's PUT is not the pack as RED MOON RITE, type 5: ${put?.name} ${put?.type}`);
+  if (await art.evaluate(() => window.__midi.other.length) !== 0) fail("the art page sent to the other port");
+  if (!(await art.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the art page scrolls sideways at phone width");
+  console.log(`art page: SIDOU's pack built byte for byte (${shipped.length} bytes), a repainted arena previewed and sent as ${put?.name}`);
+  await art.close();
+}
+
+async function pngOf(page, w, h, rgba) {
+  return Buffer.from(await page.evaluate(async ([w, h, rgba]) => {
+    const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = `rgba(${rgba[0]}, ${rgba[1]}, ${rgba[2]}, ${rgba[3] / 255})`;
+    ctx.fillRect(0, 0, w, h);
+    return Array.from(new Uint8Array(await (await new Promise((r) => c.toBlob(r, "image/png"))).arrayBuffer()));
+  }, [w, h, rgba]));
 }

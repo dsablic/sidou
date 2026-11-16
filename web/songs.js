@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { Client, crc32 } from "./sysex.js";
+import { CHANGED, NO_FM1, clientFor, fillPorts, pairIsTheFm1, refusedWords } from "./ports.js";
+import { crc32 } from "./sysex.js";
 
-const DEVICE_PORT = "SIDOU FM-1";
 const SONGS = [
   { file: "chrome-comet.sng", name: "CHROME COMET",
     about: "Mid-eighties game music in D minor at 150 BPM: bouncing pulse bass, a chirping lead, laser zaps and multiplexed drums. 80 s." },
@@ -69,20 +69,6 @@ function setBusy(busy) {
   for (const c of state.cards.values()) c.button.disabled = !ready;
 }
 
-function fillPorts() {
-  const { access } = state;
-  for (const [id, ports] of [["out", access.outputs], ["in", access.inputs]]) {
-    const select = $(id);
-    const previous = select.value;
-    const names = [...ports.values()];
-    select.replaceChildren(el("option", { value: "", textContent: "choose…" }),
-      ...names.map((p) => el("option", { value: p.id, textContent: p.name })));
-    const keep = names.find((p) => p.id === previous) ?? names.find((p) => p.name === DEVICE_PORT);
-    select.value = keep ? keep.id : "";
-    select.disabled = false;
-  }
-}
-
 function forget() {
   state.info = null;
   state.client = null;
@@ -97,35 +83,31 @@ async function connect() {
   try {
     state.access = await navigator.requestMIDIAccess({ sysex: true });
   } catch (e) {
-    say($("device"), `The browser refused MIDI access with SysEx (${e.message || e.name}). Allow it for this site and press Connect again.`, "error");
+    say($("device"), refusedWords(e), "error");
     setBusy(false);
     return;
   }
-  state.access.onstatechange = () => { fillPorts(); forget(); say($("device"), "A MIDI device changed: pick the ports and press Check this pair.", ""); };
-  fillPorts();
+  state.access.onstatechange = () => { fillPorts(state.access, $("out"), $("in")); forget(); say($("device"), CHANGED, ""); };
+  fillPorts(state.access, $("out"), $("in"));
   setBusy(false);
-  const out = $("out").selectedOptions[0]?.textContent, inn = $("in").selectedOptions[0]?.textContent;
-  if (out === DEVICE_PORT && inn === DEVICE_PORT) await check();
-  else say($("device"), `No port named "${DEVICE_PORT}" found. Is the FM-1 plugged in and running SIDOU? Pick its output and input and press Check this pair; nothing is sent to other ports until you do.`, "error");
+  if (pairIsTheFm1($("out"), $("in"))) await check();
+  else say($("device"), NO_FM1, "error");
 }
 
 async function check() {
-  const output = state.access.outputs.get($("out").value);
-  const input = state.access.inputs.get($("in").value);
-  if (!output || !input) return;
+  const pair = clientFor(state.access, $("out"), $("in"));
+  if (!pair) return;
+  const { client, port } = pair;
   forget();
   setBusy(true);
-  for (const p of state.access.inputs.values()) p.onmidimessage = null;
-  const client = new Client((bytes) => output.send(bytes));
-  input.onmidimessage = (e) => client.push(e.data);
-  say($("device"), `Asking ${output.name}…`, "");
+  say($("device"), `Asking ${port}…`, "");
   try {
     const info = await client.inquire();
     if (info.protocol !== 1) throw new Error(`it speaks SysEx protocol ${info.protocol}; this page speaks 1`);
     state.files = await client.dir();
     state.client = client;
     state.info = info;
-    say($("device"), `SIDOU ${version(info.version)} on ${output.name}: ${info.free} bytes free.`, "ok");
+    say($("device"), `SIDOU ${version(info.version)} on ${port}: ${info.free} bytes free.`, "ok");
     showFiles();
   } catch (e) {
     say($("device"), `${e.message}`, "error");
