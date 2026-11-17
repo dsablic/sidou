@@ -388,27 +388,43 @@ fn bpm_60_plays_rows_of_twelve_then_thirteen_frames() {
 }
 
 #[test]
-fn swing_plays_the_odd_rows_short_at_the_same_bpm_and_a_swing_the_bpm_cannot_give_is_refused() {
-    let swung = |bpm: u32, swing: &str| {
+fn swing_delays_the_songs_offbeats_at_the_same_bpm_and_a_swing_the_bpm_cannot_give_is_refused() {
+    const SIXTEENTH_HATS: &str = r#""h h h h h h h h h h h h h h h h""#;
+    let swung_in = |text: &str, bpm: u32, swing: &str| {
         json::check_song(
             &with(
-                GROOVE,
+                text,
                 r#""bpm": 125"#,
                 &format!(r#""bpm": {bpm}, "swing": "{swing}""#),
             ),
             SID_MODEL_6581,
         )
     };
-    for (swing, rows) in [
-        ("straight", [6, 6]),
-        ("light", [5, 7]),
-        ("shuffle", [4, 8]),
-        ("hard", [3, 9]),
+    let swung = |bpm: u32, swing: &str| swung_in(GROOVE, bpm, swing);
+    let sixteenths = with(
+        GROOVE,
+        r#""k . h . s . h . k k h . s . h dh""#,
+        SIXTEENTH_HATS,
+    );
+    for (swing, short, long) in [
+        ("straight", 6, 6),
+        ("light", 5, 7),
+        ("shuffle", 4, 8),
+        ("hard", 3, 9),
     ] {
-        let made = swung(125, swing).unwrap();
-        assert_eq!(made.bpm_played10, bpm10(12), "{swing}: the average plays");
-        let lengths = row_lengths_after_the_first(&made.sng, GROOVE_ROWS);
-        assert_eq!(lengths[..4], rows.repeat(2), "{swing}");
+        for (text, rows) in [
+            (GROOVE.to_string(), [long, long, short, short]),
+            (sixteenths.clone(), [long, short, long, short]),
+        ] {
+            let made = swung_in(&text, 125, swing).unwrap();
+            assert_eq!(made.bpm_played10, bpm10(12), "{swing}: the average plays");
+            let lengths = row_lengths_after_the_first(&made.sng, GROOVE_ROWS);
+            assert_eq!(
+                lengths[..8],
+                rows.repeat(2),
+                "{swing}: eighths, or sixteenths when the song plays them"
+            );
+        }
     }
     assert_eq!(
         swung(250, "light").unwrap_err(),

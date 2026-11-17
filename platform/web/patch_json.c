@@ -10,6 +10,7 @@
 #include "song/gt2_sng.h"
 #include "song/song_ext.h"
 #include "song_io.h"
+#include "song_swing.h"
 #include "song_tempo.h"
 #include "sid/sid_filter.h"
 
@@ -2539,7 +2540,6 @@ int patch_json_step_song(gt2_song* s, patch_step* st, uint32_t model) {
 #define SONG_ROWS_A_BEAT 4u
 #define SONG_ONE_CALL_A_FRAME 1u
 #define SONG_PAL 0u
-#define SONG_FUNKTEMPO 0x0Eu
 #define SONG_FULL                                                                                  \
     "SONG FULL here: a song holds 208 patterns, 64 KiB and 512 accents and slides. Use fewer or "  \
     "shorter sections, or fewer accents and slides"
@@ -2626,8 +2626,10 @@ static int song_tempo(gt2_song* s, song_build* b, patch_song* sg) {
     if (!song_swing_gives(sum, sg->swing)) {
         return swing_refused(sg, sum);
     }
-    sp.second = song_swing_long(sum, sg->swing);
-    sp.first = sum - sp.second;
+    uint32_t longer = song_swing_long(sum, sg->swing);
+    int long_first = sg->swing != SONG_SWING_STRAIGHT;
+    sp.first = long_first ? longer : sum - longer;
+    sp.second = sum - sp.first;
     if (sp.first == SONG_NEW_SPEED && sp.second == SONG_NEW_SPEED) {
         return 0;
     }
@@ -2660,9 +2662,56 @@ static void lane_of(const song_build* b, uint32_t section, uint32_t voice, song_
         }
     }
     if (b->tempo_row && section == b->sg->order[0] && voice == 0u) {
-        lane->row[0][2] = SONG_FUNKTEMPO;
+        lane->row[0][2] = SONG_SWING_FUNKTEMPO;
         lane->row[0][3] = (uint8_t)b->tempo_row;
     }
+}
+
+static uint32_t swing_short_first_row(gt2_song* s, uint32_t long_first) {
+    uint32_t row = lab_song_table_end(s, GT2_STBL) + 1u;
+    if (row <= GT2_TABLE_ROWS) {
+        s->ltable[GT2_STBL][row - 1u] = s->rtable[GT2_STBL][long_first - 1u];
+        s->rtable[GT2_STBL][row - 1u] = s->ltable[GT2_STBL][long_first - 1u];
+    }
+    return row;
+}
+
+static int song_swung(gt2_song* s, const song_build* b, patch_song* sg) {
+    if (sg->swing == SONG_SWING_STRAIGHT) {
+        return 0;
+    }
+    int eighths = song_swing_eighths(s, 0);
+    uint32_t data[SONG_SWING_PAIRS] = {0u, b->tempo_row, eighths ? swing_short_first_row(s, b->tempo_row) : 0u};
+    if (data[SONG_SWING_SHORT_FIRST] > GT2_TABLE_ROWS) {
+        return song_fail(sg, "swing", NULL, -1, SONG_TABLES_FULL);
+    }
+    uint32_t sum = s->ltable[GT2_STBL][b->tempo_row - 1u] + s->rtable[GT2_STBL][b->tempo_row - 1u];
+    uint8_t voice_1[SONG_SWING_SET_BYTES];
+    song_swing_played(s, 0, SONG_SWING_VOICE_1, voice_1);
+    for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
+        const uint8_t* d = gt2_pattern_data(s, p);
+        if (!d || !song_swing_in(voice_1, p)) {
+            continue;
+        }
+        uint32_t rows = gt2_pattern_rows(s, p) - 1u;
+        for (uint32_t r = 0; r < rows; r++) {
+            uint8_t cell[GT2_ROW_BYTES];
+            uint32_t pair = song_swing_pair_at(r, eighths);
+            gt2_edit e;
+            memcpy(cell, d + r * GT2_ROW_BYTES, sizeof cell);
+            if (pair == SONG_SWING_NONE || !song_swing_owns(s, cell, sum)) {
+                continue;
+            }
+            cell[2] = SONG_SWING_FUNKTEMPO;
+            cell[3] = (uint8_t)data[pair];
+            memset(&e, 0, sizeof e);
+            if (edited(s, gt2_set_row(s, p, r, cell, &e), &e)) {
+                return song_fail(sg, "swing", NULL, -1, SONG_FULL);
+            }
+            d = gt2_pattern_data(s, p);
+        }
+    }
+    return 0;
 }
 
 static int lane_made(const song_build* b, const song_lane* lane, uint32_t* pattern) {
@@ -2769,6 +2818,9 @@ int patch_json_song_song(gt2_song* s, patch_song* sg, uint32_t model) {
         if (edited(s, gt2_order_replace(s, 0, v, entries, sg->order_len, 0, &e), &e)) {
             return song_fail(sg, "order", NULL, -1, SONG_FULL);
         }
+    }
+    if (song_swung(s, &b, sg)) {
+        return -1;
     }
     memset(s->name, 0, sizeof s->name);
     memcpy(s->name, sg->name, length(sg->name));

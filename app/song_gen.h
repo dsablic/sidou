@@ -7,6 +7,7 @@
 
 #include "screen.h"
 #include "song/song_ext.h"
+#include "song_swing.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +16,7 @@ extern "C" {
 struct song_view;
 struct song_pages;
 
-enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP, SONG_GEN_EUCLID };
+enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP, SONG_GEN_EUCLID, SONG_GEN_SWING };
 #define SONG_GEN_LANES 3u
 #define SONG_GEN_FRAME_ROWS 12u
 #define SONG_GEN_LOOK 6u
@@ -41,7 +42,11 @@ typedef struct {
     uint8_t role, kick, snare, wait;
     uint8_t chord[SONG_GEN_CHORDS];
     uint8_t swing, swing_given, swing_turned, swing_refused, swing_wait, swing_due;
-    uint8_t swing_pair[2];
+    uint8_t swing_short, swing_long, swing_eighths, swing_first, swing_sub, swing_poke;
+    uint8_t swing_first_data;
+    uint8_t swing_data[3];
+    uint8_t swing_voice_1[SONG_SWING_SET_BYTES];
+    uint16_t swing_sum;
     uint8_t euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];
     struct song_pages* pages;

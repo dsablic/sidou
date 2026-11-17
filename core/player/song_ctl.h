@@ -40,7 +40,7 @@ typedef struct {
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
     SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_ALIGN,
-    SONG_CMD_DRAFT, SONG_CMD_HELD
+    SONG_CMD_DRAFT, SONG_CMD_HELD, SONG_CMD_FUNKTEMPO
 };
 
 #define SONG_HELD_LOCKS (SONG_LOCK_PULSE + 1u)
@@ -263,6 +263,7 @@ uint32_t song_ctl_events(song_ctl* sc, song_event* out, uint32_t n);
 int song_ctl_draft(song_ctl* sc, uint32_t ch, uint32_t first, uint32_t n, const uint8_t* left,
                    const uint8_t* right);
 int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n);
+int song_ctl_funktempo(song_ctl* sc, uint32_t left, uint32_t right);
 
 uint32_t song_ctl_state(const song_ctl* sc);
 uint32_t song_ctl_clock_calls(const song_ctl* sc);

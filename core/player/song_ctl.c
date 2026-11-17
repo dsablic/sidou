@@ -171,6 +171,10 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         else
             SIDOU_FAR(gt2_play_set_shape)(&sc->player, (const gt2_shape*)c->u.p.ptr);
         break;
+    case SONG_CMD_FUNKTEMPO:
+        sc->player.funktempo[0] = c->a;
+        sc->player.funktempo[1] = c->b;
+        break;
     case SONG_CMD_HANDOVER:
         sc->armed = 1u;
         sc->armed_now = c->a;
@@ -1019,6 +1023,17 @@ int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n) {
         c.u.held[3u * i + 2u] = locks[3u * i + 2u];
     }
     c.b = (uint8_t)n;
+    push(sc, &c);
+    return 1;
+}
+
+int song_ctl_funktempo(song_ctl* sc, uint32_t left, uint32_t right) {
+    if (room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_FUNKTEMPO);
+    c.a = (uint8_t)left;
+    c.b = (uint8_t)right;
     push(sc, &c);
     return 1;
 }

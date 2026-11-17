@@ -9,6 +9,7 @@
 #include "song/gt2_kit.h"
 #include "song/gt2_song.h"
 #include "song_pages.h"
+#include "song_swing.h"
 #include "song_tempo.h"
 #include "song_view.h"
 #include "theme.h"
@@ -59,6 +60,7 @@ static const uint8_t RHYTHM_ADD[SONG_DICE_DENSITIES] = {0, 0, 0, 20, 100};
 #define CMD_TEMPO 0x0Fu
 #define TEMPO_PER_VOICE 0x80u
 #define SWING_NEW_SPEED 6u
+#define SWING_PAIRS 2u
 static const char* const SWING_NAMES[SONG_SWING_LEVELS] = {"STRAIGHT", "LIGHT", "SHUFFLE", "HARD"};
 static const char* const SWING_REFUSED[SONG_SWING_LEVELS] = {"", "NO LIGHT", "NO SHUFFLE", "NO HARD"};
 
@@ -463,8 +465,14 @@ static int euclid_row(screen* s, song_view* sv, uint32_t r) {
     return 1;
 }
 
+static void swing_run(screen* s, song_view* sv);
+
 static void run_now(screen* s, song_view* sv) {
     song_gen* g = &sv->gen;
+    if (g->run == SONG_GEN_SWING) {
+        swing_run(s, sv);
+        return;
+    }
     uint32_t rows = sv->song ? gt2_pattern_rows(sv->song, g->pattern) - 1u : 0u;
     g->rows = (uint8_t)rows;
     if (!rows) {
@@ -624,10 +632,13 @@ void song_gen_euclid(song_view* sv, screen* s, uint32_t knob, int32_t turn, uint
 }
 
 int song_gen_busy(const song_view* sv) {
-    return sv->gen.run | sv->gen.follow | sv->gen.swing_due;
+    const song_gen* g = &sv->gen;
+    return g->run | g->follow | g->swing_due | g->swing_wait | g->swing_poke;
 }
 
 static void swing_apply(song_view* sv, screen* s);
+static void swing_start(song_view* sv, screen* s);
+static void swing_live(song_view* sv);
 
 void song_gen_drain(song_view* sv, screen* s) {
     song_gen* g = &sv->gen;
@@ -646,13 +657,7 @@ void song_gen_drain(song_view* sv, screen* s) {
             return;
         }
         g->swing_wait = 0u;
-        uint32_t r = speed_row(sv->song, g->swing_pair[0], g->swing_pair[1]);
-        if (r == GT2_TABLE_ROWS) {
-            g->follow = 0u;
-            refuse(s, *song_pages_message(g->pages) ? song_pages_message(g->pages) : "TABLE FULL");
-            return;
-        }
-        g->follow_cell[3] = (uint8_t)(r + 1u);
+        swing_start(sv, s);
     }
     if (g->follow) {
         g->follow = 0u;
@@ -671,10 +676,15 @@ void song_gen_drain(song_view* sv, screen* s) {
     if (g->run) {
         run_now(s, sv);
     }
+    if (!g->run && g->swing_poke) {
+        swing_live(sv);
+    }
 }
 
 void song_gen_stop(song_view* sv) {
-    sv->gen.run = 0u;
+    if (sv->gen.run != SONG_GEN_SWING) {
+        sv->gen.run = 0u;
+    }
     sv->gen.scl_down = sv->gen.scl_spoiled = 0u;
     sv->gen.lone.waiting = SCREEN_LONE_NONE;
 }
@@ -746,9 +756,13 @@ static void role_turn(song_view* sv, screen* s, int32_t steps) {
     }
 }
 
+static uint32_t swing_subtune(const song_view* sv) {
+    return song_view_playing(sv) ? sv->st.subtune : sv->subtune;
+}
+
 static uint32_t swing_pattern(const song_view* sv) {
     const gt2_song* song = sv->song;
-    uint32_t sub = song_view_playing(sv) ? sv->st.subtune : sv->subtune;
+    uint32_t sub = swing_subtune(sv);
     const uint8_t* o = song ? gt2_order_data(song, sub, 0u) : NULL;
     uint32_t n = song ? gt2_order_entries(song, sub, 0u) : 0u;
     for (uint32_t i = 0; o && i < n; i++) {
@@ -765,8 +779,9 @@ static int swing_sum(const gt2_song* song, const uint8_t cell[4], uint32_t* sum,
         *sum = 2u * SWING_NEW_SPEED;
         *late = SWING_NEW_SPEED;
     } else if (cell[2] == CMD_FUNKTEMPO && data) {
-        *late = song->rtable[GT2_STBL][data - 1u];
-        *sum = song->ltable[GT2_STBL][data - 1u] + *late;
+        uint32_t left = song->ltable[GT2_STBL][data - 1u], right = song->rtable[GT2_STBL][data - 1u];
+        *sum = left + right;
+        *late = left > right ? left : right;
     } else if (cell[2] == CMD_TEMPO && data >= SONG_SWING_SPEED_MIN && data < TEMPO_PER_VOICE) {
         *sum = 2u * data;
         *late = data;
@@ -809,47 +824,143 @@ uint32_t song_gen_row_frames(const song_view* sv) {
     return sum - late < late ? sum - late : late;
 }
 
+static int swing_straight(const song_gen* g) {
+    return g->swing_given == SONG_SWING_STRAIGHT;
+}
+
+static int swing_needs(const song_gen* g, uint32_t k) {
+    return k ? g->swing_eighths
+             : !swing_straight(g) || g->swing_short != SWING_NEW_SPEED ||
+                   g->swing_long != SWING_NEW_SPEED;
+}
+
+static void swing_pair(const song_gen* g, uint32_t k, uint8_t pair[2]) {
+    int long_first = !k && !swing_straight(g);
+    pair[0] = long_first ? g->swing_long : g->swing_short;
+    pair[1] = long_first ? g->swing_short : g->swing_long;
+}
+
+static uint32_t swing_row(const song_view* sv, uint32_t k) {
+    uint8_t pair[2];
+    swing_pair(&sv->gen, k, pair);
+    return speed_row(sv->song, pair[0], pair[1]);
+}
+
 static void swing_apply(song_view* sv, screen* s) {
     song_gen* g = &sv->gen;
     uint32_t p, sum = 0u, late = 0u;
-    uint8_t cell[4];
-    const char* why = swing_first(sv, &p, cell, &sum, &late);
-    if (why) {
+    uint8_t cell[4], left[SWING_PAIRS], right[SWING_PAIRS], pair[2];
+    if (swing_first(sv, &p, cell, &sum, &late)) {
         return;
     }
-    uint32_t right = song_swing_long(sum, g->swing_given), left = sum - right;
-    uint8_t to[4] = {cell[0], cell[1], 0u, 0u};
-    if (left != SWING_NEW_SPEED || right != SWING_NEW_SPEED) {
-        to[2] = CMD_FUNKTEMPO;
-        uint32_t r = speed_row(sv->song, left, right);
-        if (r == GT2_TABLE_ROWS) {
-            uint8_t l8 = (uint8_t)left, r8 = (uint8_t)right;
-            song_pages* pg = g->pages;
-            why = !pg || pg->pending || !song_pages_batch_begin(pg)
-                      ? "WAITING"
-                      : song_pages_batch_rows(pg, GT2_STBL, lab_song_table_end(sv->song, GT2_STBL),
-                                              1u, 0u, &l8, &r8);
-            if (!why && !song_pages_batch_go(pg)) {
-                why = song_pages_message(pg);
-            }
-            if (why) {
-                refuse(s, why);
-                return;
-            }
-            g->swing_wait = 1u;
-            g->swing_pair[0] = l8;
-            g->swing_pair[1] = r8;
-        } else {
-            to[3] = (uint8_t)(r + 1u);
+    g->swing_long = (uint8_t)song_swing_long(sum, g->swing_given);
+    g->swing_short = (uint8_t)(sum - g->swing_long);
+    g->swing_sub = (uint8_t)swing_subtune(sv);
+    g->swing_eighths = (uint8_t)(g->swing_given != SONG_SWING_STRAIGHT &&
+                                 song_swing_eighths(sv->song, g->swing_sub));
+    g->swing_first = (uint8_t)p;
+    g->swing_sum = (uint16_t)sum;
+    song_swing_played(sv->song, g->swing_sub, SONG_SWING_VOICE_1, g->swing_voice_1);
+    uint32_t n = 0u;
+    for (uint32_t k = 0; k < SWING_PAIRS; k++) {
+        if (swing_needs(g, k) && swing_row(sv, k) == GT2_TABLE_ROWS) {
+            swing_pair(g, k, pair);
+            left[n] = pair[0];
+            right[n++] = pair[1];
         }
     }
-    if (!g->swing_wait && !memcmp(to, cell, sizeof to)) {
+    if (!n) {
+        swing_start(sv, s);
         return;
     }
-    g->pattern = (uint8_t)p;
-    g->follow_row = 0u;
-    memcpy(g->follow_cell, to, sizeof to);
-    g->follow = 1u;
+    song_pages* pg = g->pages;
+    const char* why = !pg || pg->pending || !song_pages_batch_begin(pg)
+                          ? "WAITING"
+                          : song_pages_batch_rows(pg, GT2_STBL, lab_song_table_end(sv->song, GT2_STBL),
+                                                  n, 0u, left, right);
+    if (!why && !song_pages_batch_go(pg)) {
+        why = song_pages_message(pg);
+    }
+    if (why) {
+        refuse(s, why);
+        return;
+    }
+    g->swing_wait = 1u;
+}
+
+static void swing_start(song_view* sv, screen* s) {
+    song_gen* g = &sv->gen;
+    uint8_t data[SWING_PAIRS];
+    for (uint32_t k = 0; k < SWING_PAIRS; k++) {
+        uint32_t r = swing_needs(g, k) ? swing_row(sv, k) : GT2_TABLE_ROWS;
+        if (r == GT2_TABLE_ROWS && swing_needs(g, k)) {
+            refuse(s, g->pages && *song_pages_message(g->pages) ? song_pages_message(g->pages)
+                                                                : "TABLE FULL");
+            return;
+        }
+        data[k] = swing_needs(g, k) ? (uint8_t)(r + 1u) : 0u;
+    }
+    int straight = swing_straight(g);
+    g->swing_first_data = data[0];
+    g->swing_data[SONG_SWING_NONE] = 0u;
+    g->swing_data[SONG_SWING_LONG_FIRST] = straight ? 0u : data[0];
+    g->swing_data[SONG_SWING_SHORT_FIRST] = data[1];
+    g->swing_poke = (uint8_t)straight;
+    g->pattern = 0u;
+    g->row = 0u;
+    g->run = SONG_GEN_SWING;
+}
+
+static int swing_cell(const song_view* sv, uint32_t r, const uint8_t cell[4], uint8_t to[4]) {
+    const song_gen* g = &sv->gen;
+    uint32_t data;
+    if (g->pattern == g->swing_first && r == 0u) {
+        data = g->swing_first_data;
+    } else if (song_swing_owns(sv->song, cell, g->swing_sum)) {
+        data = g->swing_data[song_swing_pair_at(r, g->swing_eighths)];
+    } else {
+        return 0;
+    }
+    memcpy(to, cell, 4u);
+    to[2] = data ? CMD_FUNKTEMPO : 0u;
+    to[3] = (uint8_t)data;
+    return (data || cell[2]) && memcmp(to, cell, 4u);
+}
+
+static void swing_run(screen* s, song_view* sv) {
+    song_gen* g = &sv->gen;
+    for (; g->pattern < GT2_MAX_PATTERNS; g->pattern++, g->row = 0u) {
+        if (!song_swing_in(g->swing_voice_1, g->pattern) || !gt2_pattern_data(sv->song, g->pattern)) {
+            continue;
+        }
+        uint32_t rows = gt2_pattern_rows(sv->song, g->pattern) - 1u;
+        while (g->row < rows) {
+            uint32_t r = g->row;
+            uint8_t cell[4], to[4];
+            g->row = (uint8_t)(r + 1u);
+            if (!read_cell(sv, r, cell)) {
+                feedback(s, sv);
+                g->run = 0u;
+                return;
+            }
+            if (swing_cell(sv, r, cell, to)) {
+                if (!write_cell(s, sv, r, to)) {
+                    g->run = 0u;
+                }
+                return;
+            }
+        }
+    }
+    g->run = 0u;
+}
+
+static void swing_live(song_view* sv) {
+    const song_transport* t = sv->t;
+    song_gen* g = &sv->gen;
+    if (!song_view_playing(sv) || !t || !t->funktempo ||
+        t->funktempo(t->ctx, g->swing_short, g->swing_long)) {
+        g->swing_poke = 0u;
+    }
 }
 
 void song_gen_swing_turn(song_view* sv, screen* s, int32_t steps) {
@@ -857,7 +968,7 @@ void song_gen_swing_turn(song_view* sv, screen* s, int32_t steps) {
     uint32_t p, sum = 0u, late = 0u;
     uint8_t cell[4];
     const char* why = swing_first(sv, &p, cell, &sum, &late);
-    if (why || g->run) {
+    if (why || (g->run && g->run != SONG_GEN_SWING)) {
         refuse(s, why ? why : "WAITING");
         return;
     }
