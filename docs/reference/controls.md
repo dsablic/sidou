@@ -468,20 +468,27 @@ MUTATE changes them as any others. HITS at 0 is the rhythm of no hits: the lane'
 loads, as roots are), and a turn starts from the values the page shows. Bjorklund's rhythms start
 on a hit: E(5,8) is `x.xx.xx.`, E(7,16) `x..x.x.x..x.x.x.`. DICE is unchanged.
 
-**Swing** (K1) is the song's shuffle: every second row plays late. It is GoatTracker's **funktempo** (`EXY`), written
-into the first row of voice 1's first pattern, so the song swings the same in GoatTracker and the
-first row's command in TRACKER says `FUNKTEMPO`. At speed 6 the levels are rows of 6 and 6
-frames, 7 and 5, 8 and 4, 9 and 3 (50, 58, 67 and 75 % of each pair of rows on the first row);
-at other speeds the same shares to the nearest frame, a level a speed cannot give (the same pair
-as the level below, or a second row under 2 frames) refused in the popup (`NO LIGHT` at speed 3;
-the song keeps the last level it could give). The two speeds still add up to the tempo's, so the
-BPM shown, their average, stays. The song views' header says the level under the BPM, in yellow
-(`LITE`, `SHUF`, `HARD`; `BPM` while straight). STRAIGHT at speed 6 takes the command away; a
-first row with another command refuses it (`ROW HAS A COMMAND`), and `FXX` (SET TEMPO) there is
-replaced by the funktempo at its speed. Each pair is a row of the speed table, found if the song
-has it and added after the table's last row if not (the detents turned before the next frame make
-one level; the rows of levels a slower turn passed through stay, unused).
-Per-pattern swing is TRACKER's own `E` command.
+**Swing** (K1) is the song's shuffle: the offbeats of what the song plays come late. A song that
+plays eighths (its odd rows hold fewer than half as many notes as the rows halfway through each
+beat, as SIDOU LOOP) swings its eighths: rows 0 and 1 of each beat play long, 2 and 3 short, so
+the offbeat eighth comes 12, 14, 16 or 18 frames after the beat at speed 6. A song that plays
+sixteenths swings them: each first row of a pair long, the second short. At speed 6 the levels
+are rows of 6 and 6 frames, 7 and 5, 8 and 4, 9 and 3 (50, 58, 67 and 75 % of each pair); at
+other speeds the same shares to the nearest frame, a level a speed cannot give (the same pair as
+the level below, or a short row under 2 frames) refused in the popup (`NO LIGHT` at speed 3; the
+song keeps the last level it could give). It is GoatTracker's **funktempo** (`EXY`), written
+into voice 1's patterns (on every second row of a beat for eighths, every first row of a pair
+for sixteenths, always on the first row of voice 1's first pattern), so the song swings the same
+in GoatTracker and from wherever it starts; a turn is heard within about two beats while the song
+plays, and STRAIGHT goes back as quickly. A row with another command keeps it (the rows around
+it swing); a first row with another command refuses the swing (`ROW HAS A COMMAND`), and `FXX`
+(SET TEMPO) there is replaced by the funktempo at its speed. The two speeds still add up to the
+tempo's, so the BPM shown, their average, stays. The song views' header says the level under the
+BPM, in yellow (`LITE`, `SHUF`, `HARD`; `BPM` while straight). STRAIGHT at speed 6 takes the
+commands away. Each pair is a row of the speed table, found if the song has it and added after
+the table's last row if not (the detents turned before the next frame make one level; the rows
+of levels a slower turn passed through stay, unused). Per-pattern swing is TRACKER's own `E`
+command (an `E` whose speeds add up to another tempo is kept).
 
 ### Generative play in TRACKER
 

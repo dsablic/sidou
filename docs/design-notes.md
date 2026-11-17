@@ -3366,16 +3366,49 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 
 ### Swing (1.21)
 
-- **The song's swing is GoatTracker's funktempo** (`EXY` on the first row of voice 1's first
-  pattern of the shown subtune), not a SIDOU chunk or a live nudge (the owner, 2026-11-17): it is
-  saved in the `.sng` and plays the same in GoatTracker, and costs the audio interrupt nothing.
-- **The pair's order**: the `E` command resets the funktempo index at its row's first tick, after
-  that row's length was loaded, so the rows after it play left, right, left ... and, with a
-  pattern of even length, row 0 of each later pass plays the right speed. So the long speed is the
-  right one: (4, 8) plays rows 0, 2, 4 ... for 8 frames and the odd rows (the second sixteenth of
-  each eighth) for 4, which is swing. The very first row of the song plays the default speed 6,
-  as with any funktempo (the converter's note above). `swing.rs` measures the rows on SIDOU's
-  player and holds them equal to GoatTracker's packed player, call by call.
+- **The song's swing is GoatTracker's funktempo** (`EXY` speed-table pairs on voice 1's rows),
+  not a SIDOU chunk or a live nudge (the owner, 2026-11-17): it is saved in the `.sng` and plays
+  the same in GoatTracker, and costs the audio interrupt nothing.
+- **The pair's order, measured** (the owner heard nothing on SIDOU LOOP, 2026-11-17): an `E` on
+  row r plays row r at the pair's left speed and row r + 1 at its right one (the player's row
+  events: `E` with (3, 5) on row 4 of a speed 6 song gives rows of 6, 6, 6, 6, 3, 5, 3, 5 ...).
+  The first SWING wrote (short, long) on row 0 from row lengths read off pitch changes, whose first
+  change is the player's own `$00` write before row 0; the count was one row off, so the long row
+  was taken for row 0 when it was row 1. SHUFFLE at speed 6 played every second sixteenth 4
+  frames after the beat instead of 8 (early: a push, not a swing). The pair is (long, short).
+- **The song's grid decides what swings** (`song_swing.c`, `song_swing_eighths`): funktempo only
+  alternates rows, so on a song whose notes sit on every other row each pair of rows adds up to
+  the same and the notes do not move. Measured on SIDOU LOOP (fm1-emu and the host player, the
+  bass's onsets from a beat): HARD as the first SWING wrote it moved only row 13's note (6 to 3
+  frames after row 12), the offbeat eighth stayed 12 frames after the beat at every level. Swing
+  is per subdivision, so SIDOU swings eighths when a song plays eighths: rows 0 and 1 of each
+  beat long, 2 and 3 short, so the offbeat eighth is 2 x the long speed after the beat (12, 14,
+  16, 18 frames at speed 6) and the sixteenths in between move with it. GoatTracker cannot
+  alternate every two rows, so the eighths are written as an `E` on rows 1 (long, short) and 3
+  (short, long) of each beat; each pair still adds up to the tempo's two speeds, so the BPM shown
+  (the playing pair's average) and the MIDI clock stay. The song plays eighths when its odd rows
+  hold fewer than half as many notes as the beats' offbeat rows (rows 2, 6, 10 ...), counted over
+  the patterns its order lists play: SIDOU LOOP has 7 against 35 (16th fills at bar ends), the
+  sidou-song/1 example GROOVE 3 against 7, a line of sixteenth hats 8 or more against 4. A
+  sixteenth song swings its sixteenths: an `E` (long, short) on every even row.
+- **On every row it needs, in every voice-1 pattern**, not only the first row: a change is heard
+  within two rows wherever the song plays, and a song started from a later order position
+  swings (one `E` on the first row is read only when voice 1 passes it, once a loop: 7.7 s on
+  SIDOU LOOP, and never from another position). An even row with another command, or with an
+  `E` whose pair adds up to another tempo (a per-pattern swing of TRACKER's own), keeps it and is
+  skipped: the rows around it still swing. Row 0 of voice 1's first pattern carries the
+  (long, short) pair in both grids, so it still holds the song's tempo and level as before (a
+  first row with another command refuses: `ROW HAS A COMMAND`; `FXX` there becomes the
+  funktempo at its speed); STRAIGHT clears the swing's commands and leaves that row's even pair,
+  or no command at speed 6.
+- **Live**: the cells are written through the editor one a step from the playing order position
+  and row on, so the next beats swing first (40 ms a cell in fm1-emu, the speed table's new rows
+  first: the first cell lands about 340 ms after the turn; the offbeat moves within two beats at
+  SIDOU LOOP's 125 BPM). A cleared `E` cannot undo the funktempo the player already took, so
+  STRAIGHT also sends the even pair to the playing song (`SONG_CMD_FUNKTEMPO`, two bytes in the
+  interrupt's command switch), at the start and again once the cells are clear. The writes have
+  their own state (`swing_writing`), beside DICE's and EUCLID's runs, so a HITS turn while the
+  swing is written lands, and leaving STEP does not cut it short.
 - **The levels** (`app/song_tempo.h`): the long row is the sum of the pair times 7, 8 or 9
   twelfths, rounded to the nearest frame with a half rounded down (towards straight: speed 3's
   LIGHT would be 3.5 frames and is 3, STRAIGHT's own, so it is refused rather than written as
@@ -3385,16 +3418,13 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   `funktempo - 1` is 0) and is not a row of one frame. The popup says `NO LIGHT` for one that is
   not given and the song keeps the last given level; the wanted level is kept while SCL is held,
   so a turn goes past a refused level.
-- **Writing it**: the cell through the editor (one undo step); a pair the speed table lacks first
-  through the batch writer after the table's last row, then the cell once the row has landed (a
-  failed row writes no cell). A turn only keeps the wanted level (`swing_due`) and the frame's
-  drain writes it, so the detents of one quick turn are one level (SHUFFLE, not LIGHT then
-  SHUFFLE) and the knob's input stays at about 1,000 instructions (written in the input it was
-  5,300, over STEP's 3,900). The rows a slower turn passes through stay in the speed table unused: finding whether a row
-  is referenced (instrument vibrato, `1`-`4` commands in any pattern) would cost flash for 3
-  rows of 255 at most per tempo. STRAIGHT at speed 6 writes no command (a NEW song's state);
-  a first row with another command is refused (`ROW HAS A COMMAND`, as a SET is), and `FXX` there
-  becomes the funktempo at its speed.
+- **Writing it**: the speed table's missing pairs first through the batch writer after the
+  table's last row, then the cells (a failed row writes no cell). A turn only keeps the wanted
+  level (`swing_due`) and the frame's drain writes it, so the detents of one quick turn are one
+  level and the knob's input stays at about 1,000 instructions. The rows a slower turn passes
+  through stay in the speed table unused: finding whether a row is referenced (instrument
+  vibrato, `1`-`4` commands in any pattern) would cost flash for 3 rows of 255 at most per tempo.
+  The image grew 1,200 bytes (554,916 of the 579,516 ceiling).
 - **The control** is K1 on STEP's [GROOVE page](#the-groove-page-121) (it was EDIT + SCL held +
   ALGORITHM in STEP and TRACKER, which the owner found tedious on the device, 2026-11-17).
   TRACKER has no swing control; its header shows the level, as STEP's does, in the song views'
@@ -7453,7 +7483,9 @@ gain.
   reported BPM is the one that plays, which a test measures from the played frames (the rows after
   the first: the player starts the song's very first row at the default speed 6, and funktempo
   takes over from the second, so the first pass's first row is short; the test reads each row's
-  length and pins bpm 60 to 12 then 13). The limit
+  length and pins bpm 60 to 12 then 13). A `swing` is the long speed first and goes on voice 1's
+  rows as SWING writes it ([Swing](#swing-121): eighths or sixteenths by the song's grid, the
+  same `song_swing.c`), after the patterns are written so the grid is the song's. The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by
   `patch_docs.rs`, so a model chooses one. The wasm's 88 KiB budget is noted above.
 - **`sidou-sysex send`** ports the site's SysEx client (`web/sysex.js`: INQ, DIR, stop-and-wait

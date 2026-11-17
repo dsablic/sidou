@@ -617,7 +617,7 @@ fn song_schema() -> String {
             "bpm": {"type": "integer", "minimum": 60, "maximum": 250,
                 "description": "plays as the nearest of the tempos in llms-song.txt"},
             "swing": {"enum": ["straight", "light", "shuffle", "hard"],
-                "description": "the odd rows played late, at the same bpm; not every tempo gives every swing (llms-song.txt)"},
+                "description": "the offbeats played late (eighths when the song plays eighths, else sixteenths), at the same bpm; not every tempo gives every swing (llms-song.txt)"},
             "instruments": {"type": "object", "maxProperties": 16,
                 "propertyNames": {"minLength": 1, "maxLength": 8},
                 "additionalProperties": {"$ref": SOUND_REF,

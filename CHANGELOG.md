@@ -15,10 +15,11 @@ All notable changes are documented here. The format follows
   nothing; PRESETS moves the pick through the lane). The page shows all four, the lane and the
   picked step; its help card is GROOVE.
 - **SWING** (GROOVE's K1): the song's swing, STRAIGHT, LIGHT, SHUFFLE or HARD; the song views'
-  header says it under the BPM. It is GoatTracker's funktempo on the song's first row (rows of 7
-  and 5, 8 and 4, 9 and 3 frames at speed 6), so the song swings the same in GoatTracker and the
-  BPM stays; a level a speed cannot give is refused in the popup. `sidou-song/1` takes it as
-  `"swing"`.
+  header says it under the BPM. A song that plays eighths (SIDOU LOOP) swings its eighths, one
+  that plays sixteenths its sixteenths (rows of 7 and 5, 8 and 4, 9 and 3 frames at speed 6). It
+  is GoatTracker's funktempo on voice 1's rows, so the song swings the same in GoatTracker and from
+  any position, a turn is heard within about two beats while it plays, and the BPM stays; a level
+  a speed cannot give is refused in the popup. `sidou-song/1` takes it as `"swing"`.
 - **EUCLID lanes** (GROOVE's K2 and K3): HITS spreads that many hits evenly over the selected lane
   (Bjorklund's rhythms: E(3,8) `x..x..x.`, E(7,16)), ROTATE turns them. The hits are written as
   the lane's steps, so its note, locks and slides apply and GoatTracker plays them; there is no
