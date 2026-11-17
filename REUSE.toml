@@ -61,6 +61,13 @@ path = ["web/link-fixtures.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# Digests of the SID writes the host build of SIDOU's PSID environment makes of three starter-pack
+# tunes, made by host/crates/psid-ref/tests/web_tune.rs for web/tune.test.mjs.
+[[annotations]]
+path = ["web/tune-fixtures.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # What the host build of SIDOU's patch converter makes of the sixteen sounds' patches and a few
 # others, made by host/crates/sidou-patch/tests/patch_docs.rs for web/patch.test.mjs; and the
 # template of the instructions it writes (docs/prompt-to-patch.md, the site's llms.txt).

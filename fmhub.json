@@ -1,5 +1,5 @@
 {
-  "what": "Turns the FM-1 into a C64 SID machine: two SIDs measured on real chips, a GoatTracker 2 tracker and step sequencer with slide and accent, .sid playback, LAB for sounds with tables and LFOs, AI-made songs and sounds, SidStation banks, Bluetooth MIDI and keyboards, Live Link and scene art you draw.",
+  "what": "Turns the FM-1 into a C64 SID machine: two SIDs measured on real chips, a GoatTracker 2 tracker and step sequencer, .sid playback and .sid to song, LAB for sounds with tables and LFOs, AI-made songs and sounds, SidStation banks, Bluetooth MIDI and keyboards, Live Link and scene art you draw.",
   "kinds": ["tracker"],
   "play": "https://dsablic.github.io/sidou/",
   "editor": "https://dsablic.github.io/sidou/editor.html",

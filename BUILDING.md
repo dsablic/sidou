@@ -354,6 +354,23 @@ node web/art.test.mjs           # the encoder against the shipped pack, with tha
 The toolchain is the wasm core's (above). The module is about 16 KB; its budget is 32 KiB, which
 `web/art.test.mjs` checks.
 
+### The .sid converter's wasm (`tools/wasm-tune`)
+
+The Library page's `.sid` converter (`web/convert.js`, `web/sidconv.js`) runs a tune with the
+firmware's own 6502 and PSID environment: `core/cpu6502`, `core/psid/psid_file.c`,
+`core/psid/psid_env.c` and the SID shadows, with `platform/web/tune_api.c`, as one module with no
+imports, `sidou-tune.wasm`; `web/tune.js` is its JavaScript side.
+
+```sh
+tools/wasm-tune                 # build/wasm-tune/sidou-tune.wasm
+tools/wasm-tune OUT.wasm        # elsewhere (tools/web-demo builds it into build/web)
+node web/tune.test.mjs          # the capture against the host build (web/tune-fixtures.json)
+node web/sidconv.test.mjs       # the converter on the starter pack, with sidou-core.wasm
+```
+
+The toolchain is the wasm core's (above). The module is about 79 KB; its budget is 96 KiB,
+which `web/tune.test.mjs` checks.
+
 ### The Live Link viewer's wasm (`tools/wasm-link`)
 
 The Live Link page (`web/link.html`) draws the FM-1's screen with the FM-1's own

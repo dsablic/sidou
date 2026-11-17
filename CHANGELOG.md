@@ -24,6 +24,23 @@ All notable changes are documented here. The format follows
   plays it too; with no free instrument slot it is refused with a toast (`INSTRUMENTS FULL`). x4
   needs rows of 8 frames. The font has three tick glyphs (`DD`-`DF`; Live Link's last font code
   is `DF`).
+- **A `.sid` tune into a song** (the site's Library page): drop a PSID tune, choose the sub-tune
+  and a length (60 s by default), and SIDOU's own 6502 and PSID environment run it in the browser
+  (`sidou-tune.wasm`, its own module, 78,619 bytes with Apple's clang; its budget proposed at
+  96 KiB, which `web/tune.test.mjs` checks). Its SID writes become an editable GoatTracker song:
+  the row grid and tempo (swing as funktempo, tempo changes as SET TEMPO), notes (arpeggios as
+  looping wave tables, held pitch changes as tie notes), up to six instruments a voice clustered
+  from their waveform, ADSR, pulse and filter shapes, and patterns shared with repeats and
+  transposes; a 2SID tune becomes a six-voice GoatTracker Stereo song. The original and the
+  conversion play side by side; the page lists how many of each voice's notes the FM-1's player
+  plays on time and what was simplified (hard restarts, digis, vibrato, which plays at its centre
+  pitch). Download, send or edit
+  it; nothing is uploaded, and a conversion keeps the original's copyright. The site's wasm core
+  gains the player frame by frame and a raw SID render for the comparison (166,338 bytes with
+  Apple's clang, of its 176 KiB). `web/sidconv.test.mjs` checks tempo and notes against the
+  starter pack's source songs and the conversion as the FM-1's player plays it;
+  `web/tune.test.mjs` checks the capture against the host build's PSID environment
+  (`web/tune-fixtures.json`, `cargo test -p psid-ref --test web_tune`).
 
 ## [1.20.0] - 2026-11-16
 
