@@ -130,7 +130,11 @@ fn the_edit_comes_back_at_power_on() {
             .is_some_and(|r| r[LAB_SOUND_TUNE as usize + 16] as i8 == -20)
     });
     let rec = stored_value(&m.soc.flash.mem, USER_SOUND_EDIT_KEY).unwrap();
-    assert_eq!(rec.len(), USER_SOUND_EDIT_BYTES as usize);
+    assert_eq!(
+        rec.len(),
+        (USER_SOUND_EDIT_BYTES - LAB_SOUND_BYTES + LAB_SOUND_BYTES_1_7) as usize,
+        "every layer at full level: 1.7's record"
+    );
     assert_eq!(rec[..3], [1, 0, 1], "version, SAW LEAD, edited");
     let flash = m.soc.flash.mem.clone();
     let mut m = power_on(&fw, &flash);
@@ -1162,10 +1166,11 @@ fn a_layers_level_on_k4_reaches_its_voice_on_the_device() {
     }
     m.run_ms(60);
     let s = common::rendered_sid(&mut m, &fw, 0);
-    let gain: Vec<f32> = (0..3)
+    let level: Vec<u32> = (0..3)
         .map(|v| f32::from_bits(m.soc.read32(s + (ilp32::sid::voice_gain + 4 * v) as u32)))
+        .map(|g| (g * SID_LEVEL_FULL as f32).round() as u32)
         .collect();
-    assert_eq!(gain, [1.0, 0.4, 1.0], "layer 2 at 40 % on voice 2 alone");
+    assert_eq!(level, [100, 40, 100], "layer 2 at 40 % on voice 2 alone");
 }
 
 #[test]
