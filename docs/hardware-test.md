@@ -3238,6 +3238,59 @@ from the branch) and Audio MIDI Setup's Bluetooth window; headphones on the line
   to KEYBOARD: the microKEY Air connects by itself. *Emulator:*
   `ble.rs::bluetooth_on_is_kept_and_the_radio_starts_after_the_boot_holding_the_loop_briefly`.
   *Result:* Passed 2026-11-16 on the 1.20.0 package (FM-1_964, app 548,228 B, SHA-256 30f610f5…4cd5fac5).
+## 41. 1.21.0: the release package
+
+What it decides: whether the 1.21.0 package ships. It installs the release package over the
+owner's current test build and checks what 1.21 adds, by ear: STEP's GROOVE page (its swing heard
+while SIDOU LOOP plays, HITS and ROTATE, a ratchet roll), a song converted on the site's Library
+page and played on the FM-1, and that the keyboard still reconnects. The image is 554,916 bytes,
+24,600 under the 579,516 ceiling. Every item waits for the owner's yes for that step: nothing is
+flashed, sent, connected or scanned before it.
+
+Set up: the 1.21.0 package (`build/fm1/sidou.fwsc` from the release branch, from a fresh build
+directory, `tools/preflash` passing), the FM-1 on the owner's current test build with its songs,
+BLUETOOTH on KEYBOARD and the Korg microKEY Air kept (§38); the microKEY Air charged; a Mac with
+Chrome on the [Library page](https://dsablic.github.io/sidou/library.html) (the site built from
+the release branch, `tools/web-demo`, if it is not deployed yet) and a starter-pack tune
+(`assets/starter/neon-highway.sid`); headphones on the line out.
+
+- [ ] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-1.21.0.fwsc`).
+  Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU boots; SONG, LOAD lists the songs it
+  had; SETTINGS still says KEYBOARD and the microKEY Air's name. *Emulator:* `package.rs`.
+  *Result:*
+- [ ] **The version:** ABOUT and STATUS. Pass: both say 1.21.0. *Result:*
+- [ ] **Swing heard while it plays:** SONG, LOAD, SIDOU LOOP; SEQ to STEP, PLAY; ALGORITHM one
+  click clockwise. Pass: the header's PAGE row ends in `G`, and the GROOVE frame shows
+  `K1 SWING STRT`, `K2 HITS`, `K3 ROTATE`, `K4 RATCHET`. Turn K1 a click at a time: the popup says
+  LIGHT, SHUFFLE, HARD, the header `LITE`, `SHUF`, `HARD` under the BPM, the offbeat eighths come
+  later each time, heard within about two beats, with no stop, stall or click; the BPM stays 125.
+  K1 back to STRAIGHT: even again as quickly. *Emulator:*
+  `song.rs::every_swing_level_moves_sidou_loops_offbeat_eighths_at_once_and_straight_brings_them_back`,
+  `song.rs::shuffle_set_on_step_is_voice_1s_funktempo_and_plays_bit_exact_with_the_host`.
+  *Result:*
+- [ ] **HITS and ROTATE:** still playing, SELECT to V2 (the bass); K2 to 7. Pass: the popup says
+  `HITS` over `7/16`, the lane shows seven hits spread evenly, and the bass plays them on the next
+  pass; K3 two clicks: `ROTATE` over `2`, the rhythm two steps later. *Emulator:*
+  `song.rs::euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host`.
+  *Result:*
+- [ ] **A ratchet roll:** K1 on STRAIGHT; SELECT to V3 (the drums); key 13 (the snare) picks step
+  13 (it sounds nothing and toggles nothing); K4 two clicks. Pass: the popup says x3, three short
+  ticks under step 13 on the pattern's page, and the snare rolls three times in its step; K4 to
+  OFF: one snare again. With K1 on HARD, K4 is refused in the popup (`NO X3`). *Emulator:*
+  `song.rs::a_ratchet_set_on_step_is_a_copy_of_the_steps_instrument_and_plays_bit_exact_with_the_host`.
+  *Result:*
+- [ ] **A `.sid` converted and played:** the Library page, *A .sid tune: convert it to a song*,
+  drop `neon-highway.sid`, Convert (60 s), Play the original and Play the conversion; then
+  **Send to the FM-1…** (the owner's yes before sending), SONG, LOAD it on the FM-1, PLAY. Pass: the
+  page lists the tempo, instruments, patterns and the notes on time; the conversion sounds like
+  the original; the FM-1 lists the song, plays it in time with no stall, and TRACKER shows its
+  notes. *Emulator:* `web/sidconv.test.mjs`, `web/tune.test.mjs`. *Result:*
+- [ ] **The keyboard still reconnects:** with the microKEY Air on, a few seconds after a power
+  cycle. Pass: the toast `KEYBOARD microKEY Air`, no pairing asked again (no `PASSKEY`), its notes
+  play. *Emulator:*
+  `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`.
+  *Result:*
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -3284,3 +3337,4 @@ from the branch) and Audio MIDI Setup's Bluetooth window; headphones on the line
 | 38 1.11: Bluetooth connecting out to a keyboard | | |
 | 39 1.20: RED MOON RITE's art from the store, and the logo intro | | |
 | 40 1.20.0: the release package | | |
+| 41 1.21.0: the release package | | |

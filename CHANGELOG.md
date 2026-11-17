@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-11-17
+
+STEP's new GROOVE page puts the song's swing, Euclidean hits and ratchets on a knob each, heard while the song plays; the Library page turns a `.sid` tune into a song you can edit.
+
 ### Added
 - **The GROOVE page in STEP**: ALGORITHM past the pattern's last page (`PAGE 1 2 3 4 G`) opens
   it, with no held keys and every turn in the big popup: K1 the song's SWING, K2 the lane's HITS,
@@ -46,6 +50,15 @@ All notable changes are documented here. The format follows
   starter pack's source songs and the conversion as the FM-1's player plays it;
   `web/tune.test.mjs` checks the capture against the host build's PSID environment
   (`web/tune-fixtures.json`, `cargo test -p psid-ref --test web_tune`).
+
+### Changed
+- **The how-to videos, polished:** paced by their captions' length, at 60 frames a second, the
+  caption in a fixed lower third, only finished screen frames, and one loudness for all
+  (-16 LUFS). *What's new in 1.21* shows the GROOVE page on SIDOU LOOP and the `.sid` converter;
+  every video is re-rendered on 1.21, the ones that show STEP with the page row's `G`.
+- **Measured:** the image is 554,916 bytes, 24,600 under its ceiling of 579,516 (1.20.0:
+  548,228); RAMTEXT holds 44,880 bytes of its 48 KB. The site's modules: the core 166,355 bytes
+  of its 176 KiB, the patch module 85,576 of its 88 KiB, `sidou-tune.wasm` 78,619 of its 96 KiB.
 
 ## [1.20.0] - 2026-11-16
 
