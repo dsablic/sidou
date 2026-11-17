@@ -30,10 +30,12 @@ fn digests(calls: &[Call]) -> Vec<String> {
         .map(|chunk| {
             let mut bytes = Vec::new();
             chunk.iter().for_each(|c| call_bytes(c, &mut bytes));
-            Sha256::digest(&bytes).iter().fold(String::new(), |mut s, x| {
-                let _ = write!(s, "{x:02x}");
-                s
-            })[..DIGEST_HEX]
+            Sha256::digest(&bytes)
+                .iter()
+                .fold(String::new(), |mut s, x| {
+                    let _ = write!(s, "{x:02x}");
+                    s
+                })[..DIGEST_HEX]
                 .to_string()
         })
         .collect()
