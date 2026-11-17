@@ -91,6 +91,7 @@
 #include "song_pages.h"
 #include "song_edit.h"
 #include "step_view.h"
+#include "song_ratchet.h"
 #include "store.h"
 #include "sysex.h"
 #include "store_layout.h"

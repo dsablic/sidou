@@ -73,6 +73,7 @@ int song_gen_turn(struct song_view* sv, screen* s, uint32_t enc, int32_t steps);
 int song_gen_popup(const struct song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max);
 uint32_t song_gen_swing(const struct song_view* sv);
+uint32_t song_gen_row_frames(const struct song_view* sv);
 void song_gen_bjorklund(uint32_t hits, uint32_t steps, uint8_t out[SONG_GEN_EUCLID_ROWS]);
 void song_gen_euclid(struct song_view* sv, screen* s, uint32_t knob, int32_t turn, uint32_t pattern,
                      uint32_t rows, uint32_t instr);

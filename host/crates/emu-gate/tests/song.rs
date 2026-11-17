@@ -587,6 +587,42 @@ fn euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host(
 }
 
 #[test]
+fn a_ratchet_set_on_step_is_a_copy_of_the_steps_instrument_and_plays_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP ratchet test") else {
+        return;
+    };
+    const X2: i32 = 1;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let song = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&song, 0);
+    let before = cell_of(&song, pattern, 0);
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, KEY0, |m| {
+        holding(m, EDIT, |m| {
+            m.turn(ALGORITHM, X2);
+            m.run_ms(300);
+        });
+    });
+    m.run_ms(UI_WAIT_MS);
+    let actual = region_song(&mut m, &fw);
+    let after = cell_of(&actual, pattern, 0);
+    assert_eq!(
+        (after[0], after[2], after[3]),
+        (before[0], before[2], before[3])
+    );
+    unsafe {
+        assert_eq!(song_ratchet_count(actual.ptr(), u32::from(after[1])), 2);
+        assert_eq!(
+            song_ratchet_base(actual.ptr(), u32::from(after[1])),
+            u32::from(before[1])
+        );
+    }
+    check_song("ratcheted step", &fw, Some(&actual));
+}
+
+#[test]
 fn a_held_step_and_k1_darkens_that_step_bit_exact_with_the_host() {
     let Some((_, fw)) = build_and_firmware("the STEP lock spectrum test") else {
         return;

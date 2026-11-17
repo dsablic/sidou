@@ -18,6 +18,12 @@ All notable changes are documented here. The format follows
   rhythms: E(3,8) `x..x..x.`, E(7,16)), FX held + K2 rotates them, each with the big popup. The
   hits are written as the lane's steps, so its note, locks and slides apply and GoatTracker plays
   them; FX + LFO turns EUCLID off and keeps the steps.
+- **Ratchets in STEP**: a held step and EDIT + ALGORITHM sets its RATCHET, OFF, x2, x3 or x4, with
+  the big popup and ticks under the step. The step plays a shared copy of its instrument (one for
+  each instrument and count) whose wave table gates the note off and on again, so GoatTracker
+  plays it too; with no free instrument slot it is refused with a toast (`INSTRUMENTS FULL`). x4
+  needs rows of 8 frames. The font has three tick glyphs (`DD`-`DF`; Live Link's last font code
+  is `DF`).
 
 ## [1.20.0] - 2026-11-16
 

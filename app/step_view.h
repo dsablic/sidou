@@ -41,6 +41,8 @@ typedef struct {
     uint8_t heard_off;
     uint8_t gate;
     uint8_t fx_down;
+    uint8_t ratchet, ratchet_given, ratchet_turned, ratchet_refused, ratchet_wait, ratchet_due;
+    uint8_t ratchet_pattern, ratchet_row;
     uint8_t rev;
     uint8_t zones;
     uint8_t instr[3];

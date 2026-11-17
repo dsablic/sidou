@@ -126,7 +126,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 |---|---|
 | Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
-| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
+| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; STEP takes them with a step held, and FX held for EUCLID; in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
 | K1 (encoder 2) | cutoff: 64 detents from a semitone above the chip's lowest cutoff to its highest, even in pitch (on the CHIP view: its focused section's first value, [below](#chip)) |
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
@@ -321,7 +321,8 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
 | Step held + FX | **SLIDE** on that step, on and off (toast `SLIDE ON`, `SLIDE OFF`; a lock: the yellow notch): the note's gate is held through the rows up to the next note, GoatTracker's hard restart skipped, and the next note glides from this pitch over 4 frames, as a 303's slide |
 | Step held + ENV | **ACCENT** on that step, on and off (`ACCENT ON`, `ACCENT OFF`): for its row the cutoff is 384 higher, the resonance 4 higher (each clamped) and the voice's sustain full |
-| Step held + LFO | clears that step's locks, its chance, its SET, its slide and its accent |
+| Step held + EDIT + ALGORITHM | the step's **RATCHET**: `OFF`, `x2`, `x3`, `x4`, the step played that many times in its row (below, **Ratchets**); the popup says `RATCHET` over `x3`, the step shows that many short yellow ticks under it. A count the song's rows are too short for is refused in the popup (`NO x4`), a rest says `NO NOTE` |
+| Step held + LFO | clears that step's locks, its chance, its SET, its slide, its accent and its ratchet |
 | FX held + K1 | the selected lane's **EUCLID** **HITS**, 0 to the lane's length: that many hits spread as evenly as the steps allow (Bjorklund's rhythm: 3 of 8 is `x..x..x.`), written as the lane's steps (below, **Euclid**). The popup says `HITS` over `3/8` |
 | FX held + K2 | the lane's EUCLID **ROTATE**: the rhythm a step later a detent, round the lane (`ROTATE` over `1`) |
 | FX held + LFO | the lane's EUCLID off (toast `EUCLID OFF`): the steps stay as they are |
@@ -380,6 +381,22 @@ beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 2
 the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
 or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
 STRAIGHT and 2 OCT.
+
+**Ratchets** (Step held + EDIT + ALGORITHM). A ratcheted step plays a **copy of its instrument**
+whose wave table gates the note off and on again, so the song stays GoatTracker data and plays
+the same there. The copy is the instrument's sound (envelope, pulse, filter and vibrato) with its
+first frame the wave program's first waveform (the first hit), its gate cleared 1 frame before the
+next note (its hard restart shortened, so the last hit sounds), and a wave program of the hits
+before the last: a hold, a frame with the gate off and a frame with it on again, then a jump to the
+instrument's own program, which the last hit plays. The hits are a row's frames over the count
+apart (the shorter row of a swung pair): at speed 6, x2 is hits 3 frames apart and x3 2 apart;
+x4 needs rows of 8 frames (speed 8, or a slower swing), since a hit is at least a frame on and one
+off. Copies are **shared**: one for each instrument, count and row length, found by its bytes
+and its program, so ratcheting more steps costs nothing more; each new one takes a free
+instrument slot (named after the instrument, `KICK x3`) and up to 10 wave table rows after the
+table's last. With no free slot the ratchet is refused (`INSTRUMENTS FULL`), with no room in the
+table `TABLE FULL`. OFF, and LFO's clear, give the step its instrument back; a copy no step uses
+stays in the song, ready for the next step ratcheted that way.
 
 **Euclid** (FX held + K1, K2; STEP only). A turn of HITS or ROTATE turns the selected lane's
 EUCLID on and writes the rhythm into its pattern as ordinary steps, over the whole lane (its

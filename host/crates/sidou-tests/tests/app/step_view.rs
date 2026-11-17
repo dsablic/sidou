@@ -903,11 +903,11 @@ const VOICE_1_CONTROL: u8 = 4;
 const FIRST_ROW_CALL: usize = 7;
 const CALLS_A_ROW: usize = 6;
 
-fn row_start(row: usize) -> usize {
+pub(crate) fn row_start(row: usize) -> usize {
     FIRST_ROW_CALL + row * CALLS_A_ROW
 }
 
-fn voice_1_control_after_each_call(calls: &[Vec<(u8, u8)>]) -> Vec<u8> {
+pub(crate) fn voice_1_control_after_each_call(calls: &[Vec<(u8, u8)>]) -> Vec<u8> {
     let mut at = 0u8;
     calls
         .iter()

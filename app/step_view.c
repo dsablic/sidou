@@ -8,6 +8,9 @@
 #include "font.h"
 #include "live_view.h"
 #include "song_gen.h"
+#include "song_ratchet.h"
+#include "lab_song.h"
+#include "song_pages.h"
 #include "song/gt2_song.h"
 #include "song/song_ext.h"
 
@@ -257,7 +260,15 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     sv->dirty |= HEAD_ROWS;
 }
 
-static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t l, uint32_t page) {
+static uint32_t ratchet_of(const gt2_song* s, uint8_t ratchets[GT2_MAX_INSTR + 1u], uint32_t instr) {
+    if (!ratchets[instr]) {
+        ratchets[instr] = (uint8_t)song_ratchet_count(s, instr);
+    }
+    return ratchets[instr];
+}
+
+static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t l, uint32_t page,
+                       uint8_t ratchets[GT2_MAX_INSTR + 1u]) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
     const gt2_song* s = sv->song;
@@ -302,7 +313,10 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
             }
             locks = next < nlocks && lock_at(recs, next) == (ln->pattern << 8 | row);
         }
-        if (!held && (locks || cell[2] == 7u)) {
+        uint32_t ratchet = note && cell[1] ? ratchet_of(s, ratchets, cell[1]) : SONG_RATCHET_OFF;
+        if (!held && ratchet > SONG_RATCHET_OFF) {
+            put(c, col, r + 1u, (uint8_t)(FONT_TICK2 + ratchet - 2u), GRID_ATTR(th->hot, th->bg));
+        } else if (!held && (locks || cell[2] == 7u)) {
             put(c, col, r + 1u, locks ? FONT_V4 : FONT_V2,
                 GRID_ATTR(locks ? th->hot : th->knob[1], th->bg));
         }
@@ -326,8 +340,9 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
 }
 
 static void build_lanes(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
+    uint8_t ratchets[GT2_MAX_INSTR + 1u] = {0};
     for (uint32_t l = 0; l < STEP_VIEW_LANES; l++) {
-        build_lane(st, lanes, l, page);
+        build_lane(st, lanes, l, page, ratchets);
     }
     st->sv->dirty |= LANES_ROWS;
 }
@@ -642,9 +657,92 @@ static void note_now(screen* s, step_view* st, const target* t, int32_t steps) {
 
 static void unset_now(screen* s, step_view* st, const target* t) {
     uint8_t cell[4];
-    if (read_cell(st, t, t->row, cell) && cell[2] == 7u) {
-        cell[2] = cell[3] = 0u;
+    if (!read_cell(st, t, t->row, cell)) {
+        return;
+    }
+    uint8_t base = (uint8_t)song_ratchet_base(st->sv->song, cell[1]);
+    if (cell[2] == 7u || base != cell[1]) {
+        cell[1] = base;
+        cell[2] = cell[2] == 7u ? 0u : cell[2];
+        cell[3] = cell[2] ? cell[3] : 0u;
         (void)write_cell(s, st, t, t->row, cell);
+    }
+}
+
+static void ratchet_apply(screen* s, step_view* st) {
+    song_view* sv = st->sv;
+    const gt2_song* song = sv->song;
+    target t = {st->ratchet_pattern, 0u, sv->voice, st->ratchet_row};
+    uint8_t cell[4];
+    if (!read_cell(st, &t, t.row, cell) || !is_note(cell[0]) || !cell[1]) {
+        return;
+    }
+    uint32_t base = song_ratchet_base(song, cell[1]), frames = song_gen_row_frames(sv);
+    uint32_t count = st->ratchet_given;
+    uint32_t to = count == SONG_RATCHET_OFF ? base : song_ratchet_copy(song, base, count, frames);
+    if (!to) {
+        uint8_t left[SONG_RATCHET_ROWS], right[SONG_RATCHET_ROWS], bytes[GT2_INSTR_BYTES];
+        uint32_t n = song_ratchet_rows(song, base, count, frames, left, right);
+        uint32_t at = lab_song_table_end(song, GT2_WTBL);
+        song_pages* pg = sv->gen.pages;
+        to = lab_song_free(song);
+        song_ratchet_instr(song, base, count, at + 1u, bytes);
+        const char* why = !to ? "INSTRUMENTS FULL"
+                          : at + n > GT2_TABLE_ROWS ? "TABLE FULL"
+                          : !pg || pg->pending || !song_pages_batch_begin(pg)
+                              ? "WAITING"
+                              : song_pages_batch_rows(pg, GT2_WTBL, at, n, 0u, left, right);
+        why = why ? why : song_pages_batch_instr(pg, to, bytes);
+        if (!why && !song_pages_batch_go(pg)) {
+            why = song_pages_message(pg);
+        }
+        if (why) {
+            if (pg) {
+                pg->batch_runs = pg->batch_end = pg->batch_used = 0u;
+            }
+            refuse(s, why);
+            return;
+        }
+        st->ratchet_wait = 1u;
+    }
+    if (to == cell[1]) {
+        return;
+    }
+    cell[1] = (uint8_t)to;
+    st->follow_pattern = t.pattern;
+    st->follow_row = t.row;
+    memcpy(st->follow_cell, cell, sizeof cell);
+    st->follow = 1u;
+}
+
+static void ratchet_turn(screen* s, step_view* st, const target* t, int32_t steps) {
+    const gt2_song* song = st->sv->song;
+    uint8_t cell[4];
+    if (!read_cell(st, t, t->row, cell) || !is_note(cell[0]) || !cell[1]) {
+        return;
+    }
+    int turned = st->ratchet_turned && st->ratchet_pattern == t->pattern &&
+                 st->ratchet_row == t->row;
+    int32_t want = (int32_t)(turned ? st->ratchet : song_ratchet_count(song, cell[1])) + steps;
+    want = want < (int32_t)SONG_RATCHET_OFF ? (int32_t)SONG_RATCHET_OFF
+           : want > (int32_t)SONG_RATCHET_MAX ? (int32_t)SONG_RATCHET_MAX : want;
+    uint8_t left[SONG_RATCHET_ROWS], right[SONG_RATCHET_ROWS];
+    st->ratchet = (uint8_t)want;
+    st->ratchet_turned = 1u;
+    st->ratchet_pattern = t->pattern;
+    st->ratchet_row = t->row;
+    st->ratchet_refused = (uint8_t)(want > (int32_t)SONG_RATCHET_OFF &&
+                                    !song_ratchet_rows(song, song_ratchet_base(song, cell[1]),
+                                                       (uint32_t)want, song_gen_row_frames(st->sv),
+                                                       left, right));
+    if (st->ratchet_refused) {
+        return;
+    }
+    st->ratchet_given = (uint8_t)want;
+    if (st->ratchet_wait || st->follow || st->sv->editor->pending) {
+        st->ratchet_due = 1u;
+    } else {
+        ratchet_apply(s, st);
     }
 }
 
@@ -659,6 +757,18 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
     if (sv->editor->pending) {
         return;
     }
+    if (st->ratchet_wait) {
+        const song_pages* pg = sv->gen.pages;
+        if (pg->pending || song_pages_batch_busy(pg)) {
+            return;
+        }
+        st->ratchet_wait = 0u;
+        if (!sv->song->instr[st->follow_cell[1] - 1u][GT2_INS_WAVE]) {
+            st->follow = 0u;
+            refuse(s, *song_pages_message(pg) ? song_pages_message(pg) : "INSTRUMENTS FULL");
+            return;
+        }
+    }
     if (st->follow) {
         st->follow = 0u;
         int ok = song_edit_row(sv->editor, st->follow_pattern, st->follow_row, st->follow_cell);
@@ -666,6 +776,11 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
         if (!ok) {
             feedback(s, sv);
         }
+        return;
+    }
+    if (st->ratchet_due) {
+        st->ratchet_due = 0u;
+        ratchet_apply(s, st);
         return;
     }
     if (!st->qn) {
@@ -740,6 +855,7 @@ static uint32_t audition_note(const step_view* st, const target* t, const uint8_
 static void key_down(step_view* st, screen* s, uint32_t k) {
     song_view* sv = st->sv;
     st->held = (uint8_t)k;
+    st->ratchet_turned = 0u;
     target t;
     if (sv->t && song_view_rec_playing(sv)) {
         uint32_t v = sv->voice;
@@ -979,7 +1095,12 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->id == PANEL_ENC_ALGORITHM && st->held != STEP_VIEW_NONE && target_of(st, st->held, &t)) {
         st->touched = st->down;
-        set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
+        if (edit) {
+            ratchet_turn(s, st, &t, e->steps);
+            drain(s, st);
+        } else {
+            set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
+        }
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
@@ -1062,6 +1183,22 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
         if (hits) {
             text[n++] = '/';
             screen_decimal(text + n, ln->rows);
+        }
+    } else if (encoder == PANEL_ENC_ALGORITHM && held && edit && sv->song && ln->pattern != 0xffu &&
+               at < ln->rows) {
+        static const char* const RATCHETS[SONG_RATCHET_MAX + 1u] = {"", "OFF", "x2", "x3", "x4"};
+        label = "RATCHET";
+        const uint8_t* c = cell_of(sv->song, ln, at);
+        int turned = st->ratchet_turned && st->ratchet_pattern == ln->pattern && st->ratchet_row == at;
+        cur = turned ? st->ratchet : is_note(c[0]) ? song_ratchet_count(sv->song, c[1]) : SONG_RATCHET_OFF;
+        top = SONG_RATCHET_MAX;
+        if (!is_note(c[0]) || !c[1]) {
+            screen_popup_copy(text, is_note(c[0]) ? "NO INSTR" : "NO NOTE");
+        } else {
+            if (turned && st->ratchet_refused) {
+                screen_popup_copy(text, "NO ");
+            }
+            screen_popup_copy(text + (turned && st->ratchet_refused ? 3u : 0u), RATCHETS[cur]);
         }
     } else if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
         label = "CHANCE";
@@ -1177,7 +1314,7 @@ static int changed(screen* s, void* state) {
     if (sv->away) {
         return song_view_away_changed(sv);
     }
-    if (st->follow | st->qn | song_gen_busy(sv)) {
+    if (st->follow | st->qn | st->ratchet_due | song_gen_busy(sv)) {
         drain(s, st);
     }
     if (song_view_loading(sv)) {

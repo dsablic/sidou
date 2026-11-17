@@ -3400,6 +3400,41 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   song's groove settings are (DICE's density and rhythm). The DICE frame's foot names it
   (`ALG SWING`). The header shows it under the BPM, in the song views' shared `song_view_tempo`.
 
+### Ratchets (1.21)
+
+- **A copy of the instrument, not a player feature** (the owner, 2026-11-17): the cell's
+  instrument becomes a copy whose wave table retriggers, so the song is GoatTracker data and
+  plays the same there; nothing in the audio interrupt. `app/song_ratchet.c` holds the song-data
+  side (the program, recognising a copy and its base, finding a shared one), `step_view.c` the
+  edits (the copy's rows and bytes through the batch writer, then the cell once they landed, as
+  swing's row and cell).
+- **The frames**: a retrigger is a frame with the gate off then one with it on, so a hit is at
+  least 2 frames: hits `row frames / count` apart. A ratchet the row cannot give is refused in the
+  popup (`NO x4`); at speed 6 that is x4, so x4 needs speed 8. The row is the song's shorter
+  speed (`song_gen_row_frames`: the first row's funktempo, or speed 6), so a swung song's short
+  rows hold every hit. Measured on the player: the instrument's own first frame (`firstwave`) is
+  frame 0 and the wave program starts at frame 1, and GoatTracker clears the gate `gatetimer`
+  frames before the next note (or key off, which a staccato lane writes). With the base's
+  firstwave (often `09`, the test bit) and its gatetimer of 2, x3 at speed 6 lost its last hit; so
+  the copy's firstwave is the program's first waveform (the first hit sounds at frame 0) and its
+  gatetimer is at most 1 (the high bits, no hard restart and no gate-off, kept). Then the last
+  hit, `(count - 1) * hit` frames in, always has a frame before the gate clears.
+- **The program**: before each later hit, a delay row (`hit - 3`, which holds `hit - 2` frames:
+  a delay row `n` takes `n + 1` frames in the player), the waveform with the gate bit cleared and
+  the waveform again, each with the first row's note; then a jump to the instrument's own
+  program, which the last hit plays from its start (a drum's sweep plays on the last hit; the
+  earlier hits are its first waveform). At most 3 rows a hit, 10 in all.
+- **Shared and recognised by their bytes**: a copy is an instrument with the base's envelope,
+  pulse, filter and vibrato bytes whose program is the one the base, count and row length make
+  (`song_ratchet_copy`); a step's count is read from its instrument's program
+  (`song_ratchet_count`: gate-off, gate-on pairs then a jump that is not 0, so a sound whose
+  program gates off and stops is not a ratchet) and its base is the instrument the jump goes to
+  with the same sound. No chunk: GoatTracker and the site see an ordinary instrument, named
+  after the base (`LEAD x2`). A copy no step uses is left in the song (finding every reference
+  costs a scan of the patterns each edit), ready to be shared again.
+- **The ticks** are three glyphs (`TICK2`-`TICK4`, `DD`-`DF`) on the step's notch row, yellow,
+  over the lock notch: a ratchet is the step's most visible lock.
+
 ### Euclid lanes (1.21)
 
 - **The hits are written as real steps** (`SONG_GEN_EUCLID`, a run of `song_gen.c` as DICE's):

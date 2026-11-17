@@ -810,6 +810,13 @@ static const char* swing_first(const song_view* sv, uint32_t* pattern, uint8_t c
     return swing_sum(sv->song, cell, sum, late) ? NULL : "ROW HAS A COMMAND";
 }
 
+uint32_t song_gen_row_frames(const song_view* sv) {
+    uint32_t p, sum = 2u * SWING_NEW_SPEED, late = SWING_NEW_SPEED;
+    uint8_t cell[4];
+    (void)swing_first(sv, &p, cell, &sum, &late);
+    return sum - late < late ? sum - late : late;
+}
+
 static void swing_apply(song_view* sv, screen* s) {
     song_gen* g = &sv->gen;
     uint32_t p, sum = 0u, late = 0u;
