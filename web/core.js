@@ -263,6 +263,49 @@ export class Core {
     return out;
   }
 
+  frames(count, { subtune = 0 } = {}) {
+    this.#need();
+    const multispeed = this.x.sc_frames_start(subtune);
+    if (multispeed < 0) throw this.#refused();
+    const out = [];
+    while (out.length < count) {
+      const done = this.x.sc_frames_next(count - out.length);
+      const b = new Uint8Array(this.mem.buffer, this.x.sc_out(), this.x.sc_frames_bytes());
+      for (let at = 0, k = 0; k < done; k++) {
+        const pairs = b[at];
+        const events = [0, 1, 2].map((ch) => ({ flags: b[at + 1 + ch * 3], note: b[at + 2 + ch * 3], instr: b[at + 3 + ch * 3] }));
+        at += 1 + 9;
+        const writes = [];
+        for (let p = 0; p < pairs; p++, at += 2) writes.push([b[at], b[at + 1]]);
+        out.push({ writes, events });
+      }
+    }
+    return { multispeed, frames: out };
+  }
+
+  freqTable() {
+    return Array.from({ length: 96 }, (_, n) => this.x.sc_freq(n));
+  }
+
+  renderWrites(chips, { model8580 = [false, false], ntsc = false, clock, seconds }) {
+    this.x.sc_raw_start((model8580[0] ? 1 : 0) | (model8580[1] ? 2 : 0) | (ntsc ? 4 : 0));
+    const rate = this.sampleRate, total = Math.ceil(seconds * rate), out = new Int16Array(total);
+    let done = 0;
+    const upTo = (n) => {
+      while (done < n) {
+        const k = this.x.sc_raw_render(Math.min(n - done, this.x.sc_pcm_max()), chips.count);
+        out.set(new Int16Array(this.mem.buffer, this.x.sc_pcm(), k), done);
+        done += k;
+      }
+    };
+    for (const [cycle, chip, reg, value] of chips.writes) {
+      upTo(Math.min(total, Math.floor((cycle * rate) / clock)));
+      this.x.sc_raw_write(chip, reg, value);
+    }
+    upTo(total);
+    return out;
+  }
+
   renderSong({ subtune = 0, pos = 0, seconds = 10 } = {}) {
     this.play(subtune, pos);
     return this.#pcm(seconds);

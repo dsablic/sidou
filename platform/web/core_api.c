@@ -499,3 +499,96 @@ EXPORT(sc_level) int32_t sc_level(uint32_t first, uint32_t count, uint32_t style
 EXPORT(sc_calls) uint32_t sc_calls(void) {
     return sc.calls;
 }
+
+#define FRAME_EVENT_BYTES 3u
+#define FRAME_HEAD (1u + GT2_PLAY_CHANNELS * FRAME_EVENT_BYTES)
+#define FRAME_ROOM (FRAME_HEAD + 2u * 128u)
+#define RAW_MODEL_8580_A 1u
+#define RAW_MODEL_8580_B 2u
+#define RAW_NTSC 4u
+#define SID_CLOCK_NTSC 1022727u
+
+static gt2_player frame_player;
+static gt2_shape frame_shape;
+static uint32_t frame_pairs;
+
+static void frame_sink(void* ctx, uint8_t reg, uint8_t value) {
+    (void)ctx;
+    out_buf[out_len++] = reg;
+    out_buf[out_len++] = value;
+    frame_pairs++;
+}
+
+EXPORT(sc_frames_start) int32_t sc_frames_start(uint32_t subtune) {
+    playing = NULL;
+    if (!song) {
+        return -1;
+    }
+    gt2_options o;
+    song_ext_get_options(song, &o);
+    int r = gt2_play_init(&frame_player, &frame_shape, song, subtune, &o);
+    return r < 0 ? r : (int32_t)(o.multispeed ? o.multispeed : 1u);
+}
+
+EXPORT(sc_frames_next) uint32_t sc_frames_next(uint32_t frames) {
+    uint32_t done = 0;
+    out_len = 0;
+    while (done < frames && out_len + FRAME_ROOM <= OUT_MAX) {
+        uint32_t head = out_len;
+        out_len += FRAME_HEAD;
+        frame_pairs = 0;
+        gt2_play_frame(&frame_player, frame_sink, NULL);
+        out_buf[head] = (uint8_t)frame_pairs;
+        for (uint32_t ch = 0; ch < GT2_PLAY_CHANNELS; ch++) {
+            const gt2_event* e = &frame_player.ev[ch];
+            uint8_t* to = out_buf + head + 1u + ch * FRAME_EVENT_BYTES;
+            to[0] = e->flags;
+            to[1] = e->note;
+            to[2] = e->instr;
+        }
+        done++;
+    }
+    return done;
+}
+
+EXPORT(sc_frames_bytes) uint32_t sc_frames_bytes(void) {
+    return out_len;
+}
+
+static sid chip_b;
+static sid_dac dac_b;
+
+static void raw_chip(sid* s, sid_dac* d, int is8580, uint32_t clock) {
+    sid_init(s, is8580 ? SID_MODEL_8580 : SID_MODEL_6581, clock, SC_RATE);
+    sid_character_apply(s, &character, d);
+}
+
+EXPORT(sc_raw_start) void sc_raw_start(uint32_t flags) {
+    playing = NULL;
+    uint32_t clock = flags & RAW_NTSC ? SID_CLOCK_NTSC : SID_CLOCK_PAL;
+    sid_character_init(&character);
+    raw_chip(&chip, &dac, (flags & RAW_MODEL_8580_A) != 0u, clock);
+    raw_chip(&chip_b, &dac_b, (flags & RAW_MODEL_8580_B) != 0u, clock);
+}
+
+EXPORT(sc_raw_write) void sc_raw_write(uint32_t which, uint32_t reg, uint32_t value) {
+    sid_write(which ? &chip_b : &chip, (uint8_t)reg, (uint8_t)value);
+}
+
+EXPORT(sc_raw_render) uint32_t sc_raw_render(uint32_t n, uint32_t chips) {
+    if (n > PCM_MAX) {
+        n = PCM_MAX;
+    }
+    sid_render(&chip, pcm, n);
+    if (chips > 1u) {
+        sid_render(&chip_b, pcm_out, n);
+        for (uint32_t i = 0; i < n; i++) {
+            pcm[i] = (int16_t)(((int32_t)pcm[i] + pcm_out[i]) / 2);
+        }
+    }
+    return n;
+}
+
+EXPORT(sc_freq) uint32_t sc_freq(uint32_t note) {
+    return note < GT2_NOTES ? (uint32_t)gt2_freq_lo[note] | (uint32_t)gt2_freq_hi[note] << 8 : 0u;
+}
