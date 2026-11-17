@@ -198,7 +198,7 @@
       <h2>STEP (song as a drum machine)</h2>
       <table>
         <tr><td>Step key 1–16</td><td>toggle a note on that step of the lane (no REC needed); held, it sounds the step with its cutoff, resonance, filter, route and pulse locks</td></tr>
-        <tr><td>SELECT · ALGORITHM</td><td>lane V1 V2 V3 · page of 16 steps</td></tr>
+        <tr><td>SELECT · ALGORITHM</td><td>lane V1 V2 V3 · page of 16 steps, then GROOVE</td></tr>
         <tr><td>PRESETS</td><td>the lane's instrument, by name (<code>03 KICK</code>)</td></tr>
         <tr><td>ARP</td><td>the lane's gate: STACCATO / LEGATO</td></tr>
         <tr><td>step held + K1 · K2 · K3</td><td>LOCK cutoff · resonance · pulse width on that step</td></tr>
@@ -210,9 +210,7 @@
         <tr><td>step held + LFO</td><td>clear the step's locks, chance and SET</td></tr>
         <tr><td>E+ SCL</td><td><b>DICE</b>: a new pattern for the lane (<code>NEW PATTERN</code>), rolled when SCL is let go</td></tr>
         <tr><td>E+ SCL held + K1 · K2 · K3 · K4</td><td>DICE's <b>density</b> (sparse to every step) · <b>range</b> (1, 2 or 3 octaves, BASS) · the lane's <b>scale</b> (minor/major pentatonic, minor, major, dorian, chromatic) · <b>rhythm</b> (STRAIGHT, OFFBEAT, 3-3-2, FOUR, BROKEN); saved with the song, shown on the screen while held</td></tr>
-        <tr><td>Step held + E+ ALGORITHM</td><td><b>RATCHET</b>: OFF, x2, x3, x4, the step played that many times in its row (a shared copy of its instrument whose wave table gates the note again; ticks under the step; x4 needs rows of 8 frames)</td></tr>
-        <tr><td>FX held + K1 · K2 · LFO</td><td><b>EUCLID</b>: the lane's HITS (Bjorklund's even spread over the lane, written as real steps: notes, locks and slides apply) · ROTATE · off, the steps kept</td></tr>
-        <tr><td>E+ SCL held + ALGORITHM</td><td>the song's <b>SWING</b>: STRAIGHT, LIGHT, SHUFFLE, HARD (GoatTracker's funktempo on the first row; the BPM stays; the header says it under the BPM)</td></tr>
+        <tr><td>ALGORITHM past the last page</td><td>the <b>GROOVE</b> page (<code>PAGE 1 2 3 4 G</code>): K1 the song's <b>SWING</b> (STRAIGHT, LIGHT, SHUFFLE, HARD: GoatTracker's funktempo, the BPM stays) · K2 K3 the lane's <b>HITS</b> and <b>ROTATE</b> (Bjorklund's even spread, written as real steps) · K4 the picked step's <b>RATCHET</b> (OFF, x2, x3, x4; ticks under the step; x4 needs rows of 8 frames) · a step key picks a step (toggles nothing) · PRESETS moves the pick · ALGORITHM back</td></tr>
         <tr><td>E+ SCL held + PRESETS</td><td>the lane's <b>role</b>: AUTO, DRUMS, BASS, BASS+DRUMS, ACID, ARP, LEAD, NONE (the song's <code>SCNE</code>). DICE on an <b>ARP</b> lane writes chords (<code>NEW CHORDS</code>: a note and <code>8XX</code> at a shared chord program, major, minor, sus4 or 7, in the lane's scale); on a <b>BASS+DRUMS</b> lane the NEW song's KICK and SNARE on the strong beats and the lane's instrument as the bass between; on an <b>ACID</b> lane a bassline with SLIDE and ACCENT locks rolled on its notes</td></tr>
         <tr><td>E+ SCL held + a key</td><td>the lane's <b>root</b> (the roll still comes when SCL is let go)</td></tr>
         <tr><td>E+ ARP</td><td><b>MUTATE</b>: two small changes (<code>MUTATED</code>)</td></tr>

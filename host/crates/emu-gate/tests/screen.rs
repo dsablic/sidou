@@ -3818,6 +3818,7 @@ fn the_states_help_cards_match_their_goldens() {
         "expert",
         "step-held",
         "step-rec",
+        "groove",
         "tracker-edit",
         "tracker-rec",
         "store",
@@ -3849,11 +3850,14 @@ fn the_states_help_cards_match_their_goldens() {
                 m.turn(SELECT, to);
                 m.run_ms(100);
             }
-            "step-held" | "step-rec" => {
+            "step-held" | "step-rec" | "groove" => {
                 press(&mut m, SEQ);
                 settle(&mut m, &fw);
                 if name == "step-held" {
                     m.key(KEY0 + 5, true);
+                    m.run_ms(100);
+                } else if name == "groove" {
+                    m.turn(ALGORITHM, 1);
                     m.run_ms(100);
                 } else {
                     press(&mut m, PLAY);
