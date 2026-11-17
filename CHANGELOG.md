@@ -8,6 +8,21 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
+  (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a
+  bar and a number. The audio interrupt scales each voice by its level in the render, about 6
+  instructions a sample per chip, inside every audio budget on one core; a layer at 100 % plays
+  bit for bit as before. The level is kept in the sound (3 bytes, a sound is 112): USER sounds,
+  the unsaved edit, a song's kept LAB sound and `sidou-patch/1` (`level` at the top and in each of
+  `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
+
+### Changed
+- **LAYERS' K4 FILT is gone from the panel**: which layers go through the filter is FILTER's K3
+  VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
+  layer, so a controller mapped to it keeps working.
+- EDIT + ARP on LAYERS leaves the layers' levels as they are.
+
 ## [1.21.0] - 2026-11-17
 
 STEP's new GROOVE page puts the song's swing, Euclidean hits and ratchets on a knob each, heard while the song plays; the Library page turns a `.sid` tune into a song you can edit.

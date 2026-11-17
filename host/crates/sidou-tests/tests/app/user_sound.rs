@@ -540,6 +540,7 @@ fn an_older_file_reads_with_the_new_fields_at_their_defaults_and_a_keep_rewrites
         LAB_SOUND_BYTES_1_0,
         LAB_SOUND_BYTES_1_5,
         LAB_SOUND_BYTES_1_6,
+        LAB_SOUND_BYTES_1_7,
     ] {
         older_file_reads(old as usize);
     }

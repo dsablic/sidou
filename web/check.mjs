@@ -419,13 +419,13 @@ try {
     const { loadCore } = await import("./core.js");
     const core = await loadCore("sidou-core.wasm");
     core.read(new Uint8Array(await (await fetch("sounds/sidou-sounds.sng")).arrayBuffer()));
-    const file = new Uint8Array(3 + 16 * 122);
-    file.set([1, 109, 16]);
+    const file = new Uint8Array(3 + 16 * 125);
+    file.set([1, 112, 16]);
     for (const [slot, instrument] of [[0, 1], [3, 2]]) {
       const kept = core.kept(instrument);
-      file[3 + slot * 122] = 1;
-      file.set(new TextEncoder().encode(kept.name), 3 + slot * 122 + 1);
-      file.set(kept.sound, 3 + slot * 122 + 13);
+      file[3 + slot * 125] = 1;
+      file.set(new TextEncoder().encode(kept.name), 3 + slot * 125 + 1);
+      file.set(kept.sound, 3 + slot * 125 + 13);
     }
     window.__midi.userSounds = file;
   });

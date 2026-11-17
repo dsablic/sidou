@@ -4615,6 +4615,42 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   built-in LIVE preset was not done: a fifth built-in moves the presets' numbers, MIDI program
   changes included. The DICE role that rolls slides and accents is 1.8's ACID.
 
+### A layer's level (2.0)
+
+- The SID has no volume a voice, so the level is the render's: `sid.voice_gain[v]` scales the
+  voice's output (`wave * env`) before it goes to the filter or straight out, in both render
+  loops. Measured on one core (`sid_budget`, the fm1 build) against three ways: a multiply before
+  the voice's routing branches, about 6 instructions a sample a chip (the worst scenario from
+  537.0 to 543.1 of `SID_WORST_PER_CHIP`'s 550, the worst block from 697.5 to 703.5 of 711 on
+  one chip and from 1,402.8 to 1,415.0 of 1,426 on two); a branch-free sum
+  (`filt_in += x * to_filter[v]`, `direct += x * to_direct[v]`), 8.3 a chip and the two-chip
+  mean at 548.3 of 550; a per-voice envelope DAC table scaled by the level, near 0 instructions
+  but 1 KB of RAM a voice of each of the three `sid`s. The first is built: every budget holds on
+  one core unchanged, and `SIDOU_CPU2` only widens the room.
+- `x * 1.0f` is exact, so a layer at 100 % is the chip of 1.21 bit for bit (the render goldens),
+  and `x * 0.0f` adds nothing, so a layer at 0 sounds as a voice that outputs nothing (the
+  zero-voice build's test, as the mute's). The gain is worked out once a block from
+  `level_cut[v]`, `100 -` the level, so a `sid` zeroed and never `sid_init`ed plays at full level.
+  The thump at a gate scales with the voice's level, as the voice's own DC step does.
+- The level reaches the chip as a pseudo-register a voice, `0x8A..0x8C` (`LIVE_REG_LEVEL`), through
+  the ring as the mute's does, applied between blocks. A chip reset is a fresh chip at full level;
+  live sends its levels with every register (`li_write_all`). The chip a song plays is at full
+  level: the keys leaving a chip set it full, the keys under a song (KEYS A) drop their level
+  registers as they drop the setup's and set the song's chip full as they go under it, and silent
+  keys (a 2SID tune) set theirs full. The song's instrument has no level; the kept LAB sound does.
+- The sound keeps `100 -` each layer's level at offset 109, so a 1.7 to 1.21 sound's zeros are full.
+  A song's kept LAB sound (`LBnn`) is written at 1.7's 109 bytes while every layer is full, so a
+  song saved without a level is the same file as before.
+- LAYERS' K4 is LEVEL; FILT is gone from the panel because FILTER's VOICES routes the same bits
+  (layer n is voice n). NRPN 7/9 keeps routing the edited layer and the level is 7/20, added at
+  the end so no card's number moves. The card value is three characters, shown large and lit as it
+  turns, LAB's form of the popup. The page shows each layer's level as a six-cell bar and its
+  number under the layer.
+- EDIT + ARP leaves the levels alone on LAYERS: a level nudged by a few percent changes how loud,
+  not what the sound is, and a walk of varies would drift the layers quieter. The audibility
+  estimate takes each layer's level off its dB (`level_loss_db`, 6 dB a halving, `0` silent), so
+  a roll or vary never lands on a layer turned down to nothing.
+
 ### LAB cards over MIDI (1.7)
 
 - The cards that are no instrument parameter get NRPN group 7 (`midi_map.c`'s `LAB_ROW`, `lab_cards.c`):

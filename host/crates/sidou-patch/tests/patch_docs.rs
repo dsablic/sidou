@@ -121,7 +121,7 @@ pub const LAB: [(&str, [Card; 4], &str); 10] = [
             ("EDIT", "the layer OSC and ENVELOPE edit"),
             ("TRANS", "its transpose"),
             ("DETUNE", "up: wider, fatter"),
-            ("FILT", "the layer into the filter or not"),
+            ("LEVEL", "up: louder; down to 0, silent; a quiet layer for colour under the first"),
         ],
         "one, two or three oscillators",
     ),
@@ -171,10 +171,14 @@ fn lab_effects() -> String {
 const FIELDS_BEGIN: &str = "<!-- the fields, generated -->\n";
 const FIELDS_END: &str = "<!-- end of the fields -->\n";
 
-const HINTS: [(&str, &str); 27] = [
+const HINTS: [(&str, &str); 28] = [
     ("pulse_width", "percent of the cycle, 50 is square"),
     ("transpose", "semitones"),
     ("detune", "cents"),
+    (
+        "level",
+        "percent: the layer's loudness, 100 full; on a one-oscillator sound every voice's",
+    ),
     ("fine_tune", "cents, the whole sound"),
     ("filter.cutoff_hz", "Hz, as an 8580 plays it"),
     (

@@ -70,10 +70,13 @@ typedef struct {
     uint8_t noise_writeback;
     uint8_t mute;
     uint8_t voice_path;
+    uint8_t level_cut[3];
+    float voice_gain[3];
 } sid;
 
 #define SID_PATH_FILTER 0x01u
 #define SID_PATH_DIRECT 0x10u
+#define SID_LEVEL_FULL 100u
 
 #define SID_GRIT_ONE 16384u
 #define SID_GRIT_SLEW 48u
@@ -176,6 +179,10 @@ void sid_advance(sid* s, uint32_t k);
 
 static inline void sid_set_mute(sid* s, uint8_t mask) {
     s->mute = (uint8_t)(mask & 7u);
+}
+
+static inline void sid_set_level(sid* s, uint32_t voice, uint32_t level) {
+    s->level_cut[voice % 3u] = (uint8_t)(SID_LEVEL_FULL - (level < SID_LEVEL_FULL ? level : SID_LEVEL_FULL));
 }
 
 void sid_clock(sid* s, uint32_t cycles);

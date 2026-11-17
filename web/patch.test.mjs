@@ -65,10 +65,10 @@ await test("a song's LAB sounds are written as the host writes them, and a plain
 });
 
 const storeFile = (slots) => {
-  const file = new Uint8Array(3 + 16 * 122);
-  file.set([1, 109, 16]);
+  const file = new Uint8Array(3 + 16 * 125);
+  file.set([1, 112, 16]);
   for (const [slot, name, sound] of slots) {
-    const at = 3 + slot * 122;
+    const at = 3 + slot * 125;
     file[at] = 1;
     file.set(new TextEncoder().encode(name), at + 1);
     file.set(sound, at + 13);
@@ -94,7 +94,7 @@ await test("a damaged USER sounds file, a damaged slot and a cut file read as em
   core.read(readFileSync(`${root}assets/sounds/sidou-sounds.sng`));
   const a = core.kept(1), b = core.kept(2);
   const file = storeFile([[1, "BAD NAME", a.sound], [2, "GOOD", b.sound]]);
-  file[3 + 122 + 1] = 7;
+  file[3 + 125 + 1] = 7;
   const slots = patcher.userSounds(file);
   assert.deepEqual([slots[1], slots[2]?.name], [null, "GOOD"]);
   const cut = file.slice(0, file.length - 1);

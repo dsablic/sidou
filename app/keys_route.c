@@ -31,6 +31,12 @@ static uint8_t held_voices(const live* l) {
     return m;
 }
 
+static void full_levels(keys_route* kr, uint32_t chip) {
+    for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+        kr->sink(kr->out[chip & 1u], (uint8_t)LIVE_REG_LEVEL(v), LIVE_LEVEL_FULL);
+    }
+}
+
 static void retarget(keys_route* kr) {
     live* l = kr->l;
     if (kr->silent) {
@@ -87,6 +93,7 @@ void keys_route_start(keys_route* kr) {
 
 static int setup_reg(uint8_t reg) {
     return reg == LIVE_REG_RESET || reg == LIVE_REG_GATE_RESET || reg == LIVE_REG_CHAR_TICK ||
+           (reg >= LIVE_REG_LEVEL(0) && reg < LIVE_REG_LEVEL(LIVE_VOICES)) ||
            (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) ||
            (reg >= LIVE_REG_EXPERT_FIRST && reg < LIVE_REG_EXPERT(SID_EXPERT_COUNT));
 }
@@ -129,6 +136,7 @@ static void update_under(keys_route* kr) {
     kr->song_seen = kr->song;
     uint8_t now = (uint8_t)keys_under_song(kr);
     if (now && !kr->under) {
+        full_levels(kr, 0);
         kr->stale = 1;
         kr->taken = held_voices(kr->l);
         if (kr->taken && kr->taking) {
@@ -161,6 +169,9 @@ void keys_route_set_tune(keys_route* kr, int on) {
 void keys_route_set_silent(keys_route* kr, int on) {
     uint8_t was = kr->silent;
     kr->silent = on ? 1u : 0u;
+    if (!was && kr->silent) {
+        full_levels(kr, kr->l->keys_chip);
+    }
     if (was && !kr->silent) {
         kr->stale = 1;
     }
@@ -221,6 +232,7 @@ static void move(keys_route* kr, uint32_t to) {
         chip_setup_of(l, &kr->ctl[from].has);
         kr->ctl[from].made = 1;
     }
+    full_levels(kr, from);
     if (to == 1u) {
         kr->stale = 0;
         for (uint32_t v = 0; v < LIVE_VOICES; v++) {

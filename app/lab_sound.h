@@ -9,10 +9,11 @@
 extern "C" {
 #endif
 
-#define LAB_SOUND_BYTES 109u
+#define LAB_SOUND_BYTES 112u
 #define LAB_SOUND_BYTES_1_0 45u
 #define LAB_SOUND_BYTES_1_5 48u
 #define LAB_SOUND_BYTES_1_6 68u
+#define LAB_SOUND_BYTES_1_7 109u
 #define LAB_SOUND_NAME 12u
 
 #define LAB_SOUND_CONTROL 0u
@@ -57,6 +58,7 @@ extern "C" {
 #define LAB_SOUND_LFO 103u
 #define LAB_SOUND_LFO_BYTES 3u
 #define LAB_SOUND_LFOS 2u
+#define LAB_SOUND_LEVEL_CUT 109u
 
 #define LAB_LFO_SHAPE_MASK 0x07u
 #define LAB_LFO_DEST_SHIFT 4u
@@ -97,6 +99,7 @@ typedef enum {
 
 uint32_t lab_sound_equal(const uint8_t a[LAB_SOUND_BYTES], const uint8_t b[LAB_SOUND_BYTES]);
 uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]);
+uint32_t lab_sound_used_bytes(const uint8_t s[LAB_SOUND_BYTES]);
 int32_t lab_table_offset(uint8_t note);
 uint32_t lab_table_absolute(uint8_t note);
 

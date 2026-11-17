@@ -291,8 +291,12 @@ fn what_lab_audible_refuses_is_silent() {
         f(&mut s);
         s
     };
-    let cases: [(&str, [u8; BYTES]); 6] = [
+    let cases: [(&str, [u8; BYTES]); 7] = [
         ("no waveform", with(&|s| s[0] = 0)),
+        (
+            "its layer at level 0",
+            with(&|s| s[LAB_SOUND_LEVEL_CUT as usize] = LIVE_LEVEL_FULL as u8),
+        ),
         ("noise and saw", with(&|s| s[0] = 0xA0)),
         ("sustain 0, decay 0", with(&|s| s[2] = 0)),
         ("attack 15", with(&|s| s[1] = 0xF0)),

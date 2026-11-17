@@ -39,6 +39,10 @@ static inline uint16_t layer_pulse_width(const live* l, int v) {
     return l->layers && v ? l->layer[v - 1].pulse_width : l->pulse_width;
 }
 
+static inline uint8_t layer_level(const live* l, int v) {
+    return (uint8_t)(LIVE_LEVEL_FULL - l->level_cut[l->layers ? v : 0]);
+}
+
 static inline int layer_tuning(const live* l, int v) {
     return l->layers ? v : 0;
 }
@@ -52,6 +56,7 @@ void li_write_mode_vol(live* l);
 void li_write_envelopes(live* l);
 void li_write_controls(live* l);
 void li_write_gate_reset(live* l);
+void li_write_levels(live* l);
 void li_reset_chip(live* l);
 void li_write_all(live* l);
 void li_update_freq(live* l, int v);

@@ -401,6 +401,22 @@ static int32_t table_db(const uint8_t s[LAB_SOUND_BYTES], const uint8_t layer_so
     return played > 1u ? loud - TABLE_CLOSE_DB : loud;
 }
 
+#define SILENT_LOSS_DB 99
+#define OCTAVE_DB 6
+
+static int32_t level_loss_db(const uint8_t s[LAB_SOUND_BYTES], uint32_t layer) {
+    uint32_t level = LIVE_LEVEL_FULL - s[LAB_SOUND_LEVEL_CUT + layer];
+    if (!level) {
+        return SILENT_LOSS_DB;
+    }
+    int32_t loss = 0;
+    while (2u * level <= LIVE_LEVEL_FULL) {
+        level *= 2u;
+        loss += OCTAVE_DB;
+    }
+    return loss + (int32_t)((LIVE_LEVEL_FULL - level) * OCTAVE_DB * 2u / LIVE_LEVEL_FULL);
+}
+
 static uint32_t audible_once(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, int32_t loss) {
     int32_t db[LIVE_VOICES];
     uint8_t as_layer[LAB_SOUND_BYTES];
@@ -415,7 +431,8 @@ static uint32_t audible_once(const uint8_t s[LAB_SOUND_BYTES], uint32_t model, i
             as_layer[LAB_SOUND_PULSE] = v[3];
             as_layer[LAB_SOUND_PULSE + 1u] = v[4];
         }
-        db[n] = table_plays_on(s, n) ? table_db(s, as_layer, model, n) : level_db(as_layer, model, n);
+        db[n] = (table_plays_on(s, n) ? table_db(s, as_layer, model, n) : level_db(as_layer, model, n)) -
+                level_loss_db(s, n);
     }
     for (uint32_t n = 0; n <= layers; n++) {
         if (db[n] + pair_db(s, db, n) - loss >= LAB_AUDIBLE_DB) {

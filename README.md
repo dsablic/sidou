@@ -42,7 +42,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   on every note, the arpeggio's rate on MOD, two free LFOs on LFO (triangle, saws, square or sample and hold, on
   the pitch, pulse width, cutoff or volume), links on MACRO that make the resonance follow the
   cutoff and the PWM follow the width, and on LAYERS up to three oscillators on one key, each with
-  its own waveform, envelope, pulse, transpose and detune, and on TABLE a step table of up to 16
+  its own waveform, envelope, pulse, transpose, detune and level, and on TABLE a step table of up to 16
   waveform and pitch steps that plays on every note. EDIT's tap compares A and B, holding
   EDIT while you play peeks at A, EDIT + LFO undoes (16 steps), EDIT + ARP varies a page and
   EDIT + SCL rolls the voice (neither is ever silent). One SAVE keeps the sound as one of 16 USER

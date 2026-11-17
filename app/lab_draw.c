@@ -916,7 +916,7 @@ uint32_t lab_draw_look(const live* l, const scope* sc, uint32_t page, uint32_t h
             16777619u;
         for (uint32_t v = 0; v < LIVE_VOICES; v++) {
             h = (h ^ live_layer_control_of(l, v) ^ (uint32_t)(uint8_t)l->transpose[v] << 8 ^
-                 (uint32_t)(uint8_t)l->detune[v] << 16) * 16777619u;
+                 (uint32_t)(uint8_t)l->detune[v] << 16 ^ (uint32_t)l->level_cut[v] << 24) * 16777619u;
         }
     } else if (page == LAB_PAGE_LFO) {
         for (uint32_t n = 0; n < LAB_SOUND_LFOS; n++) {
@@ -1141,6 +1141,26 @@ static void signed_text(int32_t v, const char* unit, char* out) {
     *e = 0;
 }
 
+#define LEVEL_BAR_CELLS 6u
+
+static void level_bar(grid_canvas* c, uint32_t col, uint32_t row, uint32_t level, uint8_t fg,
+                      const theme* th) {
+    uint32_t px = level * LEVEL_BAR_CELLS * 8u / LIVE_LEVEL_FULL;
+    for (uint32_t i = 0; i < LEVEL_BAR_CELLS; i++) {
+        uint32_t fill = px >= 8u ? 8u : px;
+        c->ch[row][col + i] = (uint8_t)(FONT_BAR0 + fill);
+        c->attr[row][col + i] = GRID_ATTR(fg, th->dim);
+        px -= fill;
+    }
+    char text[4];
+    uint32_t n = 0;
+    for (uint32_t d = level >= 100u ? 100u : level >= 10u ? 10u : 1u; d; d /= 10u) {
+        text[n++] = (char)('0' + level / d % 10u);
+    }
+    text[n] = 0;
+    gtext(c, row, col + LEVEL_BAR_CELLS + 1u, text, GRID_ATTR(fg, th->bg));
+}
+
 static void guides_layers(grid_canvas* c, const live* l, const theme* th, uint32_t row0) {
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
         uint32_t col = v * 10u;
@@ -1156,6 +1176,7 @@ static void guides_layers(grid_canvas* c, const live* l, const theme* th, uint32
         (void)grid_canvas_text_big(c, col, row0 + 7u, 2, text, attr);
         signed_text(l->detune[v], "C", text);
         (void)grid_canvas_text_big(c, col, row0 + 10u, 2, text, attr);
+        level_bar(c, col, row0 + 13u, live_layer_level_of(l, v), fg, th);
     }
 }
 

@@ -163,6 +163,28 @@ fn what_a_part_leaves_out_follows_the_sound() {
 }
 
 #[test]
+fn each_layers_level_lands_on_its_layer_and_round_trips() {
+    let cut = |s: &Sound| {
+        let at = LAB_SOUND_LEVEL_CUT as usize;
+        s[at..at + 3].to_vec()
+    };
+    let v = json!({"format": "sidou-patch/1", "level": 60,
+        "layers": [{"level": 30}, {"wave": "noise"}]});
+    let s = read(&v).unwrap();
+    assert_eq!(cut(&s), vec![40, 70, 0], "kept as 100 less the level; one left out is full");
+    let text = json::write(&s, "LEVELS");
+    let back: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!((back["level"].clone(), back["layers"][0]["level"].clone()), (json!(60), json!(30)));
+    round_trips(&s, "LEVELS");
+    let full = read(&json!({"format": "sidou-patch/1", "layers": [{}]})).unwrap();
+    assert_eq!(cut(&full), vec![0, 0, 0]);
+    assert!(
+        !json::write(&full, "FULL").contains("level"),
+        "a full level is left out, as before levels"
+    );
+}
+
+#[test]
 fn every_field_takes_its_range_and_refuses_past_it() {
     for f in json::fields() {
         let p = &f.path;

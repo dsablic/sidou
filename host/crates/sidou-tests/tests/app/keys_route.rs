@@ -375,6 +375,68 @@ fn a_song_moves_the_keys_to_chip_b_and_back_when_no_key_is_held() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
+fn cut(k: &mut Keys, x: u32) -> [u8; 3] {
+    k.chip(x).level_cut
+}
+
+fn quiet_layer_two(k: &mut Keys) {
+    unsafe {
+        live_layers_set(&mut *k.live, 2);
+        live_layer_edit_set(&mut *k.live, 1);
+        live_layer_level_set(&mut *k.live, 30);
+    }
+    k.tick();
+}
+
+#[test]
+fn a_song_on_a_chip_plays_at_full_level_and_the_keys_bring_their_levels_where_they_go() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    quiet_layer_two(&mut k);
+    assert_eq!(cut(&mut k, 0), [0, 70, 0], "the keys' levels on A");
+    k.song(true);
+    k.tick();
+    assert_eq!(k.moves, [1]);
+    assert_eq!(cut(&mut k, 0), [0; 3], "the song has A at full level");
+    assert_eq!(cut(&mut k, 1), [0, 70, 0], "the keys' levels on B");
+    k.song(false);
+    k.ticks(30);
+    assert_eq!(k.moves, [1, 0]);
+    assert_eq!(cut(&mut k, 1), [0; 3], "B at full level once the keys leave it");
+    assert_eq!(cut(&mut k, 0), [0, 70, 0], "and back on A");
+}
+
+#[test]
+fn silent_keys_leave_their_chip_at_full_level_for_a_two_chip_tune() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    quiet_layer_two(&mut k);
+    unsafe { keys_route_set_silent(&mut *k.kr, 1) };
+    k.tick();
+    assert_eq!(cut(&mut k, 0), [0; 3]);
+    unsafe { keys_route_set_silent(&mut *k.kr, 0) };
+    k.ticks(2);
+    assert_eq!(cut(&mut k, 0), [0, 70, 0]);
+}
+
+#[test]
+fn keys_a_under_a_song_leave_the_songs_voices_at_full_level() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    unsafe { live_set_keys_mode(&mut *k.live, LIVE_KEYS_A) };
+    quiet_layer_two(&mut k);
+    k.song(true);
+    k.tick();
+    assert!(k.moves.is_empty());
+    assert_eq!(cut(&mut k, 0), [0; 3], "the song's voices at full level");
+    unsafe { live_layer_level_set(&mut *k.live, 10) };
+    k.tick();
+    assert_eq!(cut(&mut k, 0), [0; 3], "a level turned under the song stays off its chip");
+    k.song(false);
+    k.ticks(30);
+    assert_eq!(cut(&mut k, 0), [0, 90, 0], "the keys' levels back after the song");
+}
+
 #[test]
 fn during_a_song_the_keys_setup_changes_chip_b_and_a_takes_it_after() {
     let mut k = Keys::new();

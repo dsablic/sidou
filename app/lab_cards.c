@@ -48,13 +48,14 @@ uint32_t lab_card_get(const live* l, uint32_t card) {
     case LAB_CARD_LAYER_TRANSPOSE: return (uint32_t)(live_layer_transpose(l) + LIVE_TRANSPOSE_MAX);
     case LAB_CARD_LAYER_DETUNE: return (uint32_t)(live_layer_detune(l) + LIVE_DETUNE_CENTS);
     case LAB_CARD_LAYER_FILTER: return l->filter_voices >> l->layer_edit & 1u;
+    case LAB_CARD_LAYER_LEVEL: return live_layer_level(l);
     case LAB_CARD_TABLE_END: return table_end(l);
     case LAB_CARD_LFO_SHAPE: return lab_lfo_shape_of(l, l->lfo_edit);
     case LAB_CARD_LFO_EDIT:
     case LAB_CARD_LFO_DEST:
     case LAB_CARD_LFO_RATE:
     case LAB_CARD_LFO_DEPTH: return lfo_card(l, LFO_CARD(card));
-    default: return card < LAB_CARDS ? table_card(l, TABLE_CARD(card)) : 0u;
+    default: return card < LAB_CARD_LFO_SHAPE ? table_card(l, TABLE_CARD(card)) : 0u;
     }
 }
 
@@ -79,6 +80,7 @@ void lab_card_set(live* l, uint32_t card, uint32_t value) {
         live_param_set(l, LIVE_PARAM_FILTER_VOICES, value ? l->filter_voices | bit : l->filter_voices & ~bit);
         break;
     }
+    case LAB_CARD_LAYER_LEVEL: live_layer_level_set(l, value); break;
     case LAB_CARD_TABLE_END: lab_table_choice_turn(l, delta); break;
     case LAB_CARD_LFO_SHAPE: lab_lfo_choice_turn(l, delta); break;
     case LAB_CARD_LFO_EDIT:

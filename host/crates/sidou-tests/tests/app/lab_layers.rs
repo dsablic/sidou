@@ -87,7 +87,7 @@ fn k1_picks_the_layer_osc_and_envelope_edit_and_their_header_says_which() {
 }
 
 #[test]
-fn k2_k3_and_k4_tune_and_route_the_edited_layer() {
+fn k2_and_k3_tune_the_edited_layer() {
     let mut ui = layers_page(1);
     ui.turn(PANEL_ENC_K1, 1);
     ui.turn(PANEL_ENC_K2, 12);
@@ -104,16 +104,88 @@ fn k2_k3_and_k4_tune_and_route_the_edited_layer() {
     let s = sound(&ui);
     let tuning = (LAB_SOUND_LAYER_TUNING + LAB_SOUND_LAYER_TUNING_BYTES) as usize;
     assert_eq!((s[tuning] as i8, s[tuning + 1] as i8), (12, -25));
+}
 
-    let routed = |ui: &Ui| ui.live().filter_voices >> 1 & 1;
-    let before = routed(&ui);
-    ui.turn(PANEL_ENC_K4, if before == 1 { -1 } else { 1 });
+fn levels_sent(ui: &Ui) -> [u8; 3] {
+    let mut sent = [0u8; 3];
+    for &(reg, value) in ui.rig.log() {
+        if let Some(v) = u32::from(reg).checked_sub(LIVE_REG_LEVEL_FIRST).filter(|&v| v < 3) {
+            sent[v as usize] = value;
+        }
+    }
+    sent
+}
+
+fn level_cut(ui: &Ui) -> [u8; 3] {
+    let s = sound(ui);
+    let at = LAB_SOUND_LEVEL_CUT as usize;
+    [s[at], s[at + 1], s[at + 2]]
+}
+
+#[test]
+fn k4_sets_the_edited_layers_level_on_its_voice_alone() {
+    let mut ui = layers_page(2);
+    assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3), ("LEVEL".into(), "100".into()));
+    ui.turn(PANEL_ENC_K1, 1);
+    ui.turn(PANEL_ENC_K4, -60);
     settle(&mut ui);
-    assert_ne!(routed(&ui), before);
-    assert_eq!(
-        card(&ui, LAB_PAGE_LAYERS, 3).1,
-        if before == 1 { "OFF" } else { "ON" }
-    );
+    assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3), ("LEVEL".into(), "40".into()));
+    assert_eq!(levels_sent(&ui), [100, 40, 100]);
+    assert_eq!(level_cut(&ui), [0, 60, 0], "kept in the sound as 100 less it");
+    ui.turn(PANEL_ENC_K4, -64);
+    ui.turn(PANEL_ENC_K4, -64);
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [100, 0, 100], "down to silent");
+    ui.turn(PANEL_ENC_K4, 64);
+    ui.turn(PANEL_ENC_K4, 64);
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [100, 100, 100], "and no further than full");
+}
+
+#[test]
+fn one_osc_plays_its_chord_at_the_first_layers_level_and_a_new_layer_starts_there() {
+    let mut ui = layers_page(0);
+    ui.turn(PANEL_ENC_K4, -30);
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [70, 70, 70], "every voice of the chord");
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [70, 70, 100], "layer 2 a copy of the first, voice 3 unused");
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3).1, "70");
+}
+
+#[test]
+fn the_level_comes_back_with_the_sound_and_a_preset_plays_at_full() {
+    let mut ui = layers_page(2);
+    ui.turn(PANEL_ENC_K1, 2);
+    ui.turn(PANEL_ENC_K4, -45);
+    settle(&mut ui);
+    let kept = sound(&ui);
+    unsafe { live_set_preset(&mut *ui.rig.live, 1) };
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [100; 3]);
+    unsafe { live_sound_apply(&mut *ui.rig.live, kept.as_ptr()) };
+    settle(&mut ui);
+    assert_eq!(levels_sent(&ui), [100, 100, 55]);
+    assert_eq!(sound(&ui), kept);
+}
+
+#[test]
+fn vary_on_layers_changes_the_layers_not_their_levels() {
+    let mut ui = layers_page(0);
+    ui.turn(PANEL_ENC_K4, -20);
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    settle(&mut ui);
+    let before = sound(&ui);
+    for _ in 0..40 {
+        assert_eq!(
+            crate::lab_edit::edit_with(&mut ui, PANEL_BTN_ARP).as_deref(),
+            Some("VARIED")
+        );
+        assert_eq!(level_cut(&ui), [20; 3]);
+    }
+    assert_ne!(sound(&ui), before);
 }
 
 #[test]
@@ -121,12 +193,13 @@ fn the_page_shows_each_layer_and_marks_the_edited_one() {
     let mut ui = layers_page(2);
     ui.turn(PANEL_ENC_K1, 1);
     ui.turn(PANEL_ENC_K2, 7);
+    ui.turn(PANEL_ENC_K4, -35);
     settle(&mut ui);
     let art = (LAB_VIEW_ART_ROW..LAB_VIEW_ART_ROW + LAB_VIEW_ART_ROWS)
         .map(|r| ui.row(r as usize))
         .collect::<Vec<_>>()
         .join("\n");
-    for text in ["L1", "L2", "L3", "+7"] {
+    for text in ["L1", "L2", "L3", "+7", "65", "100"] {
         assert!(art.contains(text), "{text} in\n{art}");
     }
 }

@@ -112,6 +112,10 @@ static inline void update_mix(sid* s) {
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
+static inline float level_gain(uint32_t cut) {
+    return (float)(SID_LEVEL_FULL - cut) / (float)SID_LEVEL_FULL;
+}
+
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -119,6 +123,9 @@ static inline void update_voice_masks(sid* s) {
     uint32_t off = s->routing | s->mute | ((s->mode_vol & 0x80u) ? 4u : 0u);
     s->voice_path = (uint8_t)((s->routing & 7u & ~(uint32_t)s->mute) * SID_PATH_FILTER |
                               (~off & 7u) * SID_PATH_DIRECT);
+    for (uint32_t v = 0; v < 3u; ++v) {
+        s->voice_gain[v] = level_gain(s->level_cut[v]);
+    }
 }
 
 static float exp_neg(float x) {
@@ -374,7 +381,7 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
                 } else if (voice == 2u && (s->mode_vol & 0x80u)) {
                     path = 0.0f;
                 }
-                thump_step(s, s->thump * THUMP_GATE * path * s->volume *
+                thump_step(s, s->thump * THUMP_GATE * path * level_gain(s->level_cut[voice]) * s->volume *
                                   THUMP_ATTACK[e->attack] * (float)(255u - e->counter) *
                                   (1.0f / 255.0f));
             }
@@ -520,7 +527,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
             float filt_in = 0.0f, direct = 0.0f;
             const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
-                float x = voice_out(s, v);
+                float x = voice_out(s, v) * s->voice_gain[v];
                 if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
                 } else if (path & (SID_PATH_DIRECT << v)) {
@@ -591,7 +598,7 @@ static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint3
             float filt_in = 0.0f, direct = 0.0f;
             const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
-                float x = voice_out(s, v);
+                float x = voice_out(s, v) * s->voice_gain[v];
                 if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
                 } else if (path & (SID_PATH_DIRECT << v)) {

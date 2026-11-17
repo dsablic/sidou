@@ -32,6 +32,7 @@ typedef enum {
     LAB_CARD_LFO_DEST,
     LAB_CARD_LFO_RATE,
     LAB_CARD_LFO_DEPTH,
+    LAB_CARD_LAYER_LEVEL,
     LAB_CARDS
 } lab_card;
 

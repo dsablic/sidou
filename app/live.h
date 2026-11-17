@@ -23,6 +23,8 @@ extern "C" {
 #define LIVE_REG_CHAR_FIRST 0x82u
 #define LIVE_REG_CHAR(field) (LIVE_REG_CHAR_FIRST + (field))
 #define LIVE_REG_CHAR_TICK 0x87u
+#define LIVE_REG_LEVEL_FIRST 0x8au
+#define LIVE_REG_LEVEL(voice) (LIVE_REG_LEVEL_FIRST + (voice))
 #define LIVE_REG_EXPERT_FIRST 0x90u
 #define LIVE_REG_EXPERT(field) (LIVE_REG_EXPERT_FIRST + (field))
 
@@ -44,6 +46,7 @@ extern "C" {
 #define LIVE_LAYERS_MAX 2u
 #define LIVE_TRANSPOSE_MAX 24
 #define LIVE_DETUNE_CENTS 99
+#define LIVE_LEVEL_FULL 100u
 #define LIVE_FENV_DEPTH_MAX 63
 #define LIVE_FENV_CUTOFF_UNIT 32u
 #define LIVE_FENV_IDLE 0xffffffffu
@@ -261,6 +264,7 @@ typedef struct {
     int8_t reso_link, pwm_link;
     uint8_t layers;
     int8_t transpose[LIVE_VOICES], detune[LIVE_VOICES];
+    uint8_t level_cut[LIVE_VOICES];
     live_layer layer[LIVE_LAYERS_MAX];
     int8_t fenv_depth;
     uint8_t fenv_ad, fenv_sr;
@@ -370,6 +374,7 @@ typedef struct {
     uint8_t layers;
     int8_t transpose[LIVE_VOICES];
     int8_t detune[LIVE_VOICES];
+    uint8_t level_cut[LIVE_VOICES];
     live_layer layer[LIVE_LAYERS_MAX];
     uint8_t layer_edit;
     int8_t fenv_depth;
@@ -469,6 +474,9 @@ void live_layer_transpose_set(live* l, int32_t semis);
 void live_layer_detune_set(live* l, int32_t cents);
 int32_t live_layer_transpose(const live* l);
 int32_t live_layer_detune(const live* l);
+void live_layer_level_set(live* l, uint32_t level);
+uint32_t live_layer_level(const live* l);
+uint32_t live_layer_level_of(const live* l, uint32_t layer);
 uint8_t live_voice_control(const live* l, uint32_t v);
 void live_rewrite_voice(live* l, uint32_t v);
 void live_rewrite(live* l);

@@ -159,6 +159,9 @@ fn random_layers(r: &mut Xs, s: &mut Sound) {
         s[at as usize + 2] = r.below(256) as u8;
         put16(s, at + 3, r.below(LIVE_PULSE_WIDTH_MAX + 1));
     }
+    for n in 0..LIVE_VOICES {
+        s[(LAB_SOUND_LEVEL_CUT + n) as usize] = r.below(LIVE_LEVEL_FULL + 1) as u8;
+    }
     s[LAB_SOUND_FILTER_ENV as usize] = signed_below(r, LIVE_FENV_DEPTH_MAX);
     s[LAB_SOUND_FILTER_ENV_AD as usize] = r.below(256) as u8;
     s[LAB_SOUND_FILTER_ENV_SR as usize] = r.below(256) as u8;
@@ -378,6 +381,7 @@ fn one_field_changes() -> Vec<(&'static str, Sound)> {
         with(name, &|s| s[LAB_SOUND_SLOTS as usize + i] = 1);
     }
     with("lfo", &|s| s[LAB_SOUND_LFO as usize + 2] = 5);
+    with("level", &|s| s[LAB_SOUND_LEVEL_CUT as usize] = 30);
     with("table", &|s| {
         s[LAB_SOUND_TABLE as usize] = (LAB_TABLE_ON | 1) as u8;
         s[LAB_SOUND_TABLE_STEPS as usize] = 0x80;
@@ -538,6 +542,9 @@ fn an_invalid_sound_is_refused() {
         assert!(!valid(&s), "{name} is refused");
     };
     bad("the gate", &|s| s[LAB_SOUND_CONTROL as usize] |= 0x01);
+    bad("a layer's level under 0", &|s| {
+        s[LAB_SOUND_LEVEL_CUT as usize + 1] = LIVE_LEVEL_FULL as u8 + 1
+    });
     bad("filter LFO", &|s| {
         s[LAB_SOUND_FILTER_LFO as usize] = LIVE_FILTER_LFO_MAX as u8 + 1
     });

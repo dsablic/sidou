@@ -144,7 +144,7 @@ static int ratio_card(const live* l) {
 
 static int layers_card(const live* l, uint32_t k, char* name, char* value, uint32_t* fill,
                        uint32_t* max) {
-    static const char* const NAMES[4] = {"EDIT", "TRANS", "DETUNE", "FILT"};
+    static const char* const NAMES[4] = {"EDIT", "TRANS", "DETUNE", "LEVEL"};
     copy(name, NAMES[k & 3u]);
     switch (k) {
     case 0u:
@@ -165,9 +165,9 @@ static int layers_card(const live* l, uint32_t k, char* name, char* value, uint3
         *max = 2u * LIVE_DETUNE_CENTS;
         return 1;
     default:
-        *fill = l->filter_voices >> l->layer_edit & 1u;
-        *max = 1u;
-        copy(value, *fill ? "ON" : "OFF");
+        *fill = live_layer_level(l);
+        *max = LIVE_LEVEL_FULL;
+        (void)number(value, (int32_t)*fill, 0);
         return 1;
     }
 }
@@ -783,12 +783,9 @@ static void layers_turn(live* l, uint32_t k, int32_t d) {
     case 0u: live_layer_edit_set(l, (uint32_t)clamp((int32_t)l->layer_edit + d, 0, l->layers)); break;
     case 1u: live_layer_transpose_set(l, live_layer_transpose(l) + d); break;
     case 2u: live_layer_detune_set(l, live_layer_detune(l) + d); break;
-    default: {
-        uint32_t bit = 1u << l->layer_edit;
-        uint32_t voices = d > 0 ? l->filter_voices | bit : l->filter_voices & ~bit;
-        live_param_set(l, LIVE_PARAM_FILTER_VOICES, voices);
+    default:
+        live_layer_level_set(l, (uint32_t)clamp((int32_t)live_layer_level(l) + d, 0, LIVE_LEVEL_FULL));
         break;
-    }
     }
 }
 
@@ -1035,10 +1032,13 @@ static int fresh(const lab_view* lv, const uint8_t before[LAB_EDIT_BYTES]) {
            lab_edit_hash(now) != lv->rolled;
 }
 
-static int card_used(const lab_view* lv, uint32_t k) {
+#define LAYERS_LEVEL_CARD 3u
+
+static int card_varies(const lab_view* lv, uint32_t k) {
     char name[LAB_VIEW_TEXT], value[LAB_VIEW_TEXT];
     uint32_t fill, max;
-    return lab_view_card(lv, lv->page, k, name, value, &fill, &max);
+    return !(lv->page == LAB_PAGE_LAYERS && k == LAYERS_LEVEL_CARD) &&
+           lab_view_card(lv, lv->page, k, name, value, &fill, &max);
 }
 
 #define VARY_NOTE_SPAN 12u
@@ -1062,7 +1062,7 @@ static void vary_once(lab_view* lv) {
     }
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t r = rnd(lv);
-        if (card_used(lv, k)) {
+        if (card_varies(lv, k)) {
             int32_t d = 1 + (int32_t)(r % 3u);
             card_turn(lv, k, r & 8u ? d : -d);
             used++;
@@ -1128,7 +1128,7 @@ static void roll(lab_view* lv, screen* s, int whole) {
                 choice_turn(lv, d);
                 ok = fresh(lv, before);
             }
-        } else if (card_used(lv, k >> 1)) {
+        } else if (card_varies(lv, k >> 1)) {
             card_turn(lv, k >> 1, d);
             ok = fresh(lv, before);
         }

@@ -515,8 +515,8 @@ fn the_sid_parameters_survive_a_model_change() {
     assert_eq!(rig.log()[CHARACTER + 1], (LIVE_REG_GATE_RESET as u8, 1));
     assert_eq!(
         rig.log().len(),
-        CHARACTER + 27,
-        "the character, a reset, the envelope mode and every register"
+        CHARACTER + 30,
+        "the character, a reset, the envelope mode, every register and level"
     );
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
@@ -548,8 +548,8 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     assert_eq!(resets(&m.rig), 1);
     assert_eq!(
         m.rig.log().len(),
-        CHARACTER + 27,
-        "the character, a reset, the envelope mode and every register"
+        CHARACTER + 30,
+        "the character, a reset, the envelope mode, every register and level"
     );
     assert_eq!(m.rig.live.model, SID_MODEL_8580);
     m.rig.clear();
