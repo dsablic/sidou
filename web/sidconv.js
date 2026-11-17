@@ -7,7 +7,7 @@ export const MAX_INSTRUMENTS_A_VOICE = 6;
 export const GT2_MAX_INSTRUMENTS = 63;
 
 const REG = { FREQ: 0, PW: 2, CTRL: 4, AD: 5, SR: 6, VOICE: 7, CUT_LO: 21, CUT_HI: 22, RES: 23, MODE: 24 };
-const CTRL = { GATE: 1, TEST: 8, NOISE: 0x80, WAVES: 0xf0 };
+const CTRL = { GATE: 1, TEST: 8, PULSE: 0x40, NOISE: 0x80, WAVES: 0xf0 };
 const NOTE = { FIRST: 0x60, REST: 0xbd, OFF: 0xbe, END: 0xff, HIGHEST: 92 };
 const CMD = { TIE: 3, FUNK: 0xe, TEMPO: 0xf };
 const TIE_SPEED = 0;
@@ -16,7 +16,7 @@ const PULSE_SET = 0x80, FILTER_SET = 0x80, FILTER_CUT = 0x00;
 const FIRST_WAVE_DEFAULT = 0x09, GATE_TIMER = 2, HR_ADSR = "$0F00";
 const MIN_TEMPO = 3, MAX_TEMPO = 0x7f, MAX_ROW_FRAMES = 16;
 const GRID_FIT = 0.9, GRID_WINDOW = 12, GRID_SLACK = 0.01, MISS_COST = 200, CHANGE_COST = 16, SEGMENT_HITS = 8, CUT_GAIN = 0.8;
-const BASE_FRAMES = 16, GLIDE_STEP = 2, TRANSIENT_FRAMES = 8, ARP_PERIOD_MAX = 8, ARP_FIT = 0.9, LEGATO_MIN_FRAMES = 3;
+const BASE_FRAMES = 16, GLIDE_STEP = 2, VIBRATO_TURNS = 5, VIBRATO_RANGE = 0.06, VIBRATO_EVEN = 1.5, PULSE_RUNS = 2, TRANSIENT_FRAMES = 8, ARP_PERIOD_MAX = 8, ARP_FIT = 0.9, LEGATO_MIN_FRAMES = 3;
 const PATTERN_LENGTHS = [16, 32, 64], ORDER_ENTRY_COST = 4;
 const TRANSPOSE_DOWN = 15, TRANSPOSE_UP = 14, TRANSPOSE_ZERO = 0xf0, REPEAT = 0xd0, REPEAT_MAX = 16;
 const DIGI_VOLUME_WRITES = 4;
@@ -99,6 +99,34 @@ const baseOf = (pitches) => {
   return heard[0] ?? null;
 };
 
+const runsOf = (values) => {
+  const runs = [];
+  for (let i = 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1];
+    if (d === 0) continue;
+    const last = runs[runs.length - 1];
+    if (last && Math.sign(last.sum) === Math.sign(d)) {
+      last.sum += d;
+      last.changes++;
+    } else {
+      runs.push({ sum: d, changes: 1, at: i });
+    }
+  }
+  return runs;
+};
+
+const median = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
+
+const vibratoOf = (freqs) => {
+  const runs = runsOf(freqs);
+  if (runs.length < VIBRATO_TURNS) return null;
+  const swings = runs.slice(1, -1).map((r) => Math.abs(r.sum));
+  if (Math.max(...swings) > Math.min(...swings) * VIBRATO_EVEN) return null;
+  const center = median(freqs);
+  if (freqs.some((f) => Math.abs(f - center) > center * VIBRATO_RANGE)) return null;
+  return { center };
+};
+
 export function notesOf(frames, pitch) {
   const onsets = [];
   frames.forEach((f, i) => { if (f.rose) onsets.push(i); });
@@ -109,8 +137,9 @@ export function notesOf(frames, pitch) {
     const body = frames.slice(start, next);
     const pitches = body.map((f) => (tonal(f) ? pitch(f.freq) : null));
     const heard = body.map((f) => (audible(f) ? pitch(f.freq) : null));
-    const note = baseOf(pitches.slice(1, Math.max(2, Math.min(end - start, BASE_FRAMES)))) ?? heard.find((p) => p !== null);
-    return { start, end, next, body, pitches, heard, note: note ?? null };
+    const vibrato = vibratoOf(body.slice(TRANSIENT_FRAMES + 1, end - start).filter(tonal).map((f) => f.freq));
+    const note = vibrato ? pitch(vibrato.center) : baseOf(pitches.slice(1, Math.max(2, Math.min(end - start, BASE_FRAMES)))) ?? heard.find((p) => p !== null);
+    return { start, end, next, body, pitches, heard, vibrato, note: note ?? null };
   }).filter((n) => n.note !== null);
 }
 
@@ -242,8 +271,10 @@ export function shapeOf(n) {
   const after = steady.slice(transient).filter((o) => o !== null);
   const period = periodOf(after);
   const loop = period > 1 && new Set(after.slice(0, period)).size > 1 ? after.slice(0, period) : null;
-  return { first: n.body[0].ctrl, ad: n.body[0].ad, sr: n.body[0].sr, head, loop, pw: n.body.find(tonal)?.pw ?? n.body[0].pw,
-    pulse: (n.body[Math.min(len - 1, n.body.length - 1)]?.pw ?? 0) - n.body[0].pw, len };
+  const sounding = n.body.slice(1, Math.max(2, len));
+  const pulsed = sounding.find((f) => f.ctrl & CTRL.PULSE) ?? sounding[0] ?? n.body[0];
+  const sweep = runsOf(sounding.slice(sounding.indexOf(pulsed)).map((f) => f.pw)).slice(0, PULSE_RUNS).map((r) => ({ time: Math.min(0x7f, r.changes), speed: Math.max(-128, Math.min(127, Math.round(r.sum / r.changes))) }));
+  return { first: n.body[0].ctrl, ad: n.body[0].ad, sr: n.body[0].sr, head, loop, pw: pulsed.pw, sweep, len };
 }
 
 const keyOf = (s) => {
@@ -323,12 +354,10 @@ const waveRows = (s) => {
   return rows;
 };
 
-const pulseRows = (s, tempo) => {
+const pulseRows = (s) => {
   const rows = [[PULSE_SET | ((s.pw >> 8) & 0x0f), s.pw & 0xff]];
-  const frames = Math.max(1, s.len - 1);
-  const speed = Math.round((s.pulse / frames) * (tempo / Math.max(1, tempo - 1)));
-  if (speed !== 0) rows.push([Math.min(0x7f, frames), Math.max(-128, Math.min(127, speed)) & 0xff]);
-  rows.push([WAVE.JUMP, 0]);
+  s.sweep.forEach((r) => rows.push([r.time, r.speed & 0xff]));
+  rows.push([WAVE.JUMP, s.sweep.length ? (start) => start + 1 : 0]);
   return rows;
 };
 
@@ -390,7 +419,7 @@ export function buildSong(a, { timeline, name = "", author = "", released = "" }
       const longest = x.notes[assign.indexOf(k)];
       const chipState = a.tracks[x.chip].chip[longest.start];
       const wave = tables.add(0, waveRows(s));
-      const pulse = s.head.some((h) => h.ctrl & 0x40) || s.first & 0x40 ? tables.add(1, pulseRows(s, tempo)) : 0;
+      const pulse = s.head.some((h) => h.ctrl & CTRL.PULSE) || s.first & CTRL.PULSE ? tables.add(1, pulseRows(s)) : 0;
       const filter = vi === filterAt && chipState ? tables.add(2, filterRows(chipState)) : 0;
       if (!wave) dropped.add("wave table rows past 255");
       instruments.push({ ad: s.ad, sr: s.sr, wave, pulse, filter, vibrato: 0, vibDelay: 0, gate: GATE_TIMER,
@@ -542,7 +571,9 @@ export function simplifications(a, song, run) {
   if (anyVolumeDigi) out.push("digi samples (fast volume-register writes) are dropped");
   out.push(`hard restarts are GoatTracker's own: gate off ${GATE_TIMER} frames before each note, ADSR ${HR_ADSR}`);
   out.push(`${song.swing ? `swing as funktempo ${song.swing.join("/")}` : `tempo ${song.tempo} (frames a row)`}${song.changes > 1 ? `, with ${song.changes - 1} tempo changes` : ""}; notes off the row grid move to the nearest row`);
-  out.push(`instruments: at most ${MAX_INSTRUMENTS_A_VOICE} a voice, each note given the closest; vibrato, ring and sync detail, and pulse sweeps beyond one direction are simplified`);
+  out.push(`instruments: at most ${MAX_INSTRUMENTS_A_VOICE} a voice, each note given the closest; ring and sync detail, filter sweeps and pulse sweeps past their first turn are simplified`);
+  const vibrato = a.voices.reduce((k, x) => k + x.notes.filter((n) => n.vibrato).length, 0);
+  if (vibrato) out.push(`vibrato is dropped: ${vibrato} notes play at their centre pitch`);
   if (a.tracks.length > 1 && song.channels === VOICES_A_CHIP) out.push("the second chip is silent in this sub-tune and is left out");
   if (song.channels > VOICES_A_CHIP) out.push("six voices: a GoatTracker Stereo song; the FM-1 plays voices 1-3 (chip A) and keeps 4-6");
   if (run.dropped) out.push(`${run.dropped} SID writes in a single frame past the capture's room were dropped`);

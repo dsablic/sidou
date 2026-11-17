@@ -7508,10 +7508,18 @@ gain.
   after them (period up to 8, nine in ten frames agreeing) and its pulse start. Shapes with one
   key share an instrument; each voice keeps its 6 most used (`MAX_INSTRUMENTS_A_VOICE`), and the
   rest take the closest by ADSR, waveform and arpeggio. Identical shapes across voices are one
-  instrument. Pulse: set, then one sweep at the note's mean rate scaled by tempo/(tempo-1), as the
-  player skips pulse on the note-fetch tick. Filter: only the voice that is routed to the filter
+  instrument. Pulse: set the width the note first sounds with, then up to two sweep steps, one for
+  each run of the width moving one way (its rate the mean change, its time the number of changes,
+  so the player's skipped ticks count as in the original), looping between them. The sweep is not
+  in the cluster key: with it, notes split into more shapes than the six a voice keeps and more of
+  them took a wrong waveform. Filter: only the voice that is routed to the filter
   at the most onsets gets filter tables (one instrument steering the chip's filter, as
   GoatTracker's manual advises).
+- Vibrato is not written. A note whose steady part turns five times or more, evenly (no swing
+  more than 1.5 times another) and within 6 % of its frequency, plays at its centre pitch and the
+  page says how many did. GoatTracker's vibrato depth is note-dependent (`03 40` is the old `$34`),
+  and a depth and speed read off the frequency matched fewer frames than none (sanction's lead:
+  67 % against 86 %).
 - The first-frame waveform is the original's only when it has the test bit; otherwise `$09`, so
   the onset frame is silent rather than a frame at the old pitch.
 - A key-off goes on the row its gate-off falls on plus the gate timer, since the player acts on a

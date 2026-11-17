@@ -18,7 +18,8 @@ All notable changes are documented here. The format follows
   from their waveform, ADSR, pulse and filter shapes, and patterns shared with repeats and
   transposes; a 2SID tune becomes a six-voice GoatTracker Stereo song. The original and the
   conversion play side by side; the page lists how many of each voice's notes the FM-1's player
-  plays on time and what was simplified (hard restarts, digis, vibrato). Download, send or edit
+  plays on time and what was simplified (hard restarts, digis, vibrato, which plays at its centre
+  pitch). Download, send or edit
   it; nothing is uploaded, and a conversion keeps the original's copyright. The site's wasm core
   gains the player frame by frame and a raw SID render for the comparison (166,338 bytes with
   Apple's clang, of its 176 KiB). `web/sidconv.test.mjs` checks tempo and notes against the

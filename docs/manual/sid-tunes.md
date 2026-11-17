@@ -194,7 +194,7 @@ How it works:
   changes is cut where it changes, and SET TEMPO goes on the row where it does.
 - **Instruments**: each note's attack and decay, sustain and release, its first eight frames of
   waveform and pitch (noise at an absolute pitch, the rest relative to the note), an arpeggio
-  that repeats after them as a looping wave table, and its pulse width and sweep. Notes with the
+  that repeats after them as a looping wave table, and its pulse width and its sweep up and down. Notes with the
   same shape share an instrument; each voice keeps its six most used, and a rarer note takes the
   closest. The voice that drives the filter most gets the filter's mode, resonance, routing and
   cutoff in its instruments' filter table.
@@ -207,8 +207,9 @@ How it works:
 
 What it simplifies, listed on the page for each tune: hard restarts become GoatTracker's own (the
 gate off two frames before a note, ADSR `$0F00`), digi samples (fast writes to the volume
-register) are dropped, notes off the grid move to the nearest row, vibrato, ring and sync detail,
-filter sweeps and pulse sweeps beyond one direction are simplified. RSID tunes are not converted
+register) are dropped, vibrato is dropped (the note plays at its centre pitch), notes off the grid
+move to the nearest row, and ring and sync detail, filter sweeps and pulse sweeps past their first
+turn are simplified. RSID tunes are not converted
 yet: they need a whole C64.
 
 How close it comes: the page plays the song in the FM-1's own player and counts, for each voice,
