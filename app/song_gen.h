@@ -16,7 +16,7 @@ extern "C" {
 struct song_view;
 struct song_pages;
 
-enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP, SONG_GEN_EUCLID, SONG_GEN_SWING };
+enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP, SONG_GEN_EUCLID };
 #define SONG_GEN_LANES 3u
 #define SONG_GEN_FRAME_ROWS 12u
 #define SONG_GEN_LOOK 6u
@@ -45,7 +45,7 @@ typedef struct {
     uint8_t swing_short, swing_long, swing_eighths, swing_first, swing_sub, swing_poke;
     uint8_t swing_first_data;
     uint8_t swing_data[3];
-    uint8_t swing_from, swing_from_row, swing_step;
+    uint8_t swing_writing, swing_from, swing_from_row, swing_step, swing_pattern, swing_row;
     uint16_t swing_sum;
     uint8_t euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];

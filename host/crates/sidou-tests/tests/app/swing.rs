@@ -416,3 +416,24 @@ fn a_first_row_with_another_command_refuses_the_swing() {
     assert_eq!(busy.ui.toast().as_deref(), Some("ROW HAS A COMMAND"));
     assert_eq!(pattern(&busy, 0)[0][2..], [CMD_CUTOFF, 0x40]);
 }
+
+#[test]
+fn hits_turned_while_the_swing_is_written_land_beside_it() {
+    const HITS: i32 = 3;
+    let mut s = stepping(sidou_loop());
+    let lead = first_of_voice(&s, 0);
+    s.ui.turn(PANEL_ENC_K1, 1);
+    s.ui.frame();
+    let (_, hits) = groove_turn(&mut s, crate::PANEL_ENC_K2, HITS);
+    assert_eq!(hits, format!("{HITS}/{ROWS}"));
+    assert_eq!(
+        note_rows(&s, lead).len(),
+        HITS as usize,
+        "the hits are written"
+    );
+    assert_eq!(
+        speed_pair(&s, pattern(&s, lead)[1]),
+        Some((7, 5)),
+        "the swing is written"
+    );
+}
