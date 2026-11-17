@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "views_int.h"
 
+#if defined(SIDOU_CPU2)
+#define STATUS_PAGES 4u
+#define STATUS_PAGE_CORES 3u
+#define CORES_AUDIO_ROW 16u
+#define CORES_DETAIL_ROW 22u
+#define CORES_ASK_ROW 25u
+#define CORES_HINT_ROW 26u
+#define CORES_BACK_ROW 27u
+#else
 #define STATUS_PAGES 3u
+#endif
 #define STATUS_ROW 5u
 #define STATUS_KNOB_ROWS 6u
 #define STATUS_PAGE_COL 22u
@@ -49,12 +59,6 @@ int views_looks_changed(const views* v, uint32_t blink) {
         }
     }
     return 0;
-}
-
-static int status_changed(screen* s, void* state) {
-    (void)s;
-    views* v = state;
-    return views_looks_changed(v, 0) || sid_view_status_look(&v->sids, v->tune_drawn, 0);
 }
 
 static uint32_t status_notes_row(const live* l) {
@@ -172,8 +176,105 @@ static void status_page_effects(grid* g, const theme* th, const live* l) {
     grid_text_big(g, 18, row, 2, num, a);
 }
 
+#if defined(SIDOU_CPU2)
+void views_cores_bind(views* v, const views_cores* cores) {
+    v->cores = cores;
+}
+
+static int cores_shown(const views* v) {
+    return v->cores && v->status_page == STATUS_PAGE_CORES && views_shows(v) == &views_status;
+}
+
+static int cores_moved(const views* v) {
+    views_cores_report r;
+    if (!cores_shown(v)) {
+        return 0;
+    }
+    v->cores->report(&r);
+    return r.seq != v->cores_seq;
+}
+
+static void cores_percent(char* out, uint32_t tenths) {
+    uint32_t k = screen_decimal(out, tenths / 10u);
+    out[k++] = '.';
+    out[k++] = (char)('0' + tenths % 10u);
+    out[k++] = '%';
+    out[k] = 0;
+}
+
+static void cores_page(grid* g, const theme* th, views* v) {
+    views_cores_report r;
+    char t[12];
+    const uint8_t lbl = THEME_ATTR(th, label), val = THEME_ATTR(th, value), hot = THEME_ATTR(th, hot);
+    v->cores->report(&r);
+    v->cores_seq = r.seq;
+    status_line(g, lbl, r.running ? val : hot, STATUS_ROW, "CORE 1", r.running ? "RUNNING" : "OFF");
+    status_line(g, lbl, hot, STATUS_ROW + STATUS_LINE_ROWS, "WHY", r.why[0] ? r.why : "--");
+    screen_decimal(t, r.jobs);
+    status_line(g, lbl, val, STATUS_ROW + 2u * STATUS_LINE_ROWS, "JOBS", t);
+    status_line(g, lbl, val, STATUS_ROW + 3u * STATUS_LINE_ROWS, "CHIP B", r.chip_b_core ? "CORE 1" : "CORE 0");
+    views_put(g, lbl, CORES_AUDIO_ROW, 2, "AUDIO TIME, % OF A BLOCK");
+    cores_percent(t, r.audio_avg);
+    status_line(g, lbl, val, STATUS_ROW + 4u * STATUS_LINE_ROWS, "AVG", t);
+    cores_percent(t, r.audio_worst);
+    status_line(g, lbl, val, STATUS_ROW + 5u * STATUS_LINE_ROWS, "WORST", t);
+    for (uint32_t i = 0; i < VIEWS_CORES_DETAILS; i++) {
+        views_put(g, lbl, CORES_DETAIL_ROW + i, 2, r.detail[i]);
+    }
+    if (v->cores_armed) {
+        grid_text_big(g, 2, CORES_ASK_ROW, 2, "SAVE AGAIN", hot);
+        views_put(g, lbl, CORES_BACK_ROW, 2, "RESTARTS. HOME BACKS OUT");
+    } else {
+        views_put(g, lbl, CORES_HINT_ROW, 2, "SAVE: RESTART ON TWO CORES");
+    }
+}
+
+static int cores_input(views* v, const screen_event* e) {
+    if (!cores_shown(v) || e->kind != SCREEN_TURN || e->id != PANEL_ENC_ALGORITHM) {
+        return 0;
+    }
+    views_cores_report r;
+    v->cores->report(&r);
+    v->cores->chip_b_core(!r.chip_b_core);
+    return 1;
+}
+
+int views_status_cores_save(views* v) {
+    if (!cores_shown(v)) {
+        return 0;
+    }
+    if (v->cores_armed) {
+        v->cores_armed = 0;
+        v->cores->unbar();
+    } else {
+        v->cores_armed = 1;
+        views_sound(v, UI_SOUND_CONFIRM);
+    }
+    screen_redraw(&v->s);
+    return 1;
+}
+#endif
+
+static int status_changed(screen* s, void* state) {
+    (void)s;
+    views* v = state;
+#if defined(SIDOU_CPU2)
+    if (cores_moved(v)) {
+        return 1;
+    }
+#endif
+    return views_looks_changed(v, 0) || sid_view_status_look(&v->sids, v->tune_drawn, 0);
+}
+
 static int status_input(screen* s, void* state, const screen_event* e) {
     views* v = state;
+#if defined(SIDOU_CPU2)
+    if (cores_input(v, e)) {
+        screen_redraw(s);
+        return 1;
+    }
+    v->cores_armed = 0;
+#endif
     if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
         return 0;
     }
@@ -219,6 +320,9 @@ static void status_compose(screen* s, void* state, grid* g) {
     int tune_was = v->tune_drawn[0] != SID_T_NONE;
     int tune_moved = sid_view_status_look(&v->sids, v->tune_drawn, 1);
     int tune = v->tune_drawn[0] != SID_T_NONE;
+#if defined(SIDOU_CPU2)
+    other |= (uint32_t)cores_moved(v);
+#endif
     if (!other && !s->redraw && tune == tune_was) {
         if (page == 1u) {
             status_notes(g, a, l);
@@ -252,6 +356,12 @@ static void status_compose(screen* s, void* state, grid* g) {
         }
     } else if (page == 1u) {
         status_page_setup(g, th, l);
+#if defined(SIDOU_CPU2)
+    } else if (page == STATUS_PAGE_CORES) {
+        if (v->cores) {
+            cores_page(g, th, v);
+        }
+#endif
     } else {
         status_page_effects(g, th, l);
     }

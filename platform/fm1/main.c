@@ -90,13 +90,22 @@ static volatile uint32_t timer_irqs;
 
 void fm1_alnk0_irq(void) {
     in_audio = 1;
+#if defined(SIDOU_CPU2)
+    uint32_t start = fm1_ticks();
+#endif
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
         audio_fill(&abuf[fm1_audio_free_half() * AUDIO_HALF_WORDS]);
         fm1_audio_ack_half();
     }
-    audio_block_end = fm1_ticks();
+    uint32_t end = fm1_ticks();
+    audio_block_end = end;
+#if defined(SIDOU_CPU2)
+    if (p & FM1_AUDIO_HALF) {
+        cpu2_meter_block(end - start);
+    }
+#endif
     in_audio = 0;
 }
 
@@ -160,7 +169,35 @@ void cpu2_core1_retire(uint32_t why) {
     fm1_cpu1_retire(why);
 }
 
-static void cpu2_boot(void) {
+static uint32_t c1_con_at_boot;
+
+static const char* core1_why(uint32_t gave_up) {
+    switch (gave_up) {
+    case FM1_CPU1_MISREAD: return "MISREAD";
+    case FM1_CPU1_LATE: return "LATE";
+    case FM1_CPU1_BARRED: return "BARRED";
+    case FM1_CPU1_FAULT: return "FAULT";
+    case FM1_CPU1_SILENT: return "SILENT";
+    case CPU2_GAVE_UP_SELF_TEST: return "SELF-TEST";
+    default: return "";
+    }
+}
+
+void cpu2_core1_state(cpu2_core1* out) {
+    fm1_cpu1_sync();
+    out->jobs = fm1_cpu1_mb.jobs;
+    out->fault_cpu = fm1_cpu1_fault.cpu;
+    out->fault_pc = fm1_cpu1_fault.pc;
+    out->fault_dbg = fm1_cpu1_fault.dbg;
+    out->fault_emu = fm1_cpu1_fault.emu;
+    out->con_at_boot = c1_con_at_boot;
+    out->on = fm1_cpu1_on;
+    out->faulted = fm1_cpu1_fault.count != 0u;
+    out->why = core1_why(out->faulted && !out->on ? FM1_CPU1_FAULT : fm1_cpu1_gave_up);
+}
+
+static void cpu2_boot(uint32_t c1_con) {
+    c1_con_at_boot = c1_con;
     fm1_cpu1_bar_build(SIDOU_CPU2_BUILD);
     if (fm1_cpu1_start() == 0) {
         cpu2_self_test(audio_boot_scratch());
@@ -2149,6 +2186,16 @@ static void upgrade(void) {
     fm1_reboot();
 }
 
+#if defined(SIDOU_CPU2)
+void cpu2_core1_unbar(void) {
+    fm1_cpu1_bar.barred = 0;
+    fm1_audio_stop();
+    audio_halted();
+    leave_on_purpose();
+    fm1_reboot();
+}
+#endif
+
 static void wait_for_interrupt(void) {
     if (midi_usb_live()) {
         uint32_t t = timer_irqs;
@@ -2293,6 +2340,9 @@ static void uboot_gesture(void) {
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
+#if defined(SIDOU_CPU2)
+    uint32_t c1_con = FM1_C1_CON;
+#endif
     fm1_cpu1_stop();
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
@@ -2320,7 +2370,7 @@ void fm1_cstart(void) {
         (*c)();
     }
 #if defined(SIDOU_CPU2)
-    cpu2_boot();
+    cpu2_boot(c1_con);
 #endif
     fm1_mailbox_clear();
     sidou_main();

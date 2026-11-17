@@ -88,6 +88,27 @@ typedef struct {
     uint32_t (*devices)(void* ctx, int fresh, const char** names, uint8_t* bars);
     void (*pick)(void* ctx, uint32_t i);
 } views_radio;
+#if defined(SIDOU_CPU2)
+#define VIEWS_CORES_WORD 10u
+#define VIEWS_CORES_DETAIL 29u
+#define VIEWS_CORES_DETAILS 3u
+typedef struct {
+    uint32_t seq;
+    uint32_t jobs;
+    uint16_t audio_avg;
+    uint16_t audio_worst;
+    uint8_t running;
+    uint8_t chip_b_core;
+    char why[VIEWS_CORES_WORD];
+    char detail[VIEWS_CORES_DETAILS][VIEWS_CORES_DETAIL];
+} views_cores_report;
+
+typedef struct {
+    void (*report)(views_cores_report* out);
+    void (*chip_b_core)(uint32_t core);
+    void (*unbar)(void);
+} views_cores;
+#endif
 #define VIEWS_MIDI_ITEMS 11u
 #define VIEWS_MIDI_LOOK 14u
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
@@ -168,6 +189,11 @@ typedef struct {
     uint32_t devices_at;
     uint8_t devices_fresh;
     uint8_t devices_empty;
+#if defined(SIDOU_CPU2)
+    const views_cores* cores;
+    uint32_t cores_seq;
+    uint8_t cores_armed;
+#endif
 } views;
 
 extern const view views_status;
@@ -197,6 +223,9 @@ void views_song_io(views* v, song_io* io);
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed);
 void views_settings(views* v, settings* set);
 void views_radio_bind(views* v, const views_radio* radio);
+#if defined(SIDOU_CPU2)
+void views_cores_bind(views* v, const views_cores* cores);
+#endif
 void views_devices_open(views* v);
 void views_devices_save(views* v);
 void views_keyboard_event(views* v, uint32_t event, const char* name);

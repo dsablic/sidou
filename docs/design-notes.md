@@ -818,6 +818,43 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 - **Device-only:** whether core 1 has an FPU (a trap retires it at the self-test), whether this
   unit misreads under SIDOU's load, the hand-over's real cost with both cores on the SRAM, and
   whether the watchdog resets core 1.
+- **The device day's page (hardware-test §42): STATUS's fourth page, CORES, in the two-core build
+  only.** The app's code for it is under `SIDOU_CPU2` (`sidou_live` gets the define with the
+  option), so the default image stays byte for byte the same (554,916 bytes, checked by SHA-1); the
+  two-core image grows by 1,968 bytes to 558,756. The platform hands the page a report
+  (`views_cores`, bound in `ui.c` as the radio is): core 1 RUNNING or OFF, the reason, its jobs,
+  where chip B renders, core 0's audio time and the small print. Big text for what the owner reads
+  off the device; the register words are small print, read once and photographed.
+- **Core 0's audio time is the audio interrupt's own TIMER4 span**, from its entry to
+  `audio_block_end`, summed over 345 blocks (about a second: `AVG`) and its largest since the
+  last switch or the boot (`WORST`), shown as a percentage of a block (69,631 ticks at 24 MHz). The
+  sum runs in `cpu2_meter_block` in RAMTEXT, no division in the interrupt; the main loop divides.
+  In fm1-emu the page's AVG matches the emulator's own instruction count of the interrupt (7.5 %
+  with both chips at their worst on two cores, 14.3 % with chip B on core 0, at 240 MHz and one
+  instruction a cycle); on the device it is the real time, caches and `csync` included.
+- **One core against two on the same image.** The default build has no meter (it would cost the
+  default image and the interrupt for a question only this build asks), so ALGORITHM on CORES
+  switches chip B between core 1 and core 0 (`cpu2_chip_b_away` refuses the hand-over); core 1
+  idles in its RAM loop meanwhile and takes jobs again on the way back. Chip B on core 0 is the
+  default build's render path plus one byte's test, so the difference between the two AVGs is the
+  hand-over's real gain. The switch resets WORST, so each side's worst is its own.
+- **Lifting the bar: SAVE, then SAVE AGAIN on CORES** (the confirmation every irreversible step
+  takes; HOME backs out). It clears the bar's word and restarts through `fm1_reboot` (the audio
+  stopped, the boot guard told it is on purpose, core 1 held), because core 1 can only be started
+  at power-on, before the audio and the timers. Without a fallback it is a plain restart, which the
+  device day also uses as its reset check.
+- **`C1_CON AT BOOT`:** `fm1_cstart` reads core 1's control register before it holds core 1. After
+  a cold boot it shows the chip's reset value; after a watchdog reset (§10's hang build with the
+  option) bit 3 set and bit 1 clear would mean core 1 kept running through the reset. SIDOU holds
+  it first thing either way. fm1-emu drops core 1 and resets the register at every reset, so only
+  the device tells.
+- **WHY says FAULT whenever core 1's fault record is set.** In fm1-emu, core 1's first FPU
+  instruction raises the debug unit's error, but core 0 takes it only after the self-test's wait
+  has timed out (fm1-emu raises it as interrupt 1, which core 0 takes only once the boot turns interrupts on), so `fm1_cpu1_gave_up` says LATE; the fault
+  record (PC, DBG bit 10) is there all the same. The page names the cause, and shows the record
+  in small print. Whether the chip raises it sooner is the device's to tell.
+- **SILENT** (core 1 never reports in at the start) has no injection in fm1-emu's core-1 model, so
+  the page's word for it is untested; the other five reasons are (`cpu2.rs`).
 
 ### `gt2_song.c` at `-Oz`: timing only
 
