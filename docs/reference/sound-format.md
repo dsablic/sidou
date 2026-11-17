@@ -9,8 +9,9 @@ hold a sound in one packed image, `app/lab_sound.h`; the slots are one file of t
 
 ## A sound
 
-109 bytes (`LAB_SOUND_BYTES`): the voice, the arpeggio, the three effect slots, the filter LFO,
-the macro links, up to three oscillator layers, the filter envelope, the step table and two LFOs. Not the chip's profile or character, the chip model, the envelope mode, the
+112 bytes (`LAB_SOUND_BYTES`): the voice, the arpeggio, the three effect slots, the filter LFO,
+the macro links, up to three oscillator layers, the filter envelope, the step table, two LFOs and
+each layer's level. Not the chip's profile or character, the chip model, the envelope mode, the
 octave or the volume: those are the instrument's ([settings-format.md](settings-format.md)).
 
 | Offset | Bytes | Value |
@@ -50,6 +51,7 @@ octave or the volume: those are the instrument's ([settings-format.md](settings-
 | 70 | 1 | Table rate: each step's frames of 50 Hz less one, `0..15`; since 1.7 |
 | 71 | 32 | 16 steps of 2 bytes: the control (`$d404` without the gate: the waveform, test, ring and sync bits) and the note, GoatTracker's wave-table right byte (`$00..$5F` up, `$60..$7F` down from `-32`, `$80` the key, `$81..$DF` an absolute note, `$80 + n` is GoatTracker's note n); since 1.7 |
 | 103 | 6 | Two LFOs of 3 bytes: the shape (bits 0-2: `0` off, `1` triangle, `2` saw up, `3` saw down, `4` square, `5` sample and hold) and the destination (bits 4-5: `0` pitch, `1` pulse width, `2` cutoff, `3` volume), the rate (the PWM HZ walk's detent, `0..31`), the depth (signed, `-63..63`); since 1.7 |
+| 109 | 3 | Each layer's level, layers 1 to 3, stored as `100` less the level in percent (`0..100`): `0` is full, so an older sound's missing bytes play at full; layer 1's applies to every voice of a one-layer sound; since 2.0 |
 
 **At least 45 bytes; a missing tail is the defaults.** 1.0 wrote sounds of 45 bytes (offsets
 0..44). A reader takes a sound of 45 bytes or more, and the bytes it does not have are `0`: the
@@ -62,7 +64,7 @@ a reader treats it as an empty slot.
 
 ## The USER sounds
 
-A store file named `USER SOUNDS`, type `4`, 1,955 bytes. It is the firmware's own: no list shows
+A store file named `USER SOUNDS`, type `4`, 2,003 bytes. It is the firmware's own: no list shows
 it, and SAVE AS, PUT and DEL refuse its name. SysEx's GET reads it, read only
 ([the SysEx reference](sysex.md#commands)): the Library page's USER sounds button and
 `sidou-sysex user-sounds` open each used slot as a [patch](patch-json.md).
@@ -70,23 +72,23 @@ it, and SAVE AS, PUT and DEL refuse its name. SysEx's GET reads it, read only
 | Offset | Bytes | Value |
 |---|---|---|
 | 0 | 1 | Version, `1` |
-| 1 | 1 | The bytes of a sound that follow each name, `109` (1.0's files: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`) |
+| 1 | 1 | The bytes of a sound that follow each name, `112` (1.0's files: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`, 1.7 to 1.21's: `109`) |
 | 2 | 1 | Slots, `16` |
-| 3 | 16 x 122 | Slot n (USER n + 1) at `3 + 122 n`: used (`1`; `0` empty), the name (12 bytes, the font's upper case `0x20..0x5F`, NUL-padded), the sound |
+| 3 | 16 x 125 | Slot n (USER n + 1) at `3 + 125 n`: used (`1`; `0` empty), the name (12 bytes, the font's upper case `0x20..0x5F`, NUL-padded), the sound |
 
 A keep rewrites the file whole: the slot kept, the others as the file had them. The store
 commits a file whole, so a power cut leaves the old file or the new one. The stride is
-`1 + 12 +` the header's sound bytes. An older file (1.0's, 45; 1.1 to 1.5's, 48; 1.6's, 68) is read with each
-sound's missing bytes at their defaults, and a keep writes this firmware's file (109), the other
+`1 + 12 +` the header's sound bytes. An older file (1.0's, 45; 1.1 to 1.5's, 48; 1.6's, 68; 1.7 to 1.21's, 109) is read with each
+sound's missing bytes at their defaults, and a keep writes this firmware's file (112), the other
 slots with the defaults appended. A later version appends to each sound and may hold more slots:
-this firmware reads the first 109 bytes of each of its 16, and a keep writes its own version, dropping what a
+this firmware reads the first 112 bytes of each of its 16, and a keep writes its own version, dropping what a
 later one appended. A file of version `0`, with fewer than 45 sound bytes or 16 slots, or of
 another type, is no USER sounds (every slot empty); a slot whose used byte is not `1`, whose name
 has a character out of the range or whose sound is not one is empty.
 
 ## The unsaved edit
 
-A store value, key `0x109`, type `4`, 125 bytes (1.0's: 61, 1.1 to 1.5's: 64, 1.6's: 84): the sound playing, written by the
+A store value, key `0x109`, type `4`, 125 bytes while every layer is at full level and 128 with a layer's level (1.0's: 61, 1.1 to 1.5's: 64, 1.6's: 84, 1.7 to 1.21's: 125): the sound playing, written by the
 settings' debounce before the [settings record](settings-format.md) and applied at boot after it.
 
 | Offset | Bytes | Value |
@@ -95,8 +97,8 @@ settings' debounce before the [settings record](settings-format.md) and applied 
 | 1 | 1 | Preset, the settings record's byte: `0..4` a built-in or DICE, `5 + n` USER sound n + 1 |
 | 2 | 1 | Edited: `1` while the sound differs from its base (the preset as loaded, or the slot as kept) |
 | 3 | 12 | The base's name, NUL-padded |
-| 15 | 1 | The bytes of the sound that follow, `109` (1.0's: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`) |
-| 16 | 109 | The sound |
+| 15 | 1 | The bytes of the sound that follow, `109` while every layer is at full level, `112` with a layer's level (1.0's: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`) |
+| 16 | 109 or 112 | The sound |
 
 At boot the settings record loads its preset (a USER sound's from the file: its base), then
 the unsaved edit's sound is applied over it when the record's preset is the one loaded, so the
@@ -106,4 +108,5 @@ shorter than its sound bytes, or whose sound is not one, is not applied. A later
 to the sound. 1.0 reads the first 45 bytes of a 1.1 record's sound: it plays the sound without
 the filter LFO and the links. 1.1 to 1.5 read the first 48 bytes of a 1.6 sound: they play its
 first layer without the filter envelope. 1.6 reads the first 68 bytes of a 1.7 sound: it plays the
-sound without its table and LFOs. An older firmware never reads the key.
+sound without its table and LFOs. 1.7 to 1.21 read the first 109 bytes of a 2.0 sound: they play
+every layer at full level. An older firmware never reads the key.

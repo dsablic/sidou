@@ -18,8 +18,11 @@ _Static_assert(LAB_SOUND_LAYER_VOICE + LIVE_LAYERS_MAX * LAB_SOUND_LAYER_VOICE_B
 _Static_assert(LAB_SOUND_FILTER_ENV_SR + 1u == LAB_SOUND_BYTES_1_6, "1.6's filter envelope");
 _Static_assert(LAB_SOUND_TABLE == LAB_SOUND_BYTES_1_6 &&
                    LAB_SOUND_TABLE + LAB_SOUND_TABLE_BYTES == LAB_SOUND_LFO &&
-                   LAB_SOUND_LFO + LAB_SOUND_LFOS * LAB_SOUND_LFO_BYTES == LAB_SOUND_BYTES,
+                   LAB_SOUND_LFO + LAB_SOUND_LFOS * LAB_SOUND_LFO_BYTES == LAB_SOUND_BYTES_1_7,
                "the table after 1.6's bytes, then the two LFOs");
+_Static_assert(LAB_SOUND_LEVEL_CUT == LAB_SOUND_BYTES_1_7 &&
+                   LAB_SOUND_LEVEL_CUT + LIVE_VOICES == LAB_SOUND_BYTES,
+               "each layer's level after 1.7's bytes, as 100 less it, so an older sound's zeros are full");
 _Static_assert(LAB_SOUND_ARP + LIVE_ARP_SPAN + 1u == LAB_SOUND_SLOTS,
                "the arpeggio's four fields, then the slots");
 
@@ -67,7 +70,8 @@ static int layers_ok(const uint8_t s[LAB_SOUND_BYTES]) {
     }
     for (uint32_t n = 0; n < LIVE_VOICES; n++) {
         const uint8_t* t = &s[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
-        if (!within(t[0], LIVE_TRANSPOSE_MAX) || !within(t[1], LIVE_DETUNE_CENTS)) {
+        if (!within(t[0], LIVE_TRANSPOSE_MAX) || !within(t[1], LIVE_DETUNE_CENTS) ||
+            s[LAB_SOUND_LEVEL_CUT + n] > LIVE_LEVEL_FULL) {
             return 0;
         }
     }

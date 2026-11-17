@@ -35,7 +35,7 @@ The full table of cards is in [controls.md](../reference/controls.md#lab).
 | tap **EDIT** | A/B: the sound as kept or loaded (A), then back to your edit (B) |
 | hold **EDIT**, play keys | peek: A for as long as EDIT is held (the header's `A` outlined), your edit back when you let go |
 | **EDIT + LFO** | undo, up to 16 steps back (`UNDO (3)`); either finger may land first |
-| **EDIT + ARP** | vary the page a little, never silent, never the same twice; either finger may land first |
+| **EDIT + ARP** | vary the page a little, never silent, never the same twice (on LAYERS it leaves the levels as they are); either finger may land first |
 | **EDIT + SCL** | roll the whole voice, as DICE does, also never silent and undoable; either finger may land first (SCL alone selects the next effect slot when it is let go) |
 | **EDIT + PRESETS** | back to the sound as kept or loaded |
 
@@ -152,11 +152,15 @@ two or three voices). A sound with SYNC LEAD's one-voice sync keeps one (`ONE OS
 - **K1 EDIT** picks the layer OSC and ENVELOPE edit; their header then says `OSC L2` or
   `ENVELOPE L3`, and their cards and drawing are that layer's.
 - **K2 TRANS** transposes the layer, `-24` to `+24` semitones; **K3 DETUNE** detunes it, `-99`
-  to `+99` cents; **K4 FILT** routes it into the filter or not.
+  to `+99` cents; **K4 LEVEL** sets how loud it is, `0` to `100` %: a sub-octave saw at 40 under
+  the first layer, a quiet noise layer for breath, `0` to silence one while you shape the others.
+  On ONE OSC it is the level of the whole chord.
+- Which layers go through the filter is FILTER's **K3 VOICES**: layer 1 is voice 1, layer 2
+  voice 2, layer 3 voice 3.
 
-The page shows the three layers side by side, each with its waveform, transpose and detune, the
-one you edit reversed and an unused one dark. A new layer starts as a copy of the first, so it is
-heard at once. A layered sound is kept, compared, undone, varied and rolled as one sound; a roll
+The page shows the three layers side by side, each with its waveform, transpose, detune and a bar
+of its level, the one you edit reversed and an unused one dark. A new layer starts as a copy of the first, its level
+too, so it is heard at once. A layered sound is kept, compared, undone, varied and rolled as one sound; a roll
 reshapes the first layer, as DICE does.
 
 

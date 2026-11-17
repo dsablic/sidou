@@ -308,7 +308,7 @@ int lab_song_keep(gt2_song* s, uint32_t instr, const lab_song_instr* in,
     for (uint32_t i = 0u; i < 4u; i++)
         d[1u + GT2_TABLES + i] = (uint8_t)(crc >> (8u * i));
     memcpy(d + KEPT_HEAD, sound, LAB_SOUND_BYTES);
-    return song_ext_set(s, lab_song_tag(instr), d, sizeof d) ? -1 : 0;
+    return song_ext_set(s, lab_song_tag(instr), d, KEPT_HEAD + lab_sound_used_bytes(sound)) ? -1 : 0;
 }
 
 typedef struct {

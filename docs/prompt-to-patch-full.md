@@ -103,7 +103,7 @@ SELECT steps LAB's pages; K1 to K4 turn the four cards; ALGORITHM is the page's 
 - LFO: EDIT, DEST, RATE, DEPTH; ALGORITHM the shape, or off
 - FX: AMT, A, B, MIX; ALGORITHM the slot's type; SCL selects the slot
 - MACRO: RES LNK, PWM LNK; ALGORITHM nothing
-- LAYERS: EDIT, TRANS, DETUNE, FILT; ALGORITHM one, two or three oscillators
+- LAYERS: EDIT, TRANS, DETUNE, LEVEL; ALGORITHM one, two or three oscillators
 - TABLE: STEP, WAVE, NOTE, FRAMES; ALGORITHM off, play once, or loop
 
 ## Examples
@@ -180,6 +180,7 @@ The ranges of `sidou-patch/1`, as the FM-1's converter checks them (the exact co
 - `envelope` {`attack`, `decay`, `sustain`, `release` 0 to 15}
 - `transpose` -24 to 24 (semitones)
 - `detune` -99 to 99 (cents)
+- `level` 0 to 100 (percent: the layer's loudness, 100 full; on a one-oscillator sound every voice's)
 - `fine_tune` -50 to 50 (cents, the whole sound)
 - `filter` {`mode` low, band and high, one or several joined with + (like "low+band"), or off; `cutoff_hz` 0 to 14298 (Hz, as an 8580 plays it); `resonance` 0 to 15; `voices` a list of chip voices 1 to 3, like [1, 2, 3] (the chip voices through the filter: all three or none on a one-oscillator sound); `resonance_link` -8 to 8 (the resonance follows the cutoff knob); `lfo_depth` 0 to 32 (a cutoff wobble at the PWM rate, 0 off); `envelope` {`depth` -63 to 63 (cutoff steps of 32 at the peak, below 0 closes); `attack`, `decay`, `sustain`, `release` 0 to 15}}
 - `pwm` {`depth` 0 to 50 (percent of the cycle swept); `rate_hz` 0 to 12.75; `link` -8 to 8 (the PWM depth follows the pulse width knob)}
@@ -190,7 +191,7 @@ The ranges of `sidou-patch/1`, as the FM-1's converter checks them (the exact co
 - `velocity` off, sustain, cutoff or pulse_width (what the key velocity moves)
 - `mod_wheel` pulse_width, vibrato or cutoff (what the wheel moves)
 - `aftertouch` off, vibrato, pulse_width or cutoff (what pressure moves)
-- `layers` up to 2 of {`wave`, `ring`, `sync`, `pulse_width`, `envelope`, `transpose`, `detune` as at the top}
+- `layers` up to 2 of {`wave`, `ring`, `sync`, `pulse_width`, `envelope`, `transpose`, `detune`, `level` as at the top}
 - `table` {`on` true or false; `layer` 1 to 3 (the layer it plays on; a one-oscillator sound plays it on every note); `loop` 0 to 16 (0 plays once and holds the last step, n goes back to step n); `frames` 1 to 16 (50 Hz frames a step); `steps` up to 16 of {`wave` triangle, saw, pulse and noise, one or several joined with + (like "triangle+saw"), or none; `test` true or false (the SID's test bit: silences and resets the oscillator); `ring`, `sync` true or false; `note` -32 to 95 semitones from the key played, a fixed note "C#0" to "B7", or "hold"}}
 - `lfos` up to 2 of {`shape` off, triangle, saw_up, saw_down, square or sample_hold; `to` pitch, pulse_width, cutoff or volume; `rate_hz` 0.05 to 12.75 (snapped to the nearest of 32 rates); `depth` -63 to 63 (below 0 inverts; 63 on pitch is an octave)}
 - `fx` {`distortion` {`type` off, tape, overdrive, fuzz, crush or lofi; `amount`, `a`, `b`, `mix` 0 to 127}; `modulation` {`type` off, chorus, flanger, phaser, tremolo, autopan or wow; `amount`, `a`, `b`, `mix` 0 to 127}; `effect` {`type` off, delay, pingpong, reverb or lush; `amount`, `a`, `b`, `mix` 0 to 127}}
@@ -244,7 +245,7 @@ What each of LAB's pages and controls does, turned up (clockwise), for suggestin
 | LAYERS | K1 EDIT | the layer OSC and ENVELOPE edit |
 | LAYERS | K2 TRANS | its transpose |
 | LAYERS | K3 DETUNE | up: wider, fatter |
-| LAYERS | K4 FILT | the layer into the filter or not |
+| LAYERS | K4 LEVEL | up: louder; down to 0, silent; a quiet layer for colour under the first |
 | LAYERS | ALGORITHM | one, two or three oscillators |
 | TABLE | K1 STEP | the step the others edit |
 | TABLE | K2 WAVE | its wave |

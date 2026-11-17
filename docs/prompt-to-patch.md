@@ -103,7 +103,7 @@ SELECT steps LAB's pages; K1 to K4 turn the four cards; ALGORITHM is the page's 
 - LFO: EDIT, DEST, RATE, DEPTH; ALGORITHM the shape, or off
 - FX: AMT, A, B, MIX; ALGORITHM the slot's type; SCL selects the slot
 - MACRO: RES LNK, PWM LNK; ALGORITHM nothing
-- LAYERS: EDIT, TRANS, DETUNE, FILT; ALGORITHM one, two or three oscillators
+- LAYERS: EDIT, TRANS, DETUNE, LEVEL; ALGORITHM one, two or three oscillators
 - TABLE: STEP, WAVE, NOTE, FRAMES; ALGORITHM off, play once, or loop
 
 ## Examples

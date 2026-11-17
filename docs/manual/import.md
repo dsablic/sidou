@@ -49,6 +49,9 @@ second oscillator's table plays only from the song; the report says so.
 | The filter's mode, cutoff, resonance and routing | A transpose beyond two octaves or a detune beyond 99 cents: clamped |
 | The first oscillator's vibrato, PWM and filter LFOs, the first two of them, as LAB's two LFOs (shape, speed, depth and inversion; read as best known) | A third of those (`FILTER LFO: DROPPED (TWO LFOS)`), the modulation matrix, the arpeggiator, portamento (MIDIbox SID: its modulation paths, wavetables and right SID) |
 
+Neither format has a level for each oscillator (the SID has none), so every layer comes in at
+full level; LAYERS' K4 LEVEL sets it after.
+
 Two SidStation details are not documented and are read as best known: a table's fixed notes as
 MIDI note numbers, and a table's speed as a divider of the patch's update rate. Both sound right
 on the factory bank; a table that plays at the wrong pitch or speed is worth reporting.

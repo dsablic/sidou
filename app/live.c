@@ -155,6 +155,8 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
         }
     } else if (reg == LIVE_REG_GATE_RESET) {
         sid_set_gate_reset(t->chip, value);
+    } else if (reg >= LIVE_REG_LEVEL(0) && reg < LIVE_REG_LEVEL(LIVE_VOICES)) {
+        sid_set_level(t->chip, reg - LIVE_REG_LEVEL(0), value);
     } else if (!(reg & 0x80u)) {
         sid_write(t->chip, reg, value);
     }
@@ -370,6 +372,12 @@ void li_write_controls(live* l) {
     }
 }
 
+void li_write_levels(live* l) {
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        put(l, (uint8_t)LIVE_REG_LEVEL(v), layer_level(l, v));
+    }
+}
+
 void li_write_gate_reset(live* l) {
     put(l, LIVE_REG_GATE_RESET, l->envelope_mode == LIVE_ENVELOPE_INSTANT ? 1u : 0u);
 }
@@ -405,6 +413,7 @@ void li_write_all(live* l) {
     write_cutoff(l);
     li_write_res_filt(l);
     li_write_mode_vol(l);
+    li_write_levels(l);
 }
 
 void live_links_update(live* l) {

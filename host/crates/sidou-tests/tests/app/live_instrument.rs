@@ -56,13 +56,20 @@ fn init_resets_the_chip_then_writes_every_register_once() {
     let set: BTreeSet<u8> = regs.iter().copied().collect();
     assert_eq!(regs.len(), 25);
     assert_eq!(set, (0..=0x18).collect());
-    let slots: BTreeSet<(u8, u8)> = log[27..].iter().copied().collect();
+    assert_eq!(
+        log[27..30],
+        (0..3)
+            .map(|v| ((LIVE_REG_LEVEL_FIRST + v) as u8, LIVE_LEVEL_FULL as u8))
+            .collect::<Vec<_>>()[..],
+        "every voice at full level"
+    );
+    let slots: BTreeSet<(u8, u8)> = log[30..].iter().copied().collect();
     let want: BTreeSet<(u8, u8)> = (0..LIVE_SLOTS)
         .flat_map(|k| {
             (0..LIVE_SLOT_FIELDS).map(move |f| ((LIVE_REG_SLOT_BASE | k << 3 | f) as u8, 0))
         })
         .collect();
-    assert_eq!(log.len(), 27 + 15);
+    assert_eq!(log.len(), 30 + 15);
     assert_eq!(slots, want);
 }
 
@@ -816,15 +823,15 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
     assert_eq!(log[CHARACTER + 1], (GATE_RESET, 1));
     assert_eq!(
         log.len(),
-        CHARACTER + 27,
-        "the character, a reset, the envelope mode, then every register"
+        CHARACTER + 30,
+        "the character, a reset, the envelope mode, then every register and level"
     );
     assert_eq!(rig.rec.regs, regs_before, "the same register values");
     assert!(rig.gated(voice_playing(&rig, 48)), "held notes sound again");
 
     rig.button(LIVE_BUTTON_FX);
     assert_eq!(rig.live.model, SID_MODEL_6581);
-    let back = &rig.log()[CHARACTER + 27..];
+    let back = &rig.log()[CHARACTER + 30..];
     assert_eq!(
         back[..CHARACTER],
         character_sent_before_a_reset(SID_CHIP_6581_R4AR)[..]

@@ -137,6 +137,7 @@ static void load_preset(live* l, uint8_t index) {
     l->fenv_gate_us = LIVE_FENV_IDLE;
     memset(l->transpose, 0, sizeof l->transpose);
     memset(l->detune, 0, sizeof l->detune);
+    memset(l->level_cut, 0, sizeof l->level_cut);
     memset(l->layer, 0, sizeof l->layer);
     l->lfo_phase = LFO_CENTRE;
     l->arp_on = 0;
@@ -387,6 +388,7 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->layers = l->layers;
     memcpy(e->transpose, l->transpose, sizeof e->transpose);
     memcpy(e->detune, l->detune, sizeof e->detune);
+    memcpy(e->level_cut, l->level_cut, sizeof e->level_cut);
     memcpy(e->layer, l->layer, sizeof e->layer);
     e->fenv_depth = l->fenv_depth;
     e->fenv_ad = l->fenv_ad;
@@ -433,6 +435,7 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->layers = e->layers;
     memcpy(l->transpose, e->transpose, sizeof l->transpose);
     memcpy(l->detune, e->detune, sizeof l->detune);
+    memcpy(l->level_cut, e->level_cut, sizeof l->level_cut);
     memcpy(l->layer, e->layer, sizeof l->layer);
     l->fenv_depth = e->fenv_depth;
     l->fenv_ad = e->fenv_ad;
@@ -483,6 +486,7 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
 }
 
 #define SOUND_WORDS (LAB_SOUND_BYTES / 4u)
+_Static_assert(LAB_SOUND_BYTES % 4u == 0u, "a sound compares a word at a time");
 
 uint32_t live_preset_edited(const live* l) {
     _Alignas(4) uint8_t now[LAB_SOUND_BYTES];
@@ -500,7 +504,7 @@ uint32_t live_preset_edited(const live* l) {
             return 1;
         }
     }
-    return memcmp(now + 4u * SOUND_WORDS, l->base + 4u * SOUND_WORDS, LAB_SOUND_BYTES % 4u) != 0;
+    return 0;
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
@@ -600,6 +604,7 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
         uint8_t* t = &out[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
         t[0] = (uint8_t)l->transpose[n];
         t[1] = (uint8_t)l->detune[n];
+        out[LAB_SOUND_LEVEL_CUT + n] = l->level_cut[n];
     }
     for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
         uint8_t* v = &out[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
@@ -653,6 +658,8 @@ LIVE_COLD static void layers_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
         const uint8_t* t = &in[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
         l->transpose[n] = clamped(t[0], LIVE_TRANSPOSE_MAX);
         l->detune[n] = clamped(t[1], LIVE_DETUNE_CENTS);
+        uint32_t cut = in[LAB_SOUND_LEVEL_CUT + n];
+        l->level_cut[n] = (uint8_t)(cut < LIVE_LEVEL_FULL ? cut : LIVE_LEVEL_FULL);
     }
     for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
         const uint8_t* v = &in[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
@@ -732,6 +739,7 @@ LIVE_COLD static void sound_apply(live* l, const uint8_t in[LAB_SOUND_BYTES]) {
         li_update_freq(l, v);
     }
     li_update_pws(l);
+    li_write_levels(l);
 }
 
 LIVE_COLD void live_sound_detach(live* l, const char* name) {
@@ -1026,6 +1034,7 @@ LIVE_COLD uint32_t live_layers_set(live* l, uint32_t extra) {
         l->layer[n] = (live_layer){l->control, l->attack_decay, l->sustain_release, l->pulse_width};
         l->transpose[n + 1u] = 0;
         l->detune[n + 1u] = 0;
+        l->level_cut[n + 1u] = l->level_cut[0];
     }
     l->layers = (uint8_t)extra;
     if (l->layer_edit > extra) {
@@ -1035,6 +1044,7 @@ LIVE_COLD uint32_t live_layers_set(live* l, uint32_t extra) {
     li_write_envelopes(l);
     li_write_controls(l);
     li_update_pws(l);
+    li_write_levels(l);
     return 1;
 }
 
@@ -1112,6 +1122,20 @@ void live_layer_transpose_set(live* l, int32_t semis) {
 void live_layer_detune_set(live* l, int32_t cents) {
     l->detune[l->layer_edit] = (int8_t)clamp_signed(cents, LIVE_DETUNE_CENTS);
     retune(l);
+}
+
+void live_layer_level_set(live* l, uint32_t level) {
+    l->level_cut[l->layer_edit] = (uint8_t)(LIVE_LEVEL_FULL - (level < LIVE_LEVEL_FULL ? level : LIVE_LEVEL_FULL));
+    l->settings_dirty = 1;
+    li_write_levels(l);
+}
+
+uint32_t live_layer_level_of(const live* l, uint32_t layer) {
+    return LIVE_LEVEL_FULL - l->level_cut[layer < LIVE_VOICES ? layer : 0u];
+}
+
+uint32_t live_layer_level(const live* l) {
+    return live_layer_level_of(l, l->layer_edit);
 }
 
 int32_t live_layer_transpose(const live* l) {

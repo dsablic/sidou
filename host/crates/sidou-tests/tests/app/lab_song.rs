@@ -356,10 +356,18 @@ fn the_chunk_keeps_the_sound_while_the_instrument_is_unedited() {
     let chunk = song
         .ext_find(u32::from_le_bytes(*b"LB0F"))
         .expect("the chunk");
-    assert_eq!(chunk.len(), 9 + BYTES);
+    assert_eq!(
+        chunk.len(),
+        9 + LAB_SOUND_BYTES_1_7 as usize,
+        "full levels keep 1.7's length"
+    );
     assert_eq!(chunk[0], 1);
     assert_eq!(&chunk[1..5], &o.rows);
-    assert_eq!(&chunk[9..], &s, "the slots the send drops, kept");
+    assert_eq!(
+        &chunk[9..],
+        &s[..LAB_SOUND_BYTES_1_7 as usize],
+        "the slots the send drops, kept"
+    );
     assert_eq!(kept(&song, 15), Some(s));
     assert_eq!(kept(&song, 14), None);
     type Edit = (&'static str, fn(&mut gt2_song));
@@ -384,6 +392,21 @@ fn the_chunk_keeps_the_sound_while_the_instrument_is_unedited() {
 }
 
 #[test]
+fn a_layers_level_is_kept_with_the_sound_in_the_song() {
+    let mut s = plain();
+    s[LAB_SOUND_LAYERS as usize] = 2;
+    s[LAB_SOUND_LEVEL_CUT as usize + 2] = 35;
+    let (song, _) = sent_song(&s, 3, [1, 1, 1, 1]);
+    let chunk = song
+        .ext_find(unsafe { lab_song_tag(3) })
+        .expect("the chunk");
+    assert_eq!(chunk.len(), 9 + BYTES);
+    let mut back = Song::device();
+    back.read(&song.write(true), 4).map_err(|i| i.msg).unwrap();
+    assert_eq!(kept(&back, 3), Some(s));
+}
+
+#[test]
 fn the_chunk_survives_a_save_and_goattracker_skips_it() {
     let s = plain();
     let (song, _) = sent_song(&s, 1, [1, 1, 1, 1]);
@@ -392,7 +415,7 @@ fn the_chunk_survives_a_save_and_goattracker_skips_it() {
     back.read(&file, 4).map_err(|i| i.msg).unwrap();
     assert_eq!(kept(&back, 1), Some(s));
     let plain_file = song.write(false);
-    assert!(file.len() > plain_file.len() + 9 + BYTES);
+    assert!(file.len() > plain_file.len() + 9 + LAB_SOUND_BYTES_1_7 as usize);
     let t = gt2_ref::trace::trace(&file, 0, 4, &gt2_ref::Options::default());
     assert!(t.is_ok(), "GoatTracker reads the file");
 }

@@ -45,7 +45,7 @@ What each of LAB's pages and controls does, turned up (clockwise), for suggestin
 | LAYERS | K1 EDIT | the layer OSC and ENVELOPE edit |
 | LAYERS | K2 TRANS | its transpose |
 | LAYERS | K3 DETUNE | up: wider, fatter |
-| LAYERS | K4 FILT | the layer into the filter or not |
+| LAYERS | K4 LEVEL | up: louder; down to 0, silent; a quiet layer for colour under the first |
 | LAYERS | ALGORITHM | one, two or three oscillators |
 | TABLE | K1 STEP | the step the others edit |
 | TABLE | K2 WAVE | its wave |

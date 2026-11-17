@@ -464,7 +464,7 @@ In NRPN order.
 | LAB | LAYERS edit | - | 7/6 (902) | 0..2 | steps | 0 | 0..2: the layer OSC, ENVELOPE and the cards below edit, up to the count |
 | LAB | LAYERS transpose | - | 7/7 (903) | 0..48 | steps | 24 | 0..48 = -24..+24 semitones, the edited layer's |
 | LAB | LAYERS detune | - | 7/8 (904) | 0..198 | linear | 99 | 0..198 = -99..+99 cents, the edited layer's |
-| LAB | LAYERS filter | - | 7/9 (905) | 0..1 | steps | 1 | 0 off, 1 on: the edited layer into the filter |
+| LAB | LAYERS filter | - | 7/9 (905) | 0..1 | steps | 1 | 0 off, 1 on: the edited layer into the filter (on the panel, FILTER's VOICES) |
 | LAB | TABLE ending | - | 7/10 (906) | 0..17 | steps | 0 | 0 off, 1 play once, 1 + n loop from step n (up to the steps); on from off: step 1 is the layer's waveform |
 | LAB | TABLE step | - | 7/11 (907) | 0..15 | steps | 0 | 0..15 = step 1..16, the step the cards below edit; one past the end adds one |
 | LAB | TABLE wave | - | 7/12 (908) | 0..12 | steps | 0 | the edited step's: 0 END (from OFF only: ends the table there), 1 OFF, 2 TRI, 3 SAW, 4 PUL, 5 NOI, 6 T+S, 7 T+P, 8 S+P, 9 TSP, 10 TRR, 11 SAS, 12 PUS; on NEW it adds the step |
@@ -475,6 +475,7 @@ In NRPN order.
 | LAB | LFO destination | - | 7/17 (913) | 0..3 | steps | 0 | 0 pitch, 1 pulse width, 2 cutoff, 3 the chip's volume |
 | LAB | LFO rate | - | 7/18 (914) | 0..31 | steps | 0 | 0..31: 0.05..12.75 Hz, even in pitch (OSC's PWM HZ walk) |
 | LAB | LFO depth | - | 7/19 (915) | 0..126 | steps | 63 | 0..126 = -63..+63, 63 none: an octave, half the width or the cutoff's range, all the volume at the ends |
+| LAB | LAYERS level | - | 7/20 (916) | 0..100 | steps | 100 | 0..100 %: the edited layer's level (ONE OSC: every voice's) |
 
 ## By CC
 

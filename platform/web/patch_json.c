@@ -32,7 +32,7 @@ enum {
     K_PITCH
 };
 
-enum { F_TUNING = 1, F_WIDE = 2, F_ALWAYS = 4, F_PLUS1 = 8 };
+enum { F_TUNING = 1, F_WIDE = 2, F_ALWAYS = 4, F_PLUS1 = 8, F_LEVEL = 16 };
 enum { L_LAYERS, L_STEPS, L_LFOS };
 
 typedef struct {
@@ -99,6 +99,7 @@ static const field VOICE[] = {
     {"envelope", K_GROUP, 0, 0, F_ALWAYS, 0, 0, ENVELOPE},
     {"transpose", K_INT, 0, 0xFF, F_TUNING, -LIVE_TRANSPOSE_MAX, LIVE_TRANSPOSE_MAX, 0},
     {"detune", K_INT, 1, 0xFF, F_TUNING, -LIVE_DETUNE_CENTS, LIVE_DETUNE_CENTS, 0},
+    {"level", K_INT, 0, 0xFF, F_LEVEL, 0, LIVE_LEVEL_FULL, 0},
     {0},
 };
 
@@ -284,7 +285,14 @@ static uint32_t shift_of(uint32_t mask) {
 }
 
 static uint32_t at_of(const field* f, uint32_t a, uint32_t b) {
+    if (f->flags & F_LEVEL) {
+        return LAB_SOUND_LEVEL_CUT + (b - LAB_SOUND_LAYER_TUNING) / LAB_SOUND_LAYER_TUNING_BYTES;
+    }
     return (f->flags & F_TUNING ? b : a) + f->at;
+}
+
+static uint32_t stored(const field* f, uint32_t v) {
+    return f->flags & F_LEVEL ? LIVE_LEVEL_FULL - v : v;
 }
 
 static uint32_t get(const uint8_t* s, const field* f, uint32_t a, uint32_t b) {
@@ -292,7 +300,7 @@ static uint32_t get(const uint8_t* s, const field* f, uint32_t a, uint32_t b) {
     if (f->flags & F_WIDE) {
         return (uint32_t)s[at] | (uint32_t)s[at + 1u] << 8;
     }
-    return (s[at] & f->mask) >> shift_of(f->mask);
+    return stored(f, (s[at] & f->mask) >> shift_of(f->mask));
 }
 
 static void mark(uint8_t* s, uint8_t* touched, uint32_t at, uint32_t mask, uint32_t bits) {
@@ -306,7 +314,7 @@ static void put(uint8_t* s, uint8_t* touched, const field* f, uint32_t a, uint32
         mark(s, touched, at, 0xFFu, v);
         mark(s, touched, at + 1u, 0xFFu, v >> 8);
     } else {
-        mark(s, touched, at, f->mask, v << shift_of(f->mask));
+        mark(s, touched, at, f->mask, stored(f, v) << shift_of(f->mask));
     }
 }
 

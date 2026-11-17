@@ -13,11 +13,10 @@ Sizes: S is under a day of work, M a few days, L more.
   after the device check, falling back to one core; built for 1.20 behind `SIDOU_CPU2`. Its room
   is there since RED MOON RITE's art moved into the store (1.20): with pairing the ON image is
   547,796 bytes, 31,720 under the 579,516 ceiling, and its size gate is checked again.
-- **A layer's level in LAB**, after it (the owner, 2026-11-06): a gain per voice in both render
-  loops costs about 7 instructions a sample per chip, leaving 7.1 of the two-chip worst block's
-  1,426, and 160 bytes of RAMTEXT; chip B on its own core gives that budget back. It also needs a
-  place on LAYERS (its four cards are taken), 3 bytes of the sound and the import
-  ([the measurement](https://github.com/dsablic/sidou/blob/v1.7.1/docs/plans/2026-11-05-lab-lfos.md)).
+- **A layer's level in LAB**: built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)), LAYERS' K4
+  LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
+  instructions a sample per chip, inside every audio budget unchanged
+  ([design notes](design-notes.md#a-layers-level-20)).
 - **SIDOU as a DAW plugin**, starting from its design session (the owner, 2026-11-04): a SIDOU
   edition of fm1-emu's FM-1 plugin (AU, VST3, CLAP) running the real firmware, with a large mirror
   of the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard and

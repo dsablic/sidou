@@ -8,7 +8,7 @@ export class CoreError extends Error {
   }
 }
 
-export const LAB_SOUND_BYTES = 109, LAB_SOUND_NAME = 12;
+export const LAB_SOUND_BYTES = 112, LAB_SOUND_NAME = 12;
 export const TRAILER = ["none", "read", "dropped", "locks-dropped"];
 const GT2_ERR = ["OK", "RANGE", "ORDER RULE", "ORDER FULL", "ROWS", "PATTERNS", "IN USE", "FULL",
   "FRAGMENTED", "REGION", "PENDING", "SONG FULL", "SAVING"];

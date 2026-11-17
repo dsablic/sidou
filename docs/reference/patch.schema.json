@@ -363,6 +363,12 @@
                 },
                 "type": "object"
               },
+              "level": {
+                "description": "0 to 100",
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
               "pulse_width": {
                 "description": "0 to 100",
                 "maximum": 100,
@@ -393,6 +399,12 @@
           },
           "maxItems": 2,
           "type": "array"
+        },
+        "level": {
+          "description": "0 to 100 (percent: the layer's loudness, 100 full; on a one-oscillator sound every voice's)",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "integer"
         },
         "lfos": {
           "description": "a list of up to 2",

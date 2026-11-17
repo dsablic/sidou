@@ -252,7 +252,27 @@ fn an_advance_of_zero_keeps_the_pulse_latch_and_osc3_held() {
     );
 }
 
-fn assert_mute_sounds_as_zero_voices(model: sid_model, seed: u32, bleed: f32) {
+fn mute(s: &mut sid, mask: u32) {
+    unsafe { sid_set_mute(s, mask as u8) };
+}
+
+fn level_zero(s: &mut sid, mask: u32) {
+    for v in 0..3 {
+        let level = if mask >> v & 1 != 0 {
+            0
+        } else {
+            SID_LEVEL_FULL
+        };
+        unsafe { sid_set_level(s, v, level) };
+    }
+}
+
+fn assert_silenced_sounds_as_zero_voices(
+    model: sid_model,
+    seed: u32,
+    bleed: f32,
+    silence: fn(&mut sid, u32),
+) {
     let mut rng = Xorshift32(seed);
     let mut muted = device_sid(model);
     let mut zero = new_zero_voice(model);
@@ -261,10 +281,8 @@ fn assert_mute_sounds_as_zero_voices(model: sid_model, seed: u32, bleed: f32) {
     for block in 0..400 {
         if block % 25 == 0 {
             let mask = rng.below(8);
-            unsafe {
-                sid_set_mute(&mut *muted, mask as u8);
-                sid_test_set_zero_voices(mask);
-            }
+            silence(&mut muted, mask);
+            unsafe { sid_test_set_zero_voices(mask) };
         }
         for _ in 0..rng.below(6) {
             let (reg, value) = random_write(&mut rng, true);
@@ -283,14 +301,92 @@ fn assert_mute_sounds_as_zero_voices(model: sid_model, seed: u32, bleed: f32) {
     unsafe { sid_test_set_zero_voices(0) };
 }
 
-#[test]
-fn a_muted_voice_sounds_as_a_voice_that_outputs_nothing() {
+fn assert_every_seed_and_bleed(silence: fn(&mut sid, u32)) {
     for model in MODELS {
         for seed in [0x1234_5678, 0x0bad_cafe, 0x7357_0001] {
-            assert_mute_sounds_as_zero_voices(model, seed, 0.0);
-            assert_mute_sounds_as_zero_voices(model, seed, 0.25);
+            assert_silenced_sounds_as_zero_voices(model, seed, 0.0, silence);
+            assert_silenced_sounds_as_zero_voices(model, seed, 0.25, silence);
         }
     }
+}
+
+#[test]
+fn a_muted_voice_sounds_as_a_voice_that_outputs_nothing() {
+    assert_every_seed_and_bleed(mute);
+}
+
+#[test]
+fn a_voice_at_level_zero_sounds_as_a_voice_that_outputs_nothing() {
+    assert_every_seed_and_bleed(level_zero);
+}
+
+const LEVEL_SETUP: &[(u8, u8)] = &[
+    (0x01, 0x11),
+    (0x05, 0x09),
+    (0x06, 0xf0),
+    (0x04, 0x21),
+    (0x08, 0x1d),
+    (0x0c, 0x09),
+    (0x0d, 0xf0),
+    (0x0b, 0x41),
+    (0x0a, 0x08),
+    (0x0f, 0x2a),
+    (0x13, 0x09),
+    (0x14, 0xf0),
+    (0x12, 0x11),
+    (0x18, 0x0f),
+];
+
+fn played_at(levels: [u32; 3], zero: u32) -> Vec<i32> {
+    let mut s = new_zero_voice(SID_MODEL_8580);
+    unsafe {
+        sid_test_set_zero_voices(zero);
+        for (v, &level) in levels.iter().enumerate() {
+            sid_set_level(&mut *s, v as u32, level);
+        }
+        for &(reg, value) in LEVEL_SETUP {
+            sid_write_zero_voice(&mut *s, reg, value);
+        }
+    }
+    let out = render_zero_voice(&mut s, 4_000);
+    unsafe { sid_test_set_zero_voices(0) };
+    out.into_iter().map(i32::from).collect()
+}
+
+#[test]
+fn a_layers_level_scales_its_voice_alone() {
+    const FULL: u32 = SID_LEVEL_FULL;
+    for v in 0..3 {
+        for level in [25u32, 50, 80] {
+            let mut levels = [FULL; 3];
+            levels[v] = level;
+            let whole = played_at([FULL; 3], 0);
+            let without = played_at([FULL; 3], 1 << v);
+            let peak = whole
+                .iter()
+                .zip(&without)
+                .map(|(a, b)| (a - b).abs())
+                .max()
+                .unwrap();
+            assert!(peak > 2_000, "voice {v} is heard: {peak}");
+            let got = played_at(levels, 0);
+            for (i, ((&w, &o), &g)) in whole.iter().zip(&without).zip(&got).enumerate() {
+                let want = f64::from(o) + f64::from(w - o) * f64::from(level) / f64::from(FULL);
+                assert!(
+                    (f64::from(g) - want).abs() <= 1.5,
+                    "voice {v} level {level} sample {i}: {g}, want {want:.1}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn levels_above_full_play_at_full() {
+    assert_eq!(
+        played_at([255, 101, 200], 0),
+        played_at([SID_LEVEL_FULL; 3], 0)
+    );
 }
 
 #[test]

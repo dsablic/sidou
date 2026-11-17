@@ -220,7 +220,7 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     LAB_ROW(LAB_CARD_LAYER_TRANSPOSE, "LAYERS transpose", "0..48 = -24..+24 semitones, the edited layer's", 2u * LIVE_TRANSPOSE_MAX, LIVE_TRANSPOSE_MAX),
     LAB_ROW_CURVE(LAB_CARD_LAYER_DETUNE, "LAYERS detune", "0..198 = -99..+99 cents, the edited layer's",
                   2u * LIVE_DETUNE_CENTS, LIVE_DETUNE_CENTS, LINEAR),
-    LAB_ROW(LAB_CARD_LAYER_FILTER, "LAYERS filter", "0 off, 1 on: the edited layer into the filter", 1u, 1),
+    LAB_ROW(LAB_CARD_LAYER_FILTER, "LAYERS filter", "0 off, 1 on: the edited layer into the filter (on the panel, FILTER's VOICES)", 1u, 1),
     LAB_ROW(LAB_CARD_TABLE_END, "TABLE ending",
             "0 off, 1 play once, 1 + n loop from step n (up to the steps); on from off: step 1 is the layer's waveform", 1u + LAB_TABLE_STEPS_MAX,
             0),
@@ -242,6 +242,7 @@ const midi_map_entry midi_map_rows[MIDI_MAP_ROWS] = {
     LAB_ROW(LAB_CARD_LFO_DEPTH, "LFO depth",
             "0..126 = -63..+63, 63 none: an octave, half the width or the cutoff's range, all the volume at the ends",
             2u * LAB_LFO_DEPTH_MAX, LAB_LFO_DEPTH_MAX),
+    LAB_ROW(LAB_CARD_LAYER_LEVEL, "LAYERS level", "0..100 %: the edited layer's level (ONE OSC: every voice's)", LIVE_LEVEL_FULL, LIVE_LEVEL_FULL),
 #undef LAB_ROW
 #undef LAB_ROW_CURVE
 

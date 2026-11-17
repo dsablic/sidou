@@ -272,6 +272,7 @@ void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_
         sid_osc_set_model(&s->osc[v], model == SID_MODEL_6581);
         s->osc[v].tri_saw = 0x555u;
         s->env[v].counter = SID_ENV_POWER_ON;
+        sid_set_level(s, (uint32_t)v, SID_LEVEL_FULL);
         sid_osc_reset(&s->osc[v]);
         sid_env_reset_settled(&s->env[v]);
     }
@@ -520,7 +521,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
             float filt_in = 0.0f, direct = 0.0f;
             const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
-                float x = voice_out(s, v);
+                float x = voice_out(s, v) * s->voice_gain[v];
                 if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
                 } else if (path & (SID_PATH_DIRECT << v)) {
@@ -591,7 +592,7 @@ static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint3
             float filt_in = 0.0f, direct = 0.0f;
             const uint32_t path = s->voice_path;
             for (int v = 0; v < 3; ++v) {
-                float x = voice_out(s, v);
+                float x = voice_out(s, v) * s->voice_gain[v];
                 if (path & (SID_PATH_FILTER << v)) {
                     filt_in += x;
                 } else if (path & (SID_PATH_DIRECT << v)) {

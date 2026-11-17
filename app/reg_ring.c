@@ -74,6 +74,9 @@ _Static_assert(LIVE_REG_RESET == 0x80u && LIVE_REG_GATE_RESET == 0x81u &&
 _Static_assert(REG_RING_MUTE == 0x89u && REG_RING_MUTE < LIVE_REG_EXPERT_FIRST &&
                    !REG_RING_IS_SLOT(REG_RING_MUTE | REG_RING_CHIP_B),
                "the mute, 0x89 (chip B's 0xC9), is apart from the expert's and the slots'");
+_Static_assert(LIVE_REG_LEVEL(0) == REG_RING_MUTE + 1u && LIVE_REG_LEVEL(LIVE_VOICES) <= LIVE_REG_EXPERT_FIRST &&
+                   !REG_RING_IS_SLOT(LIVE_REG_LEVEL(LIVE_VOICES - 1u) | REG_RING_CHIP_B),
+               "the levels, 0x8A..0x8C (chip B's 0xCA..0xCC), are below the expert's and apart from the slots'");
 _Static_assert(!REG_RING_IS_SLOT(REG_RING_CHARACTER) &&
                    !REG_RING_IS_SLOT(REG_RING_CHARACTER | REG_RING_CHIP_B) &&
                    !REG_RING_IS_SLOT(LIVE_REG_RESET | REG_RING_CHIP_B),
@@ -166,6 +169,8 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         c->ticks[x]++;
     } else if (bare == REG_RING_MUTE) {
         sid_set_mute(s, e.value);
+    } else if (bare >= LIVE_REG_LEVEL(0) && bare < LIVE_REG_LEVEL(LIVE_VOICES)) {
+        sid_set_level(s, bare - LIVE_REG_LEVEL(0), e.value);
     } else if (bare == LIVE_REG_RESET) {
         if (c->spare_ready && c->spare_for == x && c->spare_model == e.value) {
             c->active[x] = (uint8_t)(3u - c->active[0] - c->active[1]);
