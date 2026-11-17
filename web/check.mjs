@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 const url = process.argv[2];
@@ -524,6 +525,27 @@ try {
   } catch {
     fail(`the Library page did not open a stored song: ${await lib.locator("#song-error").textContent()}`);
   }
+  await lib.setInputFiles("#sid-file", { name: "dojo.sid", mimeType: "application/octet-stream", buffer: readFileSync(new URL("dojo.sid", import.meta.url)) });
+  await lib.waitForSelector("#sid-panel:not([hidden])", { timeout: 10_000 }).catch(async () => fail(`the Library page did not read a .sid: ${await lib.locator("#sid-state").textContent()}`));
+  await lib.locator("#sid-song").selectOption("2");
+  await lib.locator("#sid-seconds").selectOption("30");
+  await lib.locator("#sid-convert").click();
+  await lib.waitForSelector("#sid-result:not([hidden])", { timeout: 30_000 }).catch(async () => fail(`the Library page did not convert a .sid: ${await lib.locator("#sid-state").textContent()}`));
+  const summary = await lib.locator("#sid-summary").textContent();
+  const onTime = [...summary.matchAll(/Voice \d(\d+) % of/g)].map((m) => Number(m[1]));
+  if (!/^Tempo6 frames a row/.test(summary) || onTime.length !== 3 || onTime.some((x) => x < 95)) fail(`the conversion's summary is wrong: ${summary}`);
+  for (const which of ["original", "conversion"]) {
+    await lib.locator(`#sid-play-${which}`).click();
+    await lib.waitForFunction((w) => window.__convert.playing === w, which, { timeout: 10_000 }).catch(() => fail(`the ${which} did not play`));
+  }
+  await lib.locator("#sid-stop").click();
+  await lib.locator("#sid-download").click();
+  const sng = (await saved()).at(-1);
+  if (sng?.filename !== "Dojo-2.sng" || sng.head !== "GTS5") fail(`the converted song's download is wrong: ${sng?.filename}`);
+  prompts.push("DOJO 2");
+  await lib.locator("#sid-send").click();
+  await settle("send a converted .sid", () => /DOJO 2 sent/.test(document.getElementById("store-state").textContent));
+  console.log(`library page: dojo.sid's sub-tune 2 converted (${sng.length} B), both played, downloaded and sent as DOJO 2`);
   if (await lib.evaluate(() => window.__midi.other.length) !== 0) fail("the Library page sent to the other port");
   if (!(await lib.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the Library page scrolls sideways at phone width");
   await lib.close();

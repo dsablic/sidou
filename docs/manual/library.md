@@ -160,3 +160,17 @@ cannot be cut out on its own: its button says it cannot be exported. The FM-1's 
 GET of an instrument) uses the same code.
 
 6-channel GoatTracker Stereo songs are read and kept as they are.
+
+## 7. Convert a .sid tune into a song
+
+Drop a PSID `.sid` on **A .sid tune: convert it to a song**. The page reads its header (title,
+author, chips, clock, sub-tunes), and **Convert** runs the chosen sub-tune for the length chosen
+(30 s to 2 minutes, 60 s by default) and writes a song you can edit. What it does, what it
+leaves out and how close it comes: [Convert a tune into a song](sid-tunes.md#6-convert-a-tune-into-a-song).
+
+- **Play the original** and **Play the conversion**: the tune as SIDOU's SID plays its writes, and
+  the song as the FM-1's player plays it, one after the other to compare.
+- **Download .sng**, **Send to the FM-1…** and **Edit**: as for any song (section 6).
+
+The panel lists the tempo, the instruments and patterns, how many of each voice's notes the FM-1's
+player plays on time, and what the conversion simplifies. Nothing leaves the browser.

@@ -7470,6 +7470,65 @@ gain.
 - With the GoatTracker examples checked out (`SONGS_WITH_GT2_EXAMPLES`, 17 songs) the comparison
   must cover more than 17,000 gate runs, 100,000 calls and 20,000 ties to mean something.
 
+### .sid to song (1.21)
+
+- Musical, not literal (the owner, 2026-11-17, `docs/plans/2026-11-17-groove-design.md`): the
+  output is rows, notes and instruments a person edits, not a frame-by-frame register copy. PSID
+  only; RSID needs a whole C64 and comes after, if PSID works well.
+- **Its own wasm** (`tools/wasm-tune`, `sidou-tune.wasm`): `core/cpu6502`, `core/psid`'s parser
+  and environment, and the SID shadows that answer the tune's reads of `$D41B`/`$D41C` as on the
+  device. The shadows need only `sid_init_begin`'s voice state, not the filter's tables, which
+  keeps the module at 78,619 bytes (Apple's clang); `cpu6502_run` alone is 34 KB of it. Its budget
+  is proposed at 96 KiB (the owner decides; `web/tune.test.mjs` checks it); it loads only when a
+  tune is dropped, so neither the core's 176 KiB nor the patch module's 88 KiB grows for it.
+- The capture follows `psid-ref`'s `sidou::run` call for call (init, then each call due until the
+  length), so `web/tune-fixtures.json` (`host/crates/psid-ref/tests/web_tune.rs`) can hold the
+  host build's writes as a SHA-256 every 50 calls for three starter tunes (VBI, CIA 2x speed, a
+  sub-tune), and the wasm must give the same.
+- The core (`sidou-core.wasm`) gains two small exports instead of a third module: `sc_frames_*`,
+  the FM-1's player (`gt2_play`) a frame at a time with its writes and row and note events, for
+  the closeness check and the ground truth; and `sc_raw_*`, chips A and B fed raw writes at their
+  cycles, for the original's preview. About 2 KB of the core's room.
+- Frames are 1/50 s (1/60 NTSC) of cycles, whatever the tune's play rate: a 2x tune's two calls
+  land in one frame, and the song plays at 1x. A note starts where the gate rises (an off-on in
+  one frame counts). Its pitch skips the onset frame (GoatTracker's player sets the frequency a
+  frame after the gate, so the onset frame still holds the last note) and then any frame that
+  jumps more than two semitones to the next (an attack's octave, a drum's falling pitch); with
+  only jumps (an arpeggio) the first frame is the note. A slide moves in steps of one or two, so
+  its first frame stays the note.
+- The grid: every candidate row length 3-16 and every alternating pair (funktempo) is tried on
+  all onsets at its best phase; the coarsest within one percent of the best fit wins if it holds
+  nine onsets in ten. One percent, not more: a tune whose first 20 seconds put notes only on even
+  rows (sanction) reads as 12 frames, not its 6, with a wider margin. Otherwise the onsets are cut
+  into segments, each walked with the candidates until more than one in ten of a window of 12
+  misses, and a tempo change is a SET TEMPO on its row (a global F, so every voice follows).
+  Rows under three frames are merged: GoatTracker's gate timer (2) must stay under the tempo.
+- Instruments: a note's shape is its first 8 frames after the onset (waveform byte, pitch relative
+  to the note, or absolute with noise, which is how drums are written), the arpeggio that repeats
+  after them (period up to 8, nine in ten frames agreeing) and its pulse start. Shapes with one
+  key share an instrument; each voice keeps its 6 most used (`MAX_INSTRUMENTS_A_VOICE`), and the
+  rest take the closest by ADSR, waveform and arpeggio. Identical shapes across voices are one
+  instrument. Pulse: set, then one sweep at the note's mean rate scaled by tempo/(tempo-1), as the
+  player skips pulse on the note-fetch tick. Filter: only the voice that is routed to the filter
+  at the most onsets gets filter tables (one instrument steering the chip's filter, as
+  GoatTracker's manual advises).
+- The first-frame waveform is the original's only when it has the test bit; otherwise `$09`, so
+  the onset frame is silent rather than a frame at the old pitch.
+- A key-off goes on the row its gate-off falls on plus the gate timer, since the player acts on a
+  row's note that many ticks early; a gate-off inside the first 8 frames is the wave table's.
+- Patterns: 16, 32 or 64 rows, the one with the fewest rows kept plus 4 a orderlist entry. Equal
+  patterns, and patterns equal but for a transpose of -15 to +14, are shared (TRANSPOSE then the
+  pattern), runs of one pattern are REPEAT.
+- Closeness (`closeness`, shown on the page and asserted by the tests): for each voice, the
+  original's notes the conversion plays at the same pitch within 2 frames, after a lag found as
+  the most common difference within 25 frames. `frameMatch` also counts frames whose waveform,
+  gate and pitch agree. The starter pack's GoatTracker tunes: every voice at 97 % or more of its
+  notes on time; the tempo is their source songs' on all ten.
+- Ground truth: the starter pack's `.sid` files are packed from `.sng` sources in the repository,
+  so the source song played by the same player gives each row's length and each note (the
+  player's note events). Drum voices are left out of the note check: their pattern note is not
+  heard (the wave table's notes are absolute).
+
 ### Fixtures from the host
 
 - `host/crates/sidou-tests/tests/web_core.rs` writes `web/core-fixtures.json`: what the host

@@ -173,3 +173,49 @@ What LAB takes from the voice, read from its registers as the tune writes them:
 **Digis** (samples played through the registers) cannot be lifted: `DIGI: CAN'T LIFT`. A tune
 for two chips silences the keys while it plays, so LAB plays the lifted sound once the tune
 stops.
+
+## 6. Convert a tune into a song
+
+The site's [Library page](library.md#7-convert-a-sid-tune-into-a-song) turns a PSID tune into a
+GoatTracker song the FM-1 plays, the editor opens and the song views edit: not a copy of the
+tune's register writes, but rows, notes and instruments, as a tracker musician would have written
+them. Everything runs in the browser; nothing is uploaded.
+
+How it works:
+
+- **The tune is run** by SIDOU's own 6502 and PSID environment (the firmware's C, compiled to
+  WebAssembly), for the chosen sub-tune and length, and every SID write is recorded with its
+  cycle, for each chip of a 2SID tune.
+- **Notes** are the frames where a voice's gate rises; a note's pitch is the first one it holds
+  (an attack's short jump, like a drum's falling pitch or an octave on the first frame, is skipped),
+  read from its frequency against GoatTracker's note table.
+- **The row grid** is the coarsest one that holds nine onsets in ten: one tempo, or a pair that
+  alternates (swing, written as funktempo with the pair in the speed table). A tune whose grid
+  changes is cut where it changes, and SET TEMPO goes on the row where it does.
+- **Instruments**: each note's attack and decay, sustain and release, its first eight frames of
+  waveform and pitch (noise at an absolute pitch, the rest relative to the note), an arpeggio
+  that repeats after them as a looping wave table, and its pulse width and sweep. Notes with the
+  same shape share an instrument; each voice keeps its six most used, and a rarer note takes the
+  closest. The voice that drives the filter most gets the filter's mode, resonance, routing and
+  cutoff in its instruments' filter table.
+- **Patterns**: each voice's rows are cut into patterns of 16, 32 or 64 rows (whichever makes the
+  song smallest), and a pattern heard again, or again a few semitones away, is played again with a
+  repeat or a transpose in the orderlist. A pitch the note moves to and holds becomes a tie note;
+  a gate that closes long after the attack becomes a key-off.
+- **Six voices**: a tune that uses its second chip becomes a GoatTracker Stereo song. The FM-1
+  plays its first three voices (chip A) and keeps the others, as for any GoatTracker Stereo song.
+
+What it simplifies, listed on the page for each tune: hard restarts become GoatTracker's own (the
+gate off two frames before a note, ADSR `$0F00`), digi samples (fast writes to the volume
+register) are dropped, notes off the grid move to the nearest row, vibrato, ring and sync detail,
+filter sweeps and pulse sweeps beyond one direction are simplified. RSID tunes are not converted
+yet: they need a whole C64.
+
+How close it comes: the page plays the song in the FM-1's own player and counts, for each voice,
+the original's notes it plays at the same pitch and within two frames of the same time. On the
+starter pack's tunes made with GoatTracker every voice's notes come back, on time, and the tempo is
+the one their source songs set.
+
+**Copyright.** A converted song is still the original's music: it keeps the original's copyright,
+and the page carries the tune's author and release line into the song. Share a conversion only as
+the original's licence allows.

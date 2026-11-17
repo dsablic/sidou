@@ -27,6 +27,7 @@ deps=()
 (cd "$dir" && npx --no-install playwright install "${deps[@]}" --only-shell chromium)
 cp "$root/web/check.mjs" "$dir/check.mjs"
 cp "$root/web/link-fixtures.json" "$dir/link-fixtures.json"
+cp "$root/assets/starter/dojo.sid" "$dir/dojo.sid"
 cp "$root/docs/prompt-to-patch.md" "$dir/llms.txt"
 for part in fields lab examples song full; do cp "$root/docs/prompt-to-patch-$part.md" "$dir/llms-$part.txt"; done
 cp "$root/docs/reference/patch.schema.json" "$dir/patch.schema.json"

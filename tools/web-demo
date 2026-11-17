@@ -80,7 +80,7 @@ EOF
 sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
 cp "$root/web/index.html" "$root/web/sidou.js" "$root/web/songs.html" "$root/web/songs.js" "$root/web/sysex.js" "$root/web/midi.html" "$root/web/midi.js" "$root/web/songmidi.js" "$out/"
-cp "$root/web/library.html" "$root/web/library.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$root/web/patch.js" "$root/web/ports.js" "$out/"
+cp "$root/web/library.html" "$root/web/library.js" "$root/web/convert.js" "$root/web/sidconv.js" "$root/web/tune.js" "$root/web/store.js" "$root/web/zip.js" "$root/web/core.js" "$root/web/patch.js" "$root/web/ports.js" "$out/"
 cp "$root/web/art.html" "$root/web/art.js" "$root/web/art-core.js" "$root/web/sidart.js" "$out/"
 cp "$root/web/editor.html" "$root/web/editor.js" "$root/web/song-edit.js" "$root/web/preview.js" "$root/web/preview-worklet.js" "$out/"
 say "the Library page's wasm core (tools/wasm-core)"

@@ -15,7 +15,7 @@ const WAVE = { SAME: 0x00, KEEP: 0x80, JUMP: 0xff, STOP: 0x00, ABS: 0x80, DOWN: 
 const PULSE_SET = 0x80, FILTER_SET = 0x80, FILTER_CUT = 0x00;
 const FIRST_WAVE_DEFAULT = 0x09, GATE_TIMER = 2, HR_ADSR = "$0F00";
 const MIN_TEMPO = 3, MAX_TEMPO = 0x7f, MAX_ROW_FRAMES = 16;
-const GRID_FIT = 0.9, GRID_WINDOW = 12, GRID_SLACK = 0.01;
+const GRID_FIT = 0.9, GRID_WINDOW = 12, GRID_SLACK = 0.01, MISS_COST = 200, CHANGE_COST = 16, SEGMENT_HITS = 8, CUT_GAIN = 0.8;
 const BASE_FRAMES = 16, GLIDE_STEP = 2, TRANSIENT_FRAMES = 8, ARP_PERIOD_MAX = 8, ARP_FIT = 0.9, LEGATO_MIN_FRAMES = 3;
 const PATTERN_LENGTHS = [16, 32, 64], ORDER_ENTRY_COST = 4;
 const TRANSPOSE_DOWN = 15, TRANSPOSE_UP = 14, TRANSPOSE_ZERO = 0xf0, REPEAT = 0xd0, REPEAT_MAX = 16;
@@ -124,7 +124,7 @@ const CANDIDATES = (() => {
 })();
 
 const walk = (onsets, from, lengths) => {
-  let row = onsets[from], r = 0, hits = 0, last = from;
+  let row = onsets[from], r = 0, hits = 0, misses = 0, pending = 0, last = from;
   const recent = [];
   for (let k = from; k < onsets.length; k++) {
     while (row < onsets[k]) row += lengths[r++ % lengths.length];
@@ -132,9 +132,9 @@ const walk = (onsets, from, lengths) => {
     recent.push(hit);
     if (recent.length > GRID_WINDOW) recent.shift();
     if (recent.filter((x) => !x).length > GRID_WINDOW * (1 - GRID_FIT)) break;
-    if (hit) { hits++; last = k; }
+    if (hit) { hits++; misses += pending; pending = 0; last = k; } else pending++;
   }
-  return { hits, last };
+  return { hits, misses, last, rows: (onsets[last] - onsets[from]) / meanLength(lengths) + 1 };
 };
 
 const fitOf = (onsets, lengths) => {
@@ -155,27 +155,39 @@ const coarser = (x, y) => {
   return d > 0 || (d === 0 && y.lengths.length < x.lengths.length) ? y : x;
 };
 
+const costOf = (rows, misses) => rows + MISS_COST * misses;
+
+const wholePlan = (all) => {
+  const whole = CANDIDATES.map((lengths) => ({ lengths, ...fitOf(all, lengths) }));
+  const top = Math.max(...whole.map((t) => t.fit));
+  const pick = whole.filter((t) => t.fit >= top - GRID_SLACK).reduce(coarser);
+  const start = all.find((f) => fitOf([f], pick.lengths).phase === pick.phase) ?? all[0];
+  const misses = Math.round((1 - pick.fit) * all.length);
+  return { segments: [{ start, lengths: pick.lengths }], cost: costOf((all[all.length - 1] - start) / meanLength(pick.lengths), misses) };
+};
+
+const segmentedPlan = (all) => {
+  const segments = [];
+  let cost = 0;
+  for (let from = 0; from < all.length;) {
+    const tries = CANDIDATES.filter((lengths) => lengths.length === 1).map((lengths) => ({ lengths, ...walk(all, from, lengths) }));
+    const enough = Math.min(SEGMENT_HITS, all.length - from);
+    const value = (t) => t.hits / costOf(t.rows, t.misses);
+    const fit = tries.filter((t) => t.hits >= enough);
+    if (fit.length === 0) return { segments, cost: Infinity };
+    const pick = fit.reduce((x, y) => (value(y) > value(x) || (value(y) === value(x) && coarser(x, y) === y) ? y : x));
+    cost += costOf(pick.rows, pick.misses) + (segments.length ? CHANGE_COST : 0);
+    segments.push({ start: all[from], lengths: pick.lengths });
+    from = pick.last + 1;
+  }
+  return { segments, cost };
+};
+
 export function segmentsOf(onsets) {
   const all = [...new Set(onsets)].sort((a, b) => a - b);
   if (all.length === 0) return [{ start: 0, lengths: [6] }];
-  const whole = CANDIDATES.map((lengths) => ({ lengths, ...fitOf(all, lengths) }));
-  const top = Math.max(...whole.map((t) => t.fit));
-  if (top >= GRID_FIT) {
-    const pick = whole.filter((t) => t.fit >= top - GRID_SLACK).reduce(coarser);
-    return [{ start: all.find((f) => fitOf([f], pick.lengths).phase === pick.phase) ?? all[0], lengths: pick.lengths }];
-  }
-  const segments = [];
-  for (let from = 0; from < all.length;) {
-    const tries = CANDIDATES.map((lengths) => ({ lengths, ...walk(all, from, lengths) }));
-    const most = Math.max(...tries.map((t) => t.hits));
-    const pick = tries.filter((t) => t.hits >= most - Math.floor(most * GRID_SLACK)).reduce(coarser);
-    const last = segments[segments.length - 1];
-    if (!last || String(last.lengths) !== String(pick.lengths) || (all[from] - last.start) % meanLength(pick.lengths) !== 0) {
-      segments.push({ start: all[from], lengths: pick.lengths });
-    }
-    from = pick.last + 1;
-  }
-  return segments.length ? segments : [{ start: 0, lengths: [6] }];
+  const whole = wholePlan(all), cut = segmentedPlan(all);
+  return (cut.cost < whole.cost * CUT_GAIN ? cut : whole).segments;
 }
 
 export function rowStarts(segments, frames) {
@@ -549,6 +561,16 @@ export function convert(run, { freqTable, name, author, released }) {
   const timeline = rowStarts(segmentsOf(onsets), frames);
   const song = buildSong(a, { timeline, name, author, released });
   return { song, analysis: a, bytes: writeSng(song), notes: simplifications(a, song, run) };
+}
+
+export function writesOf(run) {
+  return run.calls.flatMap((c) => c.writes.map(([cycle, chip, reg, value]) => [c.start + cycle, chip, reg, value]));
+}
+
+export function measure(run, played, freqTable) {
+  const pitch = makePitch(freqTable, run.clock);
+  const original = noteLists(framesOfCapture(run), pitch).slice(0, VOICES_A_CHIP);
+  return closeness(original, noteLists(framesOfPlayer(played), pitch, original.length));
 }
 
 export function noteLists(chipFrames, pitch, voices) {
