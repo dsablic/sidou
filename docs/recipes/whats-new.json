@@ -102,7 +102,7 @@
     },
     {
       "caption": "SAVE connects one; SIDOU keeps it and reconnects by itself.",
-      "control": "wait 5.6 s",
+      "control": "wait 1.0 s",
       "expect": [
         {
           "kind": "view",
@@ -125,7 +125,7 @@
       "id": "pair",
       "inputs": [
         {
-          "ms": 5600,
+          "ms": 1000,
           "op": "wait"
         }
       ],
@@ -616,7 +616,7 @@
     },
     {
       "caption": "The site's art pack builder puts your own PNGs in the duel.",
-      "control": "wait 5.0 s",
+      "control": "wait 1.0 s",
       "expect": [
         {
           "kind": "view",
@@ -639,7 +639,7 @@
       "id": "art",
       "inputs": [
         {
-          "ms": 5000,
+          "ms": 1000,
           "op": "wait"
         }
       ],
@@ -872,7 +872,7 @@
     },
     {
       "caption": "dsablic.github.io/sidou and github.com/dsablic/sidou/releases",
-      "control": "wait 3.2 s",
+      "control": "wait 1.0 s",
       "expect": [
         {
           "kind": "view",
@@ -894,7 +894,7 @@
       "id": "get-it",
       "inputs": [
         {
-          "ms": 3200,
+          "ms": 1000,
           "op": "wait"
         }
       ],

@@ -6960,8 +6960,10 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 ### How-to videos' pacing and motion
 
 - **Pacing lives in the capture**, not in the renderer: ergo's full capture shows a step's
-  caption 700 ms before its first action and keeps the firmware running until the caption's
-  reading time (180 words a minute plus a second) and 1.5 s after the last action have passed.
+  caption 400 ms before its first action and keeps the firmware running until the caption's
+  reading time (180 words a minute plus 0.7 s) and 1 s after the last action have passed. A
+  card step's own wait is short: the reading time sets how long it shows. A power-on journey's
+  first step has no lead-in, so a key held from power-on still is.
   The extra time is real emulation, so a song keeps playing and the screen keeps moving; a
   frozen frame under live sound would look broken. The pacing applies only to `--capture full`,
   never to the recipe checks.

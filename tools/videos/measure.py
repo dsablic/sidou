@@ -12,7 +12,7 @@ import make  # noqa: E402
 import template as T  # noqa: E402
 
 READ_WPM = 180
-READ_BEAT_MS = 1000
+READ_BEAT_MS = 700
 REVERSAL_MS = 1000
 STILL = 1e-4
 JUMP_MS = 400

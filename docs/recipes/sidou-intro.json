@@ -277,7 +277,7 @@
     },
     {
       "caption": "The same file opens in GoatTracker 2.77 and comes back.",
-      "control": "wait 5.5 s",
+      "control": "wait 1.0 s",
       "expect": [
         {
           "assert": "sounding",
@@ -300,7 +300,7 @@
       "id": "goattracker",
       "inputs": [
         {
-          "ms": 5500,
+          "ms": 1000,
           "op": "wait"
         }
       ],
@@ -999,7 +999,7 @@
     },
     {
       "caption": ".sid tunes, LAB and more: dsablic.github.io/sidou",
-      "control": "wait 5.0 s",
+      "control": "wait 1.0 s",
       "expect": [
         {
           "assert": "sounding",
@@ -1021,7 +1021,7 @@
       "id": "next",
       "inputs": [
         {
-          "ms": 5000,
+          "ms": 1000,
           "op": "wait"
         }
       ],

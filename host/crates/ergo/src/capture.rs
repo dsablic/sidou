@@ -10,9 +10,9 @@ use crate::journeys::{Journey, FS};
 use crate::screen::png_bytes;
 
 pub const READ_WPM: u64 = 180;
-pub const READ_BEAT_MS: u64 = 1000;
-pub const LEAD_IN_MS: u64 = 700;
-pub const AFTER_ACTION_MS: u64 = 1500;
+pub const READ_BEAT_MS: u64 = 700;
+pub const LEAD_IN_MS: u64 = 400;
+pub const AFTER_ACTION_MS: u64 = 1000;
 
 pub fn reading_ms(caption: &str) -> u64 {
     caption.split_whitespace().count() as u64 * 60_000 / READ_WPM + READ_BEAT_MS
