@@ -214,8 +214,8 @@ yet: they need a whole C64.
 
 How close it comes: the page plays the song in the FM-1's own player and counts, for each voice,
 the original's notes it plays at the same pitch and within two frames of the same time. On the
-starter pack's tunes made with GoatTracker every voice's notes come back, on time, and the tempo is
-the one their source songs set.
+starter pack's eleven tunes (made with GoatTracker), 60 seconds each, 6,183 of the 6,214 notes come
+back at their pitch and time (no voice under 98 %), and the tempo is the one their source songs set.
 
 **Copyright.** A converted song is still the original's music: it keeps the original's copyright,
 and the page carries the tune's author and release line into the song. Share a conversion only as
