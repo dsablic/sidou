@@ -11,6 +11,7 @@
 #include "song_ratchet.h"
 #include "lab_song.h"
 #include "song_pages.h"
+#include "song_tempo.h"
 #include "song/gt2_song.h"
 #include "song/song_ext.h"
 
@@ -34,6 +35,11 @@ static const char* const KNOB_NAMES[4] = {"CUTOFF", "RESONANCE", "PULSE WIDTH", 
 static const char* const KNOB_SHORT[4] = {"CUTOFF", "RESO", "PULSE", "WAVE"};
 static const char* const CHAR_NAMES[4] = {"AGE", "DAC", "THUMP", "BLEED"};
 static const char HEX[] = "0123456789ABCDEF";
+static const char* const GROOVE_NAMES[4] = {"SWING", "HITS", "ROTATE", "RATCHET"};
+static const char* const RATCHETS[SONG_RATCHET_MAX + 1u] = {"---", "OFF", "x2", "x3", "x4"};
+#define GROOVE_SWING 0u
+#define GROOVE_RATCHET 3u
+#define PAGES_SHOWN 8u
 
 void step_view_init(step_view* st, song_view* sv) {
     memset(st, 0, sizeof *st);
@@ -85,6 +91,18 @@ static uint32_t page_of(const step_view* st, const lane lanes[SONG_T_VOICES]) {
     uint32_t page = ln->play != 0xffu ? ln->play / STEP_VIEW_STEPS : st->page;
     uint32_t pages = pages_of(ln->rows);
     return page >= pages ? pages - 1u : page;
+}
+
+static uint32_t pick_of(const step_view* st, const lane* ln) {
+    return ln->rows && st->pick >= ln->rows ? ln->rows - 1u : st->pick;
+}
+
+static uint32_t shown_page(const step_view* st, const lane lanes[SONG_T_VOICES]) {
+    return st->groove ? pick_of(st, &lanes[st->sv->voice]) / STEP_VIEW_STEPS : page_of(st, lanes);
+}
+
+static uint32_t marked(const step_view* st, const lane lanes[SONG_T_VOICES]) {
+    return st->groove ? pick_of(st, &lanes[st->sv->voice]) % STEP_VIEW_STEPS : st->held;
 }
 
 static void lanes_of(const song_view* sv, lane lanes[SONG_T_VOICES]) {
@@ -150,7 +168,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     lane lanes[SONG_T_VOICES];
     lanes_of(sv, lanes);
     memset(out, 0, STEP_VIEW_LOOK);
-    uint32_t v = sv->voice, page = page_of(st, lanes);
+    uint32_t v = sv->voice, page = shown_page(st, lanes), mark = marked(st, lanes);
     uint32_t bpm = song_view_shown_bpm(sv);
     uint8_t* h = out + HEAD_AT;
     h[0] = (uint8_t)song_view_playing(sv);
@@ -161,7 +179,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     h[5] = (uint8_t)(sv->mute | sv->solo << 3);
     h[6] = lanes[v].pattern;
     h[7] = sv->l->theme;
-    h[8] = (uint8_t)page;
+    h[8] = (uint8_t)(page | (uint32_t)st->groove << 7);
     h[9] = (uint8_t)pages_of(lanes[v].rows);
     h[10] = lanes[v].rows;
     uint8_t* a = out + LANES_AT;
@@ -178,7 +196,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
         a[16 + k] = sv->gen.root[k];
         a[19 + k] = st->instr[k];
     }
-    a[15] = st->held;
+    a[15] = (uint8_t)mark;
     a[22] = st->gate;
     a[23] = sv->l->theme;
     uint8_t* l = out + LOWER_AT;
@@ -188,9 +206,9 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     l[6] = (uint8_t)page;
     l[7] = (uint8_t)v;
     l[8] = lanes[v].pattern;
-    l[9] = st->held;
+    l[9] = (uint8_t)mark;
     l[10] = sv->l->theme;
-    l[11] = (uint8_t)(sv->gen.euclid_on >> v & 1u);
+    l[11] = (uint8_t)(st->groove | sv->swing << 1);
     l[12] = sv->gen.euclid_hits[v];
     l[13] = sv->gen.euclid_rotate[v];
     (void)song_gen_look(sv, l + 14);
@@ -245,14 +263,19 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
     }
     grid_canvas_text(c, 0, STEP_VIEW_PAGE_ROW, "PAGE", THEME_ATTR(th, hint));
     uint32_t pages = pages_of(lanes[v].rows);
-    for (uint32_t p = 0; p < pages && p < 8u; p++) {
-        put(c, 5u + 2u * p, STEP_VIEW_PAGE_ROW, (uint8_t)('1' + p),
-            p == page ? GRID_ATTR(th->bg, th->hot) : THEME_ATTR(th, label));
+    pages = pages < PAGES_SHOWN ? pages : PAGES_SHOWN;
+    for (uint32_t p = 0; p <= pages; p++) {
+        int on = p == pages ? st->groove : !st->groove && p == page;
+        put(c, 5u + 2u * p, STEP_VIEW_PAGE_ROW, p == pages ? (uint8_t)'G' : (uint8_t)('1' + p),
+            on ? GRID_ATTR(th->bg, th->hot) : THEME_ATTR(th, label));
     }
     char len[5];
-    uint32_t n = screen_decimal(len, lanes[v].rows);
-    grid_canvas_text(c, 21, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
-    grid_canvas_text(c, 21u + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
+    uint32_t n = screen_decimal(len, lanes[v].rows), at = 7u + 2u * pages;
+    at = at > 21u ? at : 21u;
+    grid_canvas_text(c, at, STEP_VIEW_PAGE_ROW, len, THEME_ATTR(th, value));
+    if (at + n + 6u <= GRID_COLS) {
+        grid_canvas_text(c, at + n, STEP_VIEW_PAGE_ROW, " STEPS", THEME_ATTR(th, hint));
+    }
     for (uint32_t g = 0; g < 4u; g++) {
         screen_decimal(len, page * STEP_VIEW_STEPS + g * 4u + 1u);
         big(c, step_col(g * 4u), STEP_VIEW_RULER_ROW, len, THEME_ATTR(th, label));
@@ -268,7 +291,7 @@ static uint32_t ratchet_of(const gt2_song* s, uint8_t ratchets[GT2_MAX_INSTR + 1
 }
 
 static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t l, uint32_t page,
-                       uint8_t ratchets[GT2_MAX_INSTR + 1u]) {
+                       uint32_t mark, uint8_t ratchets[GT2_MAX_INSTR + 1u]) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
     const gt2_song* s = sv->song;
@@ -296,7 +319,7 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
         const uint8_t* cell = cell_in(d, row);
         int note = is_note(cell[0]);
         uint32_t col = step_col(i);
-        int held = selected && st->held == i;
+        int held = selected && mark == i;
         int playing = ln->play == row;
         uint8_t pip = note ? FONT_BALL : FONT_PIP;
         uint8_t color = playing ? th->value : note ? th->voice[l] : th->dim;
@@ -341,8 +364,9 @@ static void build_lane(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
 
 static void build_lanes(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     uint8_t ratchets[GT2_MAX_INSTR + 1u] = {0};
+    uint32_t mark = marked(st, lanes);
     for (uint32_t l = 0; l < STEP_VIEW_LANES; l++) {
-        build_lane(st, lanes, l, page, ratchets);
+        build_lane(st, lanes, l, page, mark, ratchets);
     }
     st->sv->dirty |= LANES_ROWS;
 }
@@ -357,17 +381,34 @@ static void bar(canvas* c, uint32_t col, uint32_t row, uint32_t fill, uint32_t m
     }
 }
 
-static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint32_t k,
-                      uint32_t row) {
+static uint32_t knob_col(uint32_t k) {
+    return k & 1u ? 17u : 2u;
+}
+
+static uint32_t knob_row(uint32_t k) {
+    return 18u + 2u * (k >> 1);
+}
+
+static void knob_top(canvas* c, const theme* th, uint32_t k, const char* name, int lit) {
+    char tag[3] = {'K', (char)('1' + k), 0};
+    grid_canvas_text(c, knob_col(k), knob_row(k), tag, THEME_ATTR(th, hint));
+    grid_canvas_text(c, knob_col(k) + 3u, knob_row(k), name,
+                     GRID_ATTR(lit ? th->knob_text[k] : th->hint, th->bg));
+}
+
+static void knob_foot(canvas* c, const theme* th, uint32_t k, uint32_t value, uint32_t max,
+                      const char* text, uint8_t color) {
+    bar(c, knob_col(k), knob_row(k) + 1u, value, max, th->knob[k], th->dim);
+    grid_canvas_text(c, knob_col(k) + 9u, knob_row(k) + 1u, text, GRID_ATTR(color, th->bg));
+}
+
+static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint32_t k) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
     const gt2_song* s = sv->song;
     const theme* th = theme_get(sv->l->theme);
-    uint32_t col = k & 1u ? 17u : 2u;
-    char tag[3] = {'K', (char)('1' + k), 0};
-    grid_canvas_text(c, col, row, tag, THEME_ATTR(th, hint));
-    grid_canvas_text(c, col + 3u, row, KNOB_SHORT[k],
-                     GRID_ATTR(held ? th->knob_text[k] : th->hint, th->bg));
+    uint32_t col = knob_col(k), row = knob_row(k);
+    knob_top(c, th, k, KNOB_SHORT[k], held);
     uint32_t value = 0u, max = 0u;
     int tagged = 0;
     char text[8] = "---";
@@ -393,15 +434,14 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
             }
         }
     }
-    bar(c, col, row + 1u, value, max, th->knob[k], th->dim);
-    grid_canvas_text(c, col + 9u, row + 1u, text, GRID_ATTR(tagged ? th->value : th->dim, th->bg));
+    knob_foot(c, th, k, value, max, text, tagged ? th->value : th->dim);
     if (tagged) {
         grid_canvas_text(c, col + (k & 1u ? 8u : 10u), row, k == 3u ? "SET" : "LOCK",
                          GRID_ATTR(k == 3u ? th->knob[1] : th->hot, th->bg));
     }
 }
 
-static void build_pads(step_view* st, const lane* ln, uint32_t page) {
+static void build_pads(step_view* st, const lane* ln, uint32_t page, uint32_t mark) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
     const gt2_song* s = sv->song;
@@ -420,7 +460,7 @@ static void build_pads(step_view* st, const lane* ln, uint32_t page) {
         if (is_note(cell[0])) {
             a = GRID_ATTR(th->bg, th->voice[v]);
         }
-        if (st->held == i) {
+        if (mark == i) {
             a = GRID_ATTR(th->bg, th->hot);
         }
         char num[2] = {(char)('1' + (i & 3u)), 0};
@@ -444,6 +484,39 @@ static void frame_box(canvas* c, uint32_t top, uint32_t bottom, uint8_t a) {
     }
 }
 
+static uint32_t ratchet_at(const gt2_song* s, const lane* ln, uint32_t at) {
+    const uint8_t* c = s && ln->pattern != 0xffu && at < ln->rows ? cell_of(s, ln, at) : NULL;
+    return c && is_note(c[0]) && c[1] ? song_ratchet_count(s, c[1]) : 0u;
+}
+
+static void build_groove(step_view* st, const lane* ln) {
+    song_view* sv = st->sv;
+    canvas* c = &sv->cv;
+    const theme* th = theme_get(sv->l->theme);
+    uint32_t v = sv->voice, at = pick_of(st, ln);
+    grid_canvas_text(c, 2, 17u, " GROOVE ", THEME_ATTR(th, hot));
+    char t[16] = " V1 STEP ";
+    t[2] = (char)('1' + v);
+    uint32_t n = 9u + screen_decimal(t + 9, at + 1u);
+    t[n++] = ' ';
+    t[n] = 0;
+    grid_canvas_text(c, 12, 17u, t, THEME_ATTR(th, value));
+    uint32_t rows = ln->rows, ratchet = ratchet_at(sv->song, ln, at);
+    uint32_t values[4] = {sv->swing, sv->gen.euclid_hits[v], sv->gen.euclid_rotate[v],
+                          ratchet ? ratchet - SONG_RATCHET_OFF : 0u};
+    const uint32_t tops[4] = {SONG_SWING_LEVELS - 1u, rows, rows ? rows - 1u : 0u,
+                              SONG_RATCHET_MAX - SONG_RATCHET_OFF};
+    for (uint32_t k = 0; k < 4u; k++) {
+        char num[4];
+        screen_decimal(num, values[k]);
+        const char* text = k == GROOVE_SWING     ? song_view_swing_tag(values[k])
+                           : k == GROOVE_RATCHET ? RATCHETS[ratchet]
+                                                 : num;
+        knob_top(c, th, k, GROOVE_NAMES[k], 1);
+        knob_foot(c, th, k, values[k], tops[k], text, th->value);
+    }
+}
+
 static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -459,18 +532,10 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         return;
     }
     frame_box(c, 17u, 22u, frame);
-    if (sv->gen.euclid_on >> v & 1u) {
-        char e[24] = " EUCLID ";
-        uint32_t n = 8u;
-        n += screen_decimal(e + n, sv->gen.euclid_hits[v]);
-        e[n++] = '/';
-        n += screen_decimal(e + n, ln->rows);
-        memcpy(e + n, " ROT ", 5u);
-        n += 5u;
-        n += screen_decimal(e + n, sv->gen.euclid_rotate[v]);
-        e[n++] = ' ';
-        e[n] = 0;
-        grid_canvas_text(c, 2, 22u, e, THEME_ATTR(th, hot));
+    if (st->groove) {
+        build_groove(st, ln);
+        build_pads(st, ln, page, pick_of(st, ln) % STEP_VIEW_STEPS);
+        return;
     }
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     int held = st->held != STEP_VIEW_NONE && s && ln->pattern != 0xffu && at < ln->rows;
@@ -500,9 +565,9 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         }
     }
     for (uint32_t k = 0; k < 4u; k++) {
-        knob_cell(st, ln, at, held, k, 18u + 2u * (k >> 1));
+        knob_cell(st, ln, at, held, k);
     }
-    build_pads(st, ln, page);
+    build_pads(st, ln, page, st->held);
 }
 
 __attribute__((noinline, unused)) static void feedback(screen* s, const song_view* sv) {
@@ -534,7 +599,7 @@ void step_view_leds(const step_view* st, uint32_t* set, uint32_t* rows, uint32_t
     lane lanes[SONG_T_VOICES];
     lanes_of(sv, lanes);
     const lane* ln = &lanes[sv->voice];
-    uint32_t page = page_of(st, lanes);
+    uint32_t page = shown_page(st, lanes);
     const uint8_t* d = sv->song && ln->pattern != 0xffu ? gt2_pattern_data(sv->song, ln->pattern) : NULL;
     *set = *rows = 0u;
     *head = STEP_VIEW_NONE;
@@ -560,7 +625,7 @@ __attribute__((noinline, unused)) static int target_of(const step_view* st, uint
     t->voice = sv->voice;
     t->pattern = lanes[t->voice].pattern;
     t->rows = lanes[t->voice].rows;
-    t->row = (uint8_t)(page_of(st, lanes) * STEP_VIEW_STEPS + i);
+    t->row = (uint8_t)(shown_page(st, lanes) * STEP_VIEW_STEPS + i);
     return sv->song && t->pattern != 0xffu && t->row < t->rows;
 }
 
@@ -748,7 +813,13 @@ static void ratchet_turn(screen* s, step_view* st, const target* t, int32_t step
 
 enum { ACT_TOGGLE = 1, ACT_WAVE, ACT_NOTE, ACT_UNSET };
 
-__attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
+static void drain_with(screen* s, step_view* st, int gen);
+
+static void drain(screen* s, step_view* st) {
+    drain_with(s, st, 1);
+}
+
+__attribute__((noinline, unused)) static void drain_with(screen* s, step_view* st, int gen) {
     song_view* sv = st->sv;
     if (!sv->editor) {
         return;
@@ -784,7 +855,9 @@ __attribute__((noinline, unused)) static void drain(screen* s, step_view* st) {
         return;
     }
     if (!st->qn) {
-        song_gen_drain(sv, s);
+        if (gen) {
+            song_gen_drain(sv, s);
+        }
         return;
     }
     step_act a = st->q[0];
@@ -883,11 +956,27 @@ static void key_down(step_view* st, screen* s, uint32_t k) {
     hear_locks(st, &t);
 }
 
+static void pick_keys(step_view* st, uint32_t pressed) {
+    lane lanes[SONG_T_VOICES];
+    lanes_of(st->sv, lanes);
+    uint32_t first = shown_page(st, lanes) * STEP_VIEW_STEPS;
+    for (uint32_t k = 0; pressed >> k; k++) {
+        if (pressed >> k & 1u && first + k < lanes[st->sv->voice].rows) {
+            st->pick = (uint8_t)(first + k);
+            st->ratchet_turned = 0u;
+        }
+    }
+}
+
 uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t pressed, int take) {
     song_view* sv = st->sv;
     uint32_t mask = (1u << STEP_VIEW_STEPS) - 1u;
     uint32_t now = take ? down & mask : 0u;
     uint32_t pressed16 = take ? pressed & mask : 0u;
+    if (st->groove) {
+        pick_keys(st, pressed16);
+        return pressed16 | now;
+    }
     uint32_t gone = st->down & (~now | pressed16);
     for (uint32_t k = 0; gone >> k; k++) {
         if (!(gone >> k & 1u)) {
@@ -1010,8 +1099,65 @@ void step_view_buttons(step_view* st, screen* s, uint32_t held) {
     }
 }
 
-static int euclid_held(const step_view* st, const screen_event* e) {
-    return (e->held >> PANEL_BTN_FX & 1u) && st->held == STEP_VIEW_NONE;
+static void groove_enter(step_view* st, uint32_t from) {
+    song_view* sv = st->sv;
+    st->groove = 1u;
+    st->pick = (uint8_t)(from * STEP_VIEW_STEPS + st->pick % STEP_VIEW_STEPS);
+    st->ratchet_turned = 0u;
+    sv->gen.swing_turned = 0u;
+    if (st->down && sv->t) {
+        sv->jam_off = 1;
+    }
+    st->down = st->touched = 0u;
+    st->held = STEP_VIEW_NONE;
+}
+
+static void page_turn(step_view* st, int32_t steps) {
+    lane lanes[SONG_T_VOICES];
+    lanes_of(st->sv, lanes);
+    const lane* ln = &lanes[st->sv->voice];
+    int32_t last = (int32_t)pages_of(ln->rows) - 1;
+    int32_t p = (int32_t)page_of(st, lanes) + steps;
+    if (st->groove) {
+        if (steps >= 0) {
+            return;
+        }
+        st->groove = 0u;
+        p = (int32_t)(pick_of(st, ln) / STEP_VIEW_STEPS) + 1 + steps;
+    } else if (ln->play != 0xffu || p > last) {
+        if (steps > 0) {
+            groove_enter(st, page_of(st, lanes));
+        }
+        return;
+    }
+    st->page = (uint8_t)(p < 0 ? 0 : p > last ? last : p);
+}
+
+static int groove_turn(screen* s, step_view* st, uint32_t enc, int32_t steps) {
+    song_view* sv = st->sv;
+    lane lanes[SONG_T_VOICES];
+    lanes_of(sv, lanes);
+    const lane* ln = &lanes[sv->voice];
+    target t = {ln->pattern, ln->rows, sv->voice, (uint8_t)pick_of(st, ln)};
+    if (enc == PANEL_ENC_PRESETS) {
+        int32_t r = (int32_t)t.row + steps, last = ln->rows ? (int32_t)ln->rows - 1 : 0;
+        st->pick = (uint8_t)(r < 0 ? 0 : r > last ? last : r);
+        st->ratchet_turned = 0u;
+        return 1;
+    }
+    if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+        return 0;
+    }
+    uint32_t k = enc - PANEL_ENC_K1;
+    if (k == GROOVE_SWING) {
+        song_gen_swing_turn(sv, s, steps);
+    } else if (k != GROOVE_RATCHET) {
+        song_gen_euclid(sv, s, k - 1u, steps, ln->pattern, ln->rows, st->instr[sv->voice]);
+    } else if (sv->song && ln->pattern != 0xffu && t.row < ln->rows) {
+        ratchet_turn(s, st, &t, steps);
+        drain(s, st);
+    }
+    return 1;
 }
 
 static int input(screen* s, void* state, const screen_event* e) {
@@ -1021,8 +1167,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         return song_view_away_input(s, e);
     }
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
-    st->fx_down = (uint8_t)(e->held >> PANEL_BTN_FX & 1u);
-    drain(s, st);
+    drain_with(s, st, 0);
     target t;
     if (e->kind == SCREEN_PRESS) {
         int free = st->held == STEP_VIEW_NONE && !song_view_recording(sv) && sv->editor;
@@ -1036,10 +1181,6 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         lone_due(st, screen_lone_take(&sv->gen.lone));
-        if (e->id == PANEL_BTN_LFO && euclid_held(st, e)) {
-            song_gen_euclid_off(sv, s);
-            return 1;
-        }
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -1095,35 +1236,18 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->id == PANEL_ENC_ALGORITHM && st->held != STEP_VIEW_NONE && target_of(st, st->held, &t)) {
         st->touched = st->down;
-        if (edit) {
-            ratchet_turn(s, st, &t, e->steps);
-            drain(s, st);
-        } else {
-            set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
-        }
+        set_lock(s, st, &t, SONG_LOCK_CHANCE, e->steps);
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
-        lane lanes[SONG_T_VOICES];
-        lanes_of(sv, lanes);
-        if (lanes[sv->voice].play == 0xffu) {
-            int32_t p = (int32_t)page_of(st, lanes) + e->steps;
-            int32_t last = (int32_t)pages_of(lanes[sv->voice].rows) - 1;
-            st->page = (uint8_t)(p < 0 ? 0 : p > last ? last : p);
-        }
+        page_turn(st, e->steps);
         return 1;
+    }
+    if (st->groove) {
+        return groove_turn(s, st, e->id, e->steps);
     }
     int held = st->held != STEP_VIEW_NONE;
-    if (euclid_held(st, e) && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u)) {
-        lane lanes[SONG_T_VOICES];
-        lanes_of(sv, lanes);
-        const lane* ln = &lanes[sv->voice];
-        song_gen_euclid(sv, s, e->id - PANEL_ENC_K1, e->steps, ln->pattern, ln->rows,
-                        st->instr[sv->voice]);
-        drain(s, st);
-        return 1;
-    }
-    if (e->id == 6u) {
+    if (e->id == PANEL_ENC_PRESETS) {
         if (held && target_of(st, st->held, &t)) {
             st->touched = st->down;
             act(s, st, ACT_NOTE, &t, e->steps);
@@ -1160,12 +1284,52 @@ static int input(screen* s, void* state, const screen_event* e) {
     return 1;
 }
 
+static void fraction(char* text, uint32_t a, uint32_t b) {
+    uint32_t n = screen_decimal(text, a);
+    text[n++] = '/';
+    screen_decimal(text + n, b);
+}
+
+static void groove_popup(const step_view* st, const lane* ln, uint32_t k, char* text,
+                         uint32_t* cur, uint32_t* top) {
+    const song_view* sv = st->sv;
+    uint32_t v = sv->voice, at = pick_of(st, ln);
+    if (k == GROOVE_SWING) {
+        *cur = song_gen_swing_popup(sv, text);
+        *top = SONG_SWING_LEVELS - 1u;
+    } else if (k != GROOVE_RATCHET) {
+        int hits = k == SONG_GEN_EUCLID_HITS + 1u;
+        *cur = hits ? sv->gen.euclid_hits[v] : sv->gen.euclid_rotate[v];
+        *top = hits || !ln->rows ? ln->rows : ln->rows - 1u;
+        if (hits) {
+            fraction(text, *cur, ln->rows);
+        } else {
+            screen_decimal(text, *cur);
+        }
+    } else {
+        int turned = st->ratchet_turned && st->ratchet_pattern == ln->pattern &&
+                     st->ratchet_row == at;
+        uint32_t count = ratchet_at(sv->song, ln, at);
+        *cur = turned ? st->ratchet : count ? count : SONG_RATCHET_OFF;
+        *top = SONG_RATCHET_MAX;
+        if (!count) {
+            int note = sv->song && ln->pattern != 0xffu && at < ln->rows &&
+                       is_note(cell_of(sv->song, ln, at)[0]);
+            screen_popup_copy(text, note ? "NO INSTR" : "NO NOTE");
+            return;
+        }
+        uint32_t no = turned && st->ratchet_refused ? 3u : 0u;
+        memcpy(text, "NO ", no);
+        screen_popup_copy(text + no, RATCHETS[*cur]);
+    }
+}
+
 int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[SCREEN_POPUP_TEXT],
                     char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
     const song_view* sv = st->sv;
     lane lanes[SONG_T_VOICES];
     lanes_of(sv, lanes);
-    uint32_t v = sv->voice, page = page_of(st, lanes);
+    uint32_t v = sv->voice, page = shown_page(st, lanes);
     const lane* ln = &lanes[v];
     char text[SCREEN_POPUP_TEXT] = {0};
     const char* label;
@@ -1174,32 +1338,14 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     if (song_gen_popup(sv, encoder, name, value, fill, max)) {
         return 1;
-    } else if (st->fx_down && !held && (encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u)) {
-        int hits = encoder == PANEL_ENC_K1;
-        label = hits ? "HITS" : "ROTATE";
-        cur = hits ? sv->gen.euclid_hits[v] : sv->gen.euclid_rotate[v];
-        top = hits ? ln->rows : ln->rows - 1u;
-        uint32_t n = screen_decimal(text, cur);
-        if (hits) {
-            text[n++] = '/';
-            screen_decimal(text + n, ln->rows);
-        }
-    } else if (encoder == PANEL_ENC_ALGORITHM && held && edit && sv->song && ln->pattern != 0xffu &&
-               at < ln->rows) {
-        static const char* const RATCHETS[SONG_RATCHET_MAX + 1u] = {"", "OFF", "x2", "x3", "x4"};
-        label = "RATCHET";
-        const uint8_t* c = cell_of(sv->song, ln, at);
-        int turned = st->ratchet_turned && st->ratchet_pattern == ln->pattern && st->ratchet_row == at;
-        cur = turned ? st->ratchet : is_note(c[0]) ? song_ratchet_count(sv->song, c[1]) : SONG_RATCHET_OFF;
-        top = SONG_RATCHET_MAX;
-        if (!is_note(c[0]) || !c[1]) {
-            screen_popup_copy(text, is_note(c[0]) ? "NO INSTR" : "NO NOTE");
-        } else {
-            if (turned && st->ratchet_refused) {
-                screen_popup_copy(text, "NO ");
-            }
-            screen_popup_copy(text + (turned && st->ratchet_refused ? 3u : 0u), RATCHETS[cur]);
-        }
+    } else if (st->groove && encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4) {
+        label = GROOVE_NAMES[encoder - PANEL_ENC_K1];
+        groove_popup(st, ln, encoder - PANEL_ENC_K1, text, &cur, &top);
+    } else if (st->groove && encoder == PANEL_ENC_PRESETS) {
+        label = "STEP";
+        cur = pick_of(st, ln);
+        top = ln->rows ? ln->rows - 1u : 0u;
+        fraction(text, cur + 1u, ln->rows);
     } else if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
         label = "CHANCE";
         cur = 100u;
@@ -1209,12 +1355,14 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     } else if (encoder == PANEL_ENC_ALGORITHM) {
         label = "PAGE";
         uint32_t pages = pages_of(ln->rows);
-        cur = page;
-        top = pages - 1u;
-        uint32_t n = screen_decimal(text, page + 1u);
-        text[n++] = '/';
-        screen_decimal(text + n, pages);
-    } else if (encoder == 6u) {
+        cur = st->groove ? pages : page;
+        top = pages;
+        if (st->groove) {
+            screen_popup_copy(text, "GROOVE");
+        } else {
+            fraction(text, page + 1u, pages);
+        }
+    } else if (encoder == PANEL_ENC_PRESETS) {
         if (held) {
             label = "NOTE";
             const uint8_t* c = sv->song && ln->pattern != 0xffu && at < ln->rows ?
@@ -1282,6 +1430,7 @@ static void enter(screen* s, void* state) {
     st->sv->built = 0;
     st->sv->edit_screen = s;
     st->held = STEP_VIEW_NONE;
+    st->groove = 0u;
     st->zones = 0u;
     song_gen_stop(st->sv);
     st->down = st->touched = 0u;
@@ -1334,8 +1483,10 @@ static void zone(step_view* st, uint32_t bit, uint32_t first_row, uint32_t reach
     }
     lane lanes[SONG_T_VOICES];
     lanes_of(st->sv, lanes);
-    uint32_t page = page_of(st, lanes);
-    st->page = (uint8_t)page;
+    uint32_t page = shown_page(st, lanes);
+    if (!st->groove) {
+        st->page = (uint8_t)page;
+    }
     if (bit == ZONE_HEAD) {
         build_head(st, lanes, page);
     } else if (bit == ZONE_LANES) {

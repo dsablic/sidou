@@ -4,9 +4,9 @@
 use sidou_sys::*;
 use sidou_tests::song::{SngSpec, Song as Model, REST as R};
 
-use crate::song_view::{open_tracker, Song};
+use crate::song_view::Song;
 use crate::step_view::{
-    notes_col, open_step, pattern, popup, reference_calls, settle, sidou_calls, snapshot, C3,
+    groove, groove_turn, notes_col, open_step, pattern, reference_calls, sidou_calls, snapshot, C3,
 };
 
 const CMD_CUTOFF: u8 = 0x0c;
@@ -43,28 +43,8 @@ fn at_speed(speed: u8) -> Model {
     song_at([CMD_TEMPO, speed])
 }
 
-fn holding_edit_and_scl<T>(s: &mut Song, then: impl FnOnce(&mut Song) -> T) -> T {
-    s.ui.down(PANEL_BTN_EDIT);
-    s.ui.down(PANEL_BTN_SCL);
-    let out = then(s);
-    s.ui.up(PANEL_BTN_SCL);
-    s.ui.up(PANEL_BTN_EDIT);
-    settle(&mut s.ui);
-    out
-}
-
-fn turn_swing(s: &mut Song, steps: i32) -> (String, String) {
-    for _ in 0..steps.abs() {
-        s.ui.turn(PANEL_ENC_ALGORITHM, steps.signum());
-        s.ui.frame();
-    }
-    settle(&mut s.ui);
-    let shown = popup(s, PANEL_ENC_ALGORITHM, true).expect("the swing popup");
-    (shown.0, shown.1)
-}
-
 fn swing(s: &mut Song, steps: i32) -> (String, String) {
-    holding_edit_and_scl(s, |s| turn_swing(s, steps))
+    groove_turn(s, PANEL_ENC_K1, steps)
 }
 
 fn funktempo(s: &Song) -> Option<(u8, u8)> {
@@ -85,6 +65,7 @@ fn funktempo(s: &Song) -> Option<(u8, u8)> {
 fn stepping(m: Model) -> Song {
     let mut s = Song::playing(Some(m));
     open_step(&mut s);
+    groove(&mut s);
     s
 }
 
@@ -105,28 +86,26 @@ fn every_swing_level_at_speeds_3_to_8_writes_its_funktempo_or_is_refused_in_the_
         let mut s = stepping(at_speed(speed));
         let notes = notes_col(&s);
         let mut kept = (speed, speed);
-        holding_edit_and_scl(&mut s, |s| {
-            for (k, given) in pairs.iter().enumerate() {
-                let level = LEVELS[k + 1];
-                let (name, value) = turn_swing(s, 1);
-                assert_eq!(name, "SWING");
-                match given {
-                    Some(pair) => {
-                        assert_eq!(value, level, "speed {speed}");
-                        kept = *pair;
-                    }
-                    None => assert_eq!(value, format!("NO {level}"), "speed {speed}"),
+        for (k, given) in pairs.iter().enumerate() {
+            let level = LEVELS[k + 1];
+            let (name, value) = swing(&mut s, 1);
+            assert_eq!(name, "SWING");
+            match given {
+                Some(pair) => {
+                    assert_eq!(value, level, "speed {speed}");
+                    kept = *pair;
                 }
-                let (a, b) = funktempo(s).expect("a funktempo");
-                assert_eq!(
-                    (a, b),
-                    kept,
-                    "speed {speed} {value}: the last level given plays"
-                );
-                assert_eq!(u32::from(a + b), 2 * u32::from(speed), "the average kept");
+                None => assert_eq!(value, format!("NO {level}"), "speed {speed}"),
             }
-        });
-        assert_eq!(notes_col(&s), notes, "a turn spoils the roll");
+            let (a, b) = funktempo(&s).expect("a funktempo");
+            assert_eq!(
+                (a, b),
+                kept,
+                "speed {speed} {value}: the last level given plays"
+            );
+            assert_eq!(u32::from(a + b), 2 * u32::from(speed), "the average kept");
+        }
+        assert_eq!(notes_col(&s), notes, "the notes stay");
     }
 }
 
@@ -179,18 +158,9 @@ fn a_shuffled_song_plays_its_even_rows_long_as_goattracker_does_and_keeps_it_in_
 }
 
 #[test]
-fn tracker_takes_the_same_swing_and_a_first_row_with_another_command_refuses_it() {
-    let mut s = Song::playing(Some(at_speed(6)));
-    open_tracker(&mut s.ui);
-    holding_edit_and_scl(&mut s, |s| {
-        s.ui.turn(PANEL_ENC_ALGORITHM, 3);
-        settle(&mut s.ui);
-    });
-    assert_eq!(funktempo(&s), Some((3, 9)));
+fn a_first_row_with_another_command_refuses_the_swing() {
     let mut busy = stepping(song_at([CMD_CUTOFF, 0x40]));
-    busy.ui.down(PANEL_BTN_EDIT);
-    busy.ui.down(PANEL_BTN_SCL);
-    busy.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    busy.ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(busy.ui.toast().as_deref(), Some("ROW HAS A COMMAND"));
     assert_eq!(pattern(&busy, 0)[0][2..], [CMD_CUTOFF, 0x40]);
 }

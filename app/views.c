@@ -761,7 +761,8 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         *arg = v->song.quant;
     }
     if (top == &step_view_view) {
-        return recording ? HELP_CARD_STEP_REC
+        return v->step.groove ? HELP_CARD_STEP_GROOVE
+               : recording    ? HELP_CARD_STEP_REC
                : v->step.held != STEP_VIEW_NONE ? HELP_CARD_STEP_HELD
                                                 : HELP_CARD_STEP;
     }

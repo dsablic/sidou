@@ -557,7 +557,7 @@ struct Ctx {
     _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
-const CONTEXTS: [&str; 47] = [
+const CONTEXTS: [&str; 48] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
@@ -584,6 +584,7 @@ const CONTEXTS: [&str; 47] = [
     "STEP",
     "HELD STEP",
     "STEP REC",
+    "GROOVE",
     "TRACKER",
     "TRACK EDIT",
     "TRACK REC",
@@ -691,9 +692,12 @@ fn open_ctx(name: &str) -> Ctx {
             ui.turn(PANEL_ENC_SELECT, to);
             ui.settle();
         }
-        "STEP" | "HELD STEP" | "STEP REC" => {
+        "STEP" | "HELD STEP" | "STEP REC" | "GROOVE" => {
             seq(ui, 1);
-            if name == "HELD STEP" {
+            if name == "GROOVE" {
+                ui.turn(PANEL_ENC_ALGORITHM, 8);
+                crate::song_view::settle(ui);
+            } else if name == "HELD STEP" {
                 ui.note_keys(1 << 5, 1 << 5);
                 ui.frame();
             } else if name == "STEP REC" {

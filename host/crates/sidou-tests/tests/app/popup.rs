@@ -1166,6 +1166,12 @@ const NO_POPUP: &[NoPopup] = &[
         why: "the voice at 2x in the header; EDIT + PRESETS inserts or removes a row, which the rows show",
     },
     NoPopup {
+        state: "TRACKER EDIT+SCL",
+        plain: ALG,
+        edit: ALG,
+        why: "the voice at 2x in the header",
+    },
+    NoPopup {
         state: "ORDER subtune",
         plain: K1BIT | K2BIT,
         edit: K1BIT | K2BIT,
@@ -1267,6 +1273,11 @@ fn swept_states() -> Vec<(&'static str, Opener)> {
         ("STEP step held", |h| {
             song_page(h, "STEP");
             h.ui.note_keys(1, 1);
+        }),
+        ("STEP GROOVE", |h| {
+            song_page(h, "STEP");
+            h.ui.turn(PANEL_ENC_ALGORITHM, 8);
+            crate::song_view::settle(&mut h.ui);
         }),
         ("TRACKER", |h| song_page(h, "TRACKER")),
         ("TRACKER REC", |h| {

@@ -6,6 +6,8 @@ use super::{screen_animating, top_view, Firmware, Machine};
 pub const SELECT: u8 = sidou_sys::PANEL_ENC_SELECT as u8;
 pub const ALGORITHM: u8 = sidou_sys::PANEL_ENC_ALGORITHM as u8;
 pub const K1: u8 = sidou_sys::PANEL_ENC_K1 as u8;
+pub const K2: u8 = K1 + 1;
+pub const K3: u8 = K1 + 2;
 pub const K4: u8 = sidou_sys::PANEL_ENC_K4 as u8;
 pub const PRESETS: u8 = sidou_sys::PANEL_ENC_PRESETS as u8;
 

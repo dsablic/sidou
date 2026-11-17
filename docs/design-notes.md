@@ -3387,18 +3387,18 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   so a turn goes past a refused level.
 - **Writing it**: the cell through the editor (one undo step); a pair the speed table lacks first
   through the batch writer after the table's last row, then the cell once the row has landed (a
-  failed row writes no cell). Turns while that is in flight are kept as the wanted level and
-  written after it (`swing_due`), so a quick turn of two detents is SHUFFLE, not LIGHT and
-  WAITING. The rows a turn passes through stay in the speed table unused: finding whether a row
+  failed row writes no cell). A turn only keeps the wanted level (`swing_due`) and the frame's
+  drain writes it, so the detents of one quick turn are one level (SHUFFLE, not LIGHT then
+  SHUFFLE) and the knob's input stays at about 1,000 instructions (written in the input it was
+  5,300, over STEP's 3,900). The rows a slower turn passes through stay in the speed table unused: finding whether a row
   is referenced (instrument vibrato, `1`-`4` commands in any pattern) would cost flash for 3
   rows of 255 at most per tempo. STRAIGHT at speed 6 writes no command (a NEW song's state);
   a first row with another command is refused (`ROW HAS A COMMAND`, as a SET is), and `FXX` there
   becomes the funktempo at its speed.
-- **The control** is EDIT + SCL held + ALGORITHM, in STEP and TRACKER alike (shared in
-  `song_gen.c`): there was no free control beside the BPM in both views (ALGORITHM pages STEP and
-  steps TRACKER's voice, EDIT + ALGORITHM is TRACKER's edit step), and SCL held is already where a
-  song's groove settings are (DICE's density and rhythm). The DICE frame's foot names it
-  (`ALG SWING`). The header shows it under the BPM, in the song views' shared `song_view_tempo`.
+- **The control** is K1 on STEP's [GROOVE page](#the-groove-page-121) (it was EDIT + SCL held +
+  ALGORITHM in STEP and TRACKER, which the owner found tedious on the device, 2026-11-17).
+  TRACKER has no swing control; its header shows the level, as STEP's does, in the song views'
+  shared `song_view_tempo`.
 
 ### Ratchets (1.21)
 
@@ -3451,10 +3451,58 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - **Over the lane's whole length** (its pattern's rows, as the spec's "0 to the lane's length"),
   not a 16-step page: an 8- or 16-row pattern gives the classic rhythms, a 64-row one a sparse
   spread. HITS clamps to 0 and the length, ROTATE wraps.
-- **Controls**: FX held + K1 / K2 (STEP's FX alone does nothing without a held step, and a held
-  step's FX is SLIDE, so FX held with no step is free); off is FX held + LFO, as LFO clears in STEP.
-  HITS and ROTATE live in RAM per lane like the DICE roots, so a song needs no new chunk; the
-  steps carry the rhythm. The HELD STEP frame's foot shows `EUCLID h/n ROT r` while it is on.
+- **Controls**: K2 and K3 on the GROOVE page (they were FX held + K1 / K2, off FX + LFO). HITS and
+  ROTATE live in RAM per lane like the DICE roots, so a song needs no new chunk; the steps carry
+  the rhythm. **No on and off**: the old off only hid the `EUCLID h/n ROT r` line under the HELD
+  STEP frame, since a lane was never played differently; the GROOVE page always shows HITS and
+  ROTATE, so the mode, its flag and its line went. HITS turned to 0 is E(0, n), the lane's notes
+  taken away, not an off.
+
+### The GROOVE page (1.21)
+
+- **Why a page** (the owner, 2026-11-17): on the device, "holding EDIT + SCL (or any two buttons)
+  and turning ALGORITHM is incredibly tedious". Swing, HITS, ROTATE and RATCHET each moved to a
+  knob of their own on a STEP page with no held keys, and the chords went (EDIT + SCL held +
+  ALGORITHM in STEP and TRACKER, FX held + K1 / K2, FX + LFO, a held step + EDIT + ALGORITHM), so
+  each control has one meaning: a held step + ALGORITHM is its chance, EDIT or not, as before 1.21.
+- **Reached as STEP's pages are**: ALGORITHM, one more page after the pattern's last, `G` on the
+  header's PAGE row (no new gesture). A turn that would go past the last page opens it from the
+  page shown, so a 4-page pattern reaches it from page 4 or with a big turn from anywhere. While
+  the song plays the pages follow the playing step and ALGORITHM did nothing; there a clockwise
+  turn opens GROOVE on the playing page and counter-clockwise goes back to following. STEP's
+  `enter` closes it, so SEQ or HOME and back is the pattern's pages again.
+- **Keys pick, they toggle nothing**: on GROOVE a step key picks the step K4 ratchets (shown in
+  the frame's title, `V1 STEP 5`, lit on the lanes and the pads) and neither toggles nor sounds:
+  tapping round to compare ratchets must not change the pattern, and a key there is not a held
+  step either (no locks, no chance). The lanes show the picked step's page; the page opens with
+  the pick on the page it came from, keeping its place in the 16, and **PRESETS moves the pick
+  through the whole lane** (`STEP 22/64`): with ALGORITHM taken by the pages, it is the one free
+  encoder that reaches a step on another page without a chord (the lane's instrument, PRESETS'
+  meaning on the other pages, matters to the pattern's pages' toggles, not to GROOVE). Back on the
+  pattern's pages, ALGORITHM lands on the picked step's page.
+- **K1-K4 are the page's with EDIT held too**, as TRACKER's with REC: a page whose four knobs each
+  have one job does not hand them to the effect slot when EDIT is down. SCL held is still DICE's
+  frame (its K1-K4 and roll), as on the other pages.
+- **The frame**: the four knob cells of the HELD STEP frame's layout (`knob_top`, `knob_foot`
+  shared), each name lit, a bar and the value (`STRT`/`LITE`/`SHUF`/`HARD`, the header's short
+  tags; HITS and ROTATE as numbers, the length is the header's `STEPS`; the ratchet `OFF`, `x2`,
+  or `---` on a rest). The look's existing bytes carry it (the groove flag beside the swing in
+  the lower zone's, the page's top bit in the head's, the picked step in the held step's), so
+  `STEP_VIEW_LOOK` stays 56. A pattern of 113-128 rows has eight page digits, so `G` takes the
+  length's column and the length loses its ` STEPS` word.
+- **Costs** (fm1-emu, `screen.rs`): opening the page 17.7k instructions a frame and 132 cells at
+  most, a pick 16.3k and 84, back to the pattern 18.2k, all under STEP's change budget of 19.9k;
+  playing tempo 3 on GROOVE 11.1k a frame. The inputs: K1 989, K2 1,839, K3 1,401, K4 757,
+  PRESETS 581, a key 84 (STEP's 3,900). Swing and Euclid write in the frame's drain, not the
+  input: STEP's `input` drains only its own queue on entry (`drain_with(..., 0)`), so a second
+  detent of HITS no longer runs the first's row writes inside `ui_encoder`. A HITS turn rewrites
+  the lane over the next frames as DICE does (a run of `song_gen.c`, one row a step); its frames
+  are not held to the per-frame change budget, which the page's own drawing is.
+- **A knob after another within the popup's second** redraws the whole popup (a new name, a new
+  scale) in the frame the page changes too: K2 then K1 measured 229 cells in one frame. The
+  popup's cover reserves its rows, not its big glyphs; a held step's K4 then K2 (one of 1.20's
+  paths) already reaches 193. Measured, not changed here: the screen's popup accounting is
+  shared by every view.
 
 ### SONG pages (ORDER, INSTR, TABLE)
 

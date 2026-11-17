@@ -4,8 +4,8 @@
 mod common;
 
 use common::panel::{
-    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, EDIT, FX, GLO, HOME, K1, K4,
-    KEY0, PLAY, REC, SCL, SELECT, SEQ, UI_WAIT_MS,
+    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, GLO, HOME, K1, K2, K4, KEY0,
+    PLAY, REC, SELECT, SEQ, UI_WAIT_MS,
 };
 use common::*;
 use fm1_core::Bus;
@@ -13,7 +13,6 @@ use sidou_sys::*;
 use sidou_tests::song::Song;
 use sidou_tests::song_embed;
 
-const K2: u8 = K1 + 1;
 const PLAY_MS: u64 = 10_000;
 const MAX_SILENT_HALVES: usize = 4;
 const AUDIBLE_PEAK: i32 = 1000;
@@ -493,12 +492,21 @@ fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
     check_song("STEP-programmed pattern", &fw, Some(&actual));
 }
 
+fn open_groove(m: &mut Machine) {
+    const PAST_THE_LAST_PAGE: i32 = 8;
+    press(m, SEQ);
+    m.run_ms(500);
+    m.turn(ALGORITHM, PAST_THE_LAST_PAGE);
+    m.run_ms(300);
+}
+
 #[test]
 fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_host() {
     let Some((_, fw)) = build_and_firmware("the STEP swing test") else {
         return;
     };
-    const PASSED_AT_SPEED_6: [(u8, u8); 2] = [(5, 7), (4, 8)];
+    const SHUFFLE_AT_SPEED_6: [u8; 2] = [4, 8];
+    const STRAIGHT_TO_SHUFFLE: i32 = 2;
     const CMD_FUNKTEMPO: u8 = 0x0e;
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
@@ -509,38 +517,23 @@ fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_
         first[2], 0,
         "the first row plays at speed 6 with no command"
     );
-    press(&mut m, SEQ);
-    m.run_ms(500);
-    holding(&mut m, EDIT, |m| {
-        holding(m, SCL, |m| {
-            m.turn(ALGORITHM, PASSED_AT_SPEED_6.len() as i32);
-            m.run_ms(300);
-        });
-    });
+    open_groove(&mut m);
+    m.turn(K1, STRAIGHT_TO_SHUFFLE);
     m.run_ms(UI_WAIT_MS);
     let end = unsafe { lab_song_table_end(expected.ptr(), GT2_STBL) } as usize;
-    for (k, pair) in PASSED_AT_SPEED_6.into_iter().enumerate() {
-        for (side, value) in [pair.0, pair.1].into_iter().enumerate() {
-            let mut edit = gt2_edit::default();
-            unsafe {
-                let song = expected.ptr_mut();
-                assert_eq!(
-                    gt2_set_table(
-                        song,
-                        GT2_STBL,
-                        (end + k) as u32,
-                        side as u32,
-                        value,
-                        &mut edit
-                    ),
-                    GT2_OK
-                );
-                gt2_edit_commit(song, &edit);
-            }
+    for (side, value) in SHUFFLE_AT_SPEED_6.into_iter().enumerate() {
+        let mut edit = gt2_edit::default();
+        unsafe {
+            let song = expected.ptr_mut();
+            assert_eq!(
+                gt2_set_table(song, GT2_STBL, end as u32, side as u32, value, &mut edit),
+                GT2_OK
+            );
+            gt2_edit_commit(song, &edit);
         }
     }
     first[2] = CMD_FUNKTEMPO;
-    first[3] = (end + PASSED_AT_SPEED_6.len()) as u8;
+    first[3] = (end + 1) as u8;
     set_cell(&mut expected, pattern, 0, first);
     let actual = region_song(&mut m, &fw);
     assert_eq!(
@@ -562,12 +555,8 @@ fn euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host(
     let song = region_song(&mut m, &fw);
     let pattern = first_pattern_of_voice(&song, 0);
     let rows = unsafe { gt2_pattern_rows(song.ptr(), pattern) } - 1;
-    press(&mut m, SEQ);
-    m.run_ms(500);
-    holding(&mut m, FX, |m| {
-        m.turn(K1, HITS as i32);
-        m.run_ms(300);
-    });
+    open_groove(&mut m);
+    m.turn(K2, HITS as i32);
     m.run_ms(UI_WAIT_MS);
     let mut rhythm = [0u8; SONG_GEN_EUCLID_ROWS as usize];
     unsafe { song_gen_bjorklund(HITS, rows, rhythm.as_mut_ptr()) };
@@ -597,14 +586,9 @@ fn a_ratchet_set_on_step_is_a_copy_of_the_steps_instrument_and_plays_bit_exact_w
     let song = region_song(&mut m, &fw);
     let pattern = first_pattern_of_voice(&song, 0);
     let before = cell_of(&song, pattern, 0);
-    press(&mut m, SEQ);
-    m.run_ms(500);
-    holding(&mut m, KEY0, |m| {
-        holding(m, EDIT, |m| {
-            m.turn(ALGORITHM, X2);
-            m.run_ms(300);
-        });
-    });
+    open_groove(&mut m);
+    press(&mut m, KEY0);
+    m.turn(K4, X2);
     m.run_ms(UI_WAIT_MS);
     let actual = region_song(&mut m, &fw);
     let after = cell_of(&actual, pattern, 0);

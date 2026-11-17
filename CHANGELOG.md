@@ -9,21 +9,25 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- **SWING**: EDIT + SCL held + ALGORITHM in STEP or TRACKER sets the song's swing, STRAIGHT,
-  LIGHT, SHUFFLE or HARD, with the big popup; the song views' header says it under the BPM. It is
-  GoatTracker's funktempo on the song's first row (rows of 7 and 5, 8 and 4, 9 and 3 frames at
-  speed 6), so the song swings the same in GoatTracker and the BPM stays; a level a speed cannot
-  give is refused in the popup. `sidou-song/1` takes it as `"swing"`.
-- **EUCLID lanes in STEP**: FX held + K1 spreads HITS evenly over the selected lane (Bjorklund's
-  rhythms: E(3,8) `x..x..x.`, E(7,16)), FX held + K2 rotates them, each with the big popup. The
-  hits are written as the lane's steps, so its note, locks and slides apply and GoatTracker plays
-  them; FX + LFO turns EUCLID off and keeps the steps.
-- **Ratchets in STEP**: a held step and EDIT + ALGORITHM sets its RATCHET, OFF, x2, x3 or x4, with
-  the big popup and ticks under the step. The step plays a shared copy of its instrument (one for
-  each instrument and count) whose wave table gates the note off and on again, so GoatTracker
-  plays it too; with no free instrument slot it is refused with a toast (`INSTRUMENTS FULL`). x4
-  needs rows of 8 frames. The font has three tick glyphs (`DD`-`DF`; Live Link's last font code
-  is `DF`).
+- **The GROOVE page in STEP**: ALGORITHM past the pattern's last page (`PAGE 1 2 3 4 G`) opens
+  it, with no held keys and every turn in the big popup: K1 the song's SWING, K2 the lane's HITS,
+  K3 its ROTATE, K4 the RATCHET of the step picked with a step key (a key there picks and toggles
+  nothing; PRESETS moves the pick through the lane). The page shows all four, the lane and the
+  picked step; its help card is GROOVE.
+- **SWING** (GROOVE's K1): the song's swing, STRAIGHT, LIGHT, SHUFFLE or HARD; the song views'
+  header says it under the BPM. It is GoatTracker's funktempo on the song's first row (rows of 7
+  and 5, 8 and 4, 9 and 3 frames at speed 6), so the song swings the same in GoatTracker and the
+  BPM stays; a level a speed cannot give is refused in the popup. `sidou-song/1` takes it as
+  `"swing"`.
+- **EUCLID lanes** (GROOVE's K2 and K3): HITS spreads that many hits evenly over the selected lane
+  (Bjorklund's rhythms: E(3,8) `x..x..x.`, E(7,16)), ROTATE turns them. The hits are written as
+  the lane's steps, so its note, locks and slides apply and GoatTracker plays them; there is no
+  mode to turn off.
+- **Ratchets** (GROOVE's K4): the picked step's RATCHET, OFF, x2, x3 or x4, with ticks under the
+  step. The step plays a shared copy of its instrument (one for each instrument and count) whose
+  wave table gates the note off and on again, so GoatTracker plays it too; with no free instrument
+  slot it is refused with a toast (`INSTRUMENTS FULL`). x4 needs rows of 8 frames. The font has
+  three tick glyphs (`DD`-`DF`; Live Link's last font code is `DF`).
 - **A `.sid` tune into a song** (the site's Library page): drop a PSID tune, choose the sub-tune
   and a length (60 s by default), and SIDOU's own 6502 and PSID environment run it in the browser
   (`sidou-tune.wasm`, its own module, 78,619 bytes with Apple's clang; its budget proposed at

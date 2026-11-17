@@ -608,7 +608,6 @@ void song_gen_euclid(song_view* sv, screen* s, uint32_t knob, int32_t turn, uint
     }
     g->euclid_hits[v] = (uint8_t)hits;
     g->euclid_rotate[v] = (uint8_t)(rotate % (int32_t)rows);
-    g->euclid_on |= (uint8_t)(1u << v);
     uint8_t steps[SONG_GEN_EUCLID_ROWS];
     song_gen_bjorklund((uint32_t)hits, rows, steps);
     memset(g->euclid_mask, 0, sizeof g->euclid_mask);
@@ -622,11 +621,6 @@ void song_gen_euclid(song_view* sv, screen* s, uint32_t knob, int32_t turn, uint
     g->legato = (uint8_t)(g->gate ? *g->gate >> v & 1u : 0u);
     g->row = 0u;
     g->run = SONG_GEN_EUCLID;
-}
-
-void song_gen_euclid_off(song_view* sv, screen* s) {
-    sv->gen.euclid_on &= (uint8_t)~(1u << sv->voice);
-    refuse(s, "EUCLID OFF");
 }
 
 int song_gen_busy(const song_view* sv) {
@@ -690,7 +684,6 @@ uint32_t song_gen_lone_chord(song_view* sv, const screen_event* e) {
     if (chord == PANEL_BTN_SCL) {
         sv->gen.scl_down = 1u;
         sv->gen.scl_spoiled = 0u;
-        sv->gen.swing_turned = 0u;
     }
     return chord;
 }
@@ -704,7 +697,6 @@ int song_gen_press(song_view* sv, uint32_t id, int edit, int free) {
     if (free && id == PANEL_BTN_SCL) {
         g->scl_down = (uint8_t)edit;
         g->scl_spoiled = 0u;
-        g->swing_turned = 0u;
         if (!edit) {
             screen_lone_wait(&g->lone, id, SCREEN_LONE_HELD_BACK);
         }
@@ -860,7 +852,7 @@ static void swing_apply(song_view* sv, screen* s) {
     g->follow = 1u;
 }
 
-static void swing_turn(song_view* sv, screen* s, int32_t steps) {
+void song_gen_swing_turn(song_view* sv, screen* s, int32_t steps) {
     song_gen* g = &sv->gen;
     uint32_t p, sum = 0u, late = 0u;
     uint8_t cell[4];
@@ -878,21 +870,12 @@ static void swing_turn(song_view* sv, screen* s, int32_t steps) {
         return;
     }
     g->swing_given = (uint8_t)want;
-    if (g->swing_wait || g->follow) {
-        g->swing_due = 1u;
-    } else {
-        swing_apply(sv, s);
-    }
+    g->swing_due = 1u;
 }
 
 int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
     if (!sv->gen.scl_down) {
         return 0;
-    }
-    if (enc == PANEL_ENC_ALGORITHM) {
-        swing_turn(sv, s, steps);
-        sv->gen.scl_spoiled = 1u;
-        return 1;
     }
     if (enc == SONG_GEN_ENC_ROLE) {
         role_turn(sv, s, steps);
@@ -916,20 +899,18 @@ int song_gen_turn(song_view* sv, screen* s, uint32_t enc, int32_t steps) {
     return 1;
 }
 
+uint32_t song_gen_swing_popup(const song_view* sv, char value[SCREEN_POPUP_TEXT]) {
+    const song_gen* g = &sv->gen;
+    uint32_t level = g->swing_turned ? g->swing : song_gen_swing(sv);
+    screen_popup_copy(value, g->swing_turned && g->swing_refused ? SWING_REFUSED[level]
+                                                                 : SWING_NAMES[level]);
+    return level;
+}
+
 int song_gen_popup(const song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
     if (!sv->gen.scl_down) {
         return 0;
-    }
-    if (enc == PANEL_ENC_ALGORITHM) {
-        const song_gen* g = &sv->gen;
-        uint32_t level = g->swing_turned ? g->swing : song_gen_swing(sv);
-        screen_popup_copy(name, "SWING");
-        screen_popup_copy(value, g->swing_turned && g->swing_refused ? SWING_REFUSED[level]
-                                                                     : SWING_NAMES[level]);
-        *fill = level;
-        *max = SONG_SWING_LEVELS - 1u;
-        return 1;
     }
     if (enc == SONG_GEN_ENC_ROLE) {
         screen_popup_copy(name, "ROLE");
@@ -997,7 +978,6 @@ void song_gen_frame(song_view* sv, uint32_t top) {
     put(c, 0, bottom, FONT_ROUND_BL, frame);
     put(c, GRID_COLS - 1u, bottom, FONT_ROUND_BR, frame);
     grid_canvas_text(c, 2, top, " DICE - LET GO TO ROLL ", THEME_ATTR(th, hot));
-    grid_canvas_text(c, 2, bottom, " ALG SWING ", THEME_ATTR(th, hint));
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t r = top + 1u + 2u * k;
         uint8_t a = drums && (k == 1u || k == 2u) ? THEME_ATTR(th, dim)

@@ -139,6 +139,7 @@ int song_view_playing(const song_view* sv);
 uint32_t song_view_shown_bpm(const song_view* sv);
 #define SONG_VIEW_TEMPO_COL 26u
 void song_view_tempo(const song_view* sv, song_view_canvas* c);
+const char* song_view_swing_tag(uint32_t level);
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat);
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32_t* row);

@@ -604,8 +604,12 @@ uint32_t song_view_shown_bpm(const song_view* sv) {
     return shown_bpm(sv);
 }
 
+const char* song_view_swing_tag(uint32_t level) {
+    static const char* const SWING_TAGS[SONG_SWING_LEVELS] = {"STRT", "LITE", "SHUF", "HARD"};
+    return SWING_TAGS[level];
+}
+
 void song_view_tempo(const song_view* sv, song_view_canvas* c) {
-    static const char* const SWING_TAGS[SONG_SWING_LEVELS] = {"BPM", "LITE", "SHUF", "HARD"};
     const theme* th = theme_get(sv->l->theme);
     uint32_t bpm = shown_bpm(sv);
     char t[5] = " ---";
@@ -618,7 +622,7 @@ void song_view_tempo(const song_view* sv, song_view_canvas* c) {
     }
     uint32_t swing = sv->swing;
     grid_canvas_text(c, SONG_VIEW_TEMPO_COL, 0u, t, THEME_ATTR(th, label));
-    grid_canvas_text(c, SONG_VIEW_TEMPO_COL, 1u, SWING_TAGS[swing],
+    grid_canvas_text(c, SONG_VIEW_TEMPO_COL, 1u, swing ? song_view_swing_tag(swing) : "BPM",
                      swing ? THEME_ATTR(th, hot) : THEME_ATTR(th, hint));
 }
 

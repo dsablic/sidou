@@ -6,8 +6,8 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use common::panel::{
-    holding, press, select_menu_item, turn_time, ALGORITHM, ARP, EDIT, ENV, FX, GLO, HOME, K1, K4,
-    KEY0, LFO, MENU_ITEMS, OCT_UP, PLAY, PRESETS, REC, SAVE, SCL, SELECT, SEQ,
+    holding, press, select_menu_item, turn_time, ALGORITHM, ARP, EDIT, ENV, FX, GLO, HOME, K1, K2,
+    K3, K4, KEY0, LFO, MENU_ITEMS, OCT_UP, PLAY, PRESETS, REC, SAVE, SCL, SELECT, SEQ,
 };
 use common::{
     booted, booted_with_art, open_status, run_past_boot, screen_wiping, settings_item, tap_on,
@@ -22,8 +22,6 @@ const GRID_ROWS: usize = W / CELL_PX;
 const SPI_HZ: f64 = 12e6;
 const SPI_BUDGET_MS: f64 = 20.0;
 const FRAME_CELLS_MOST: u32 = sidou_sys::LIVE_VIEW_FRAME_CELLS;
-const K2: u8 = K1 + 1;
-const K3: u8 = K1 + 2;
 const LOWEST_KEY_NOTE: u8 = 53;
 
 const fn note_key(midi_note: u8) -> u8 {
@@ -3820,6 +3818,7 @@ fn the_states_help_cards_match_their_goldens() {
         "expert",
         "step-held",
         "step-rec",
+        "groove",
         "tracker-edit",
         "tracker-rec",
         "store",
@@ -3851,11 +3850,14 @@ fn the_states_help_cards_match_their_goldens() {
                 m.turn(SELECT, to);
                 m.run_ms(100);
             }
-            "step-held" | "step-rec" => {
+            "step-held" | "step-rec" | "groove" => {
                 press(&mut m, SEQ);
                 settle(&mut m, &fw);
                 if name == "step-held" {
                     m.key(KEY0 + 5, true);
+                    m.run_ms(100);
+                } else if name == "groove" {
+                    m.turn(ALGORITHM, 1);
                     m.run_ms(100);
                 } else {
                     press(&mut m, PLAY);
@@ -4175,6 +4177,13 @@ fn the_step_view_held_locked_dice_and_playing_match_their_goldens() {
     m.run_ms(2_000);
     to_mid_frame(&mut m, &fw);
     compare_golden(&build, "step-play", &m.soc.lcd.fb, &[]);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    press(&mut m, KEY0 + 4);
+    m.turn(K2, 4);
+    m.run_ms(POPUP_CLOSED_MS);
+    to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-groove", &m.soc.lcd.fb, &[]);
 }
 
 #[test]
@@ -4228,8 +4237,20 @@ fn song_view_playing(
     (c, m.soc.read32(held_at) - held)
 }
 
-fn step_run(fw: &Firmware, song: Option<&sidou_tests::song::Song>, ms: u64) -> (Cost, u32) {
-    song_view_playing(fw, song, ms, |m| open_step(m, fw))
+fn step_run(
+    fw: &Firmware,
+    song: Option<&sidou_tests::song::Song>,
+    groove: bool,
+    ms: u64,
+) -> (Cost, u32) {
+    const PAST_THE_LAST_PAGE: i32 = 8;
+    song_view_playing(fw, song, ms, |m| {
+        open_step(m, fw);
+        if groove {
+            m.turn(ALGORITHM, PAST_THE_LAST_PAGE);
+            m.run_ms(300);
+        }
+    })
 }
 
 #[test]
@@ -4252,13 +4273,17 @@ fn the_step_view_idle_locks_taps_pages_playing_and_its_inputs_stay_within_their_
         m.run_ms(30);
         m.key(KEY0 + 9, false);
     });
-    let page = measure(&mut m, &fw, 25, |m| m.turn(ALGORITHM, 1));
+    let groove = measure(&mut m, &fw, 25, |m| m.turn(ALGORITHM, 1));
+    let picked = measure(&mut m, &fw, 25, |m| press(m, KEY0 + 6));
+    let page = measure(&mut m, &fw, 25, |m| m.turn(ALGORITHM, -1));
     let playing = measure(&mut m, &fw, 100, |m| m.key(PLAY, true));
     m.key(PLAY, false);
     let report = serde_json::json!({
         "step_idle": animated_json(&idle),
         "step_lock": animated_json(&lock),
         "step_tap": animated_json(&tap),
+        "step_groove": animated_json(&groove),
+        "step_picked": animated_json(&picked),
         "step_page": animated_json(&page),
         "step_playing": animated_json(&playing),
     });
@@ -4268,6 +4293,8 @@ fn the_step_view_idle_locks_taps_pages_playing_and_its_inputs_stay_within_their_
         ("idle", &idle, STEP_IDLE_PER_FRAME),
         ("lock", &lock, STEP_CHANGE_PER_FRAME),
         ("tap", &tap, STEP_CHANGE_PER_FRAME),
+        ("groove", &groove, STEP_CHANGE_PER_FRAME),
+        ("picked", &picked, STEP_CHANGE_PER_FRAME),
         ("page", &page, STEP_CHANGE_PER_FRAME),
         ("playing", &playing, STEP_PLAYING_PER_FRAME),
     ] {
@@ -4314,9 +4341,25 @@ fn the_step_view_idle_locks_taps_pages_playing_and_its_inputs_stay_within_their_
     m.key(KEY0 + 6, false);
     m.run_ms(300);
     costs.push((
-        "ALGORITHM page",
+        "ALGORITHM to GROOVE",
         start_cost(&mut m, 300, |m| m.turn(ALGORITHM, 1)),
     ));
+    m.watch_calls(fw.symbol("ui_buttons"));
+    costs.push((
+        "a step key on GROOVE",
+        start_cost(&mut m, 300, |m| press(m, KEY0)),
+    ));
+    m.watch_calls(fw.symbol("ui_encoder"));
+    for (what, enc, steps) in [
+        ("K1 swing", K1, 2),
+        ("K2 hits", K2, 3),
+        ("K3 rotate", K3, 1),
+        ("K4 ratchet", K4, 1),
+        ("PRESETS step", PRESETS, 3),
+        ("ALGORITHM page", ALGORITHM, -1),
+    ] {
+        costs.push((what, start_cost(&mut m, 500, |m| m.turn(enc, steps))));
+    }
     let mut over = Vec::new();
     for (what, cost) in &costs {
         note_if_over(
@@ -4336,9 +4379,15 @@ fn the_step_view_stays_within_its_budgets_while_a_song_plays() {
     };
     let fast = tempo_3_song();
     let mut over = Vec::new();
-    let runs = [("loop", None), ("tempo3", Some(&fast))];
-    let costs = common::par_map(&runs, |&(_, song)| step_run(&fw, song, 30_000));
-    for (&(name, _), (c, held)) in runs.iter().zip(costs) {
+    let runs = [
+        ("loop", None, false),
+        ("tempo3", Some(&fast), false),
+        ("tempo3 on GROOVE", Some(&fast), true),
+    ];
+    let costs = common::par_map(&runs, |&(_, song, groove)| {
+        step_run(&fw, song, groove, 30_000)
+    });
+    for (&(name, ..), (c, held)) in runs.iter().zip(costs) {
         let per: Vec<u32> = c.frames.iter().map(cells).collect();
         let most = per.iter().copied().max().unwrap_or(0);
         let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;

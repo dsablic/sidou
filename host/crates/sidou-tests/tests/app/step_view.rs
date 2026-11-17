@@ -30,7 +30,7 @@ pub(crate) fn settle(ui: &mut crate::views::Ui) {
 const OFF: [u8; 4] = [GT2_KEYOFF as u8, 0, 0, 0];
 pub(crate) const C3: u8 = GT2_FIRSTNOTE as u8 + 36;
 
-fn th() -> &'static theme {
+pub(crate) fn th() -> &'static theme {
     unsafe { &*theme_get(THEME_HIGH_CONTRAST) }
 }
 
@@ -94,6 +94,32 @@ pub(crate) fn tap(s: &mut Song, k: u32) {
 
 pub(crate) fn hold(s: &mut Song, k: u32) {
     s.ui.note_keys(1 << k, 1 << k);
+}
+
+pub(crate) fn groove(s: &mut Song) {
+    const PAST_THE_LAST_PAGE: i32 = 8;
+    s.ui.turn(PANEL_ENC_ALGORITHM, PAST_THE_LAST_PAGE);
+    settle(&mut s.ui);
+    assert_eq!(
+        s.ui.v.step.groove, 1,
+        "ALGORITHM past the last page is GROOVE"
+    );
+}
+
+pub(crate) fn leave_groove(s: &mut Song) {
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.step.groove, 0);
+}
+
+pub(crate) fn groove_turn(s: &mut Song, knob: u32, turn: i32) -> (String, String) {
+    for _ in 0..turn.abs() {
+        s.ui.turn(knob, turn.signum());
+        s.ui.frame();
+    }
+    settle(&mut s.ui);
+    let shown = popup(s, knob, false).expect("the popup");
+    (shown.0, shown.1)
 }
 
 pub(crate) fn release(s: &mut Song) {
@@ -397,8 +423,7 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     s.ui.turn(PANEL_ENC_SELECT, 2);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 03");
-    assert_eq!(s.ui.small(2, 5, 15), "1 2 3 4 5 6 7 8");
-    assert_eq!(s.ui.small(2, 21, 9), "128 STEPS");
+    assert_eq!(s.ui.small(2, 5, 21), "1 2 3 4 5 6 7 8 G 128");
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(3, 5, 2, 2), "17");
@@ -408,7 +433,7 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     tap(&mut s, 0);
     assert_eq!(pattern(&s, 3)[16], [C3, 1, 0, 0]);
     assert_eq!(pip(&s, 2, 0).0, FONT_BALL as u8);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 20);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 6);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(3, 5, 2, 3), "113", "the last page: 8 of 8");
     s.ui.turn(PANEL_ENC_ALGORITHM, -20);
@@ -416,11 +441,12 @@ fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     assert_eq!(s.ui.big(3, 5, 2, 2), "1 ", "page 1");
     s.ui.v.song.order_pos = 0;
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(2, 5, 15).trim_end(), "1 2 3 4");
+    assert_eq!(s.ui.small(2, 5, 15).trim_end(), "1 2 3 4 G");
+    assert_eq!(s.ui.small(2, 21, 9), "64 STEPS ");
     let (name, value, fill, max) = popup(&s, PANEL_ENC_ALGORITHM, false).unwrap();
     assert_eq!(
         (name.as_str(), value.as_str(), fill, max),
-        ("PAGE", "1/4", 0, 3)
+        ("PAGE", "1/4", 0, 4)
     );
 }
 
