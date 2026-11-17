@@ -93,9 +93,8 @@ const tonal = (f) => audible(f) && !(f.ctrl & CTRL.NOISE);
 
 const baseOf = (pitches) => {
   const heard = pitches.filter((p) => p !== null);
-  for (let i = 0; i < heard.length; i++) {
-    const next = heard[i + 1];
-    if (next === undefined || next === heard[i] || Math.abs(next - heard[i]) <= GLIDE_STEP) return heard[i];
+  for (let i = 0; i + 1 < heard.length; i++) {
+    if (Math.abs(heard[i + 1] - heard[i]) <= GLIDE_STEP) return heard[i];
   }
   return heard[0] ?? null;
 };
@@ -110,7 +109,7 @@ export function notesOf(frames, pitch) {
     const body = frames.slice(start, next);
     const pitches = body.map((f) => (tonal(f) ? pitch(f.freq) : null));
     const heard = body.map((f) => (audible(f) ? pitch(f.freq) : null));
-    const note = baseOf(pitches.slice(0, Math.min(end - start, BASE_FRAMES))) ?? heard.find((p) => p !== null);
+    const note = baseOf(pitches.slice(1, Math.max(2, Math.min(end - start, BASE_FRAMES)))) ?? heard.find((p) => p !== null);
     return { start, end, next, body, pitches, heard, note: note ?? null };
   }).filter((n) => n.note !== null);
 }
@@ -323,7 +322,7 @@ const pulseRows = (s, tempo) => {
 
 const filterRows = (f) => [[FILTER_SET | (f.mode & 0x70), f.res], [FILTER_CUT, f.cut], [WAVE.JUMP, 0]];
 
-const firstWave = (ctrl) => (ctrl & CTRL.GATE && ctrl !== 0xff && ctrl !== 0xfe ? ctrl : FIRST_WAVE_DEFAULT);
+const firstWave = (ctrl) => (ctrl & CTRL.TEST && ctrl & CTRL.GATE ? ctrl : FIRST_WAVE_DEFAULT);
 
 export function analyse(chipFrames, { pitch, voices: wanted }) {
   const tracks = chipFrames.map(tracksOf);
@@ -519,6 +518,10 @@ export function writeSng(song) {
     push(NOTE.END, 0, 0, 0);
   }
   return Uint8Array.from(out);
+}
+
+export function previewSong(song) {
+  return writeSng({ ...song, channels: VOICES_A_CHIP, orders: song.orders.slice(0, VOICES_A_CHIP) });
 }
 
 export function simplifications(a, song, run) {
