@@ -6,8 +6,8 @@ use sidou_tests::song::{SngSpec, Song as Model, REST as R};
 
 use crate::song_view::{ch, Song};
 use crate::step_view::{
-    hold, loop_song, open_step, pattern, popup, reference_calls, release, row_start, settle,
-    sidou_calls, snapshot, tap, voice_1_control_after_each_call, C3,
+    groove, groove_turn, hold, leave_groove, loop_song, open_step, pattern, reference_calls,
+    release, row_start, sidou_calls, snapshot, tap, voice_1_control_after_each_call, C3,
 };
 
 const LEAD: u8 = 1;
@@ -25,18 +25,12 @@ fn stepping(m: Model) -> Song {
 }
 
 fn ratchet(s: &mut Song, step: u32, turn: i32) -> String {
-    hold(s, step);
-    s.ui.down(PANEL_BTN_EDIT);
-    for _ in 0..turn.abs() {
-        s.ui.turn(PANEL_ENC_ALGORITHM, turn.signum());
-        s.ui.frame();
-    }
-    settle(&mut s.ui);
-    let shown = popup(s, PANEL_ENC_ALGORITHM, true).expect("the ratchet popup");
-    assert_eq!(shown.0, "RATCHET");
-    s.ui.up(PANEL_BTN_EDIT);
-    release(s);
-    shown.1
+    groove(s);
+    tap(s, step);
+    let (name, value) = groove_turn(s, PANEL_ENC_K4, turn);
+    assert_eq!(name, "RATCHET");
+    leave_groove(s);
+    value
 }
 
 fn instrument(s: &Song, i: u8) -> [u8; GT2_INSTR_BYTES as usize] {
@@ -169,11 +163,9 @@ fn every_slot_used() -> Model {
 #[test]
 fn with_every_instrument_slot_used_a_ratchet_is_refused_with_a_toast() {
     let mut s = stepping(every_slot_used());
-    hold(&mut s, 0);
-    s.ui.down(PANEL_BTN_EDIT);
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    groove(&mut s);
+    tap(&mut s, 0);
+    s.ui.turn(PANEL_ENC_K4, 1);
     assert_eq!(s.ui.toast().as_deref(), Some("INSTRUMENTS FULL"));
-    s.ui.up(PANEL_BTN_EDIT);
-    release(&mut s);
     assert_eq!(pattern(&s, 0)[0][1], LEAD);
 }

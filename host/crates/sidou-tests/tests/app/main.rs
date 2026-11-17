@@ -15,6 +15,7 @@ mod expression;
 mod font;
 mod fx_live;
 mod grid;
+mod groove;
 mod gt2_ins;
 mod help_view;
 mod keys_route;

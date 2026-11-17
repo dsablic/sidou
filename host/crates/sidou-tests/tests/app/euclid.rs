@@ -5,9 +5,10 @@ use sidou_sys::*;
 
 use crate::song_view::Song;
 use crate::step_view::{
-    hold, is_note, locks, loop_song, notes_col, open_step, popup, release, settle, C3,
+    groove, groove_turn, hold, is_note, leave_groove, locks, loop_song, notes_col, open_step,
+    release, C3,
 };
-use crate::PANEL_ENC_K2;
+use crate::{PANEL_ENC_K2, PANEL_ENC_K3};
 
 fn bjorklund(hits: u32, steps: u32) -> String {
     let mut out = [0u8; SONG_GEN_EUCLID_ROWS as usize];
@@ -45,14 +46,10 @@ fn eight_row_lane() -> Song {
 }
 
 fn euclid(s: &mut Song, knob: u32, turn: i32) -> (String, String) {
-    s.ui.down(PANEL_BTN_FX);
-    s.ui.frame();
-    s.ui.turn(knob, turn);
-    settle(&mut s.ui);
-    let shown = popup(s, knob, false).expect("the popup");
-    s.ui.up(PANEL_BTN_FX);
-    settle(&mut s.ui);
-    (shown.0, shown.1)
+    groove(s);
+    let shown = groove_turn(s, knob, turn);
+    leave_groove(s);
+    shown
 }
 
 fn hit_rows(s: &Song) -> Vec<usize> {
@@ -74,37 +71,31 @@ fn hits_and_rotate_write_the_rhythm_as_real_steps_keeping_notes_and_locks() {
     let locked = locks(&s);
     assert_eq!(locked.len(), 1, "a cutoff lock on step 4");
     assert_eq!(
-        euclid(&mut s, PANEL_ENC_K1, 3),
+        euclid(&mut s, PANEL_ENC_K2, 3),
         ("HITS".into(), "3/8".into())
     );
     assert_eq!(hit_rows(&s), [0, 3, 6], "E(3,8)");
     assert_eq!(notes_col(&s)[0], C3, "a hit that stays keeps its note");
     assert_eq!(notes_col(&s)[3], C3, "a new hit is the lane's note");
     assert_eq!(locks(&s), locked, "the lock stays on its step");
-    assert_eq!(s.ui.small(22, 2, 16), " EUCLID 3/8 ROT ");
     assert_eq!(
-        euclid(&mut s, PANEL_ENC_K2, 1),
+        euclid(&mut s, PANEL_ENC_K3, 1),
         ("ROTATE".into(), "1".into())
     );
     assert_eq!(hit_rows(&s), [1, 4, 7], "rotated a step later");
-    assert_eq!(euclid(&mut s, PANEL_ENC_K2, -2).1, "7");
+    assert_eq!(euclid(&mut s, PANEL_ENC_K3, -2).1, "7");
     assert_eq!(hit_rows(&s), [2, 5, 7], "rotated back past the first step");
-    euclid(&mut s, PANEL_ENC_K1, 2);
+    euclid(&mut s, PANEL_ENC_K2, 2);
     assert_eq!(hit_rows(&s), [1, 2, 4, 5, 7], "E(5,8) at the same rotation");
 }
 
 #[test]
-fn euclid_off_keeps_the_steps_and_the_next_turn_starts_it_again() {
+fn hits_turned_to_0_is_the_rhythm_of_no_hits_and_the_next_turn_starts_from_the_kept_values() {
     let mut s = eight_row_lane();
-    euclid(&mut s, PANEL_ENC_K1, 3);
-    let steps = notes_col(&s);
-    s.ui.down(PANEL_BTN_FX);
-    s.ui.press(PANEL_BTN_LFO);
-    assert_eq!(s.ui.toast().as_deref(), Some("EUCLID OFF"));
-    s.ui.up(PANEL_BTN_FX);
-    settle(&mut s.ui);
-    assert_eq!(notes_col(&s), steps, "the steps stay");
-    assert_ne!(s.ui.small(22, 2, 8), " EUCLID ");
-    euclid(&mut s, PANEL_ENC_K1, 1);
-    assert_eq!(hit_rows(&s), [0, 2, 4, 6], "E(4,8) from the kept hits");
+    euclid(&mut s, PANEL_ENC_K2, 3);
+    assert_eq!(euclid(&mut s, PANEL_ENC_K2, -3).1, "0/8");
+    assert_eq!(hit_rows(&s), Vec::<usize>::new(), "E(0,8)");
+    euclid(&mut s, PANEL_ENC_K3, 2);
+    assert_eq!(euclid(&mut s, PANEL_ENC_K2, 2).1, "2/8");
+    assert_eq!(hit_rows(&s), [2, 6], "E(2,8) at the kept rotation");
 }

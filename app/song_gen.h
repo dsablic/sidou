@@ -42,7 +42,7 @@ typedef struct {
     uint8_t chord[SONG_GEN_CHORDS];
     uint8_t swing, swing_given, swing_turned, swing_refused, swing_wait, swing_due;
     uint8_t swing_pair[2];
-    uint8_t euclid_on, euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
+    uint8_t euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];
     struct song_pages* pages;
 } song_gen;
@@ -77,7 +77,8 @@ uint32_t song_gen_row_frames(const struct song_view* sv);
 void song_gen_bjorklund(uint32_t hits, uint32_t steps, uint8_t out[SONG_GEN_EUCLID_ROWS]);
 void song_gen_euclid(struct song_view* sv, screen* s, uint32_t knob, int32_t turn, uint32_t pattern,
                      uint32_t rows, uint32_t instr);
-void song_gen_euclid_off(struct song_view* sv, screen* s);
+void song_gen_swing_turn(struct song_view* sv, screen* s, int32_t steps);
+uint32_t song_gen_swing_popup(const struct song_view* sv, char value[SCREEN_POPUP_TEXT]);
 uint32_t song_gen_keys(struct song_view* sv, uint32_t down, uint32_t pressed);
 void song_gen_frame(struct song_view* sv, uint32_t top);
 int song_gen_look(const struct song_view* sv, uint8_t out[SONG_GEN_LOOK]);
