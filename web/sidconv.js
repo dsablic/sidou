@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-export const FRAME_CYCLES = { pal: 19656, ntsc: 17095 };
-export const PAL_CLOCK = 985248, NTSC_CLOCK = 1022727;
+const FRAME_CYCLES = { pal: 19656, ntsc: 17095 };
+const PAL_CLOCK = 985248;
 export const VOICES_A_CHIP = 3;
 export const MAX_INSTRUMENTS_A_VOICE = 6;
 export const GT2_MAX_INSTRUMENTS = 63;
 
-const REG = { FREQ: 0, PW: 2, CTRL: 4, AD: 5, SR: 6, VOICE: 7, CUT_LO: 21, CUT_HI: 22, RES: 23, MODE: 24 };
+const REG = { FREQ: 0, PW: 2, CTRL: 4, AD: 5, SR: 6, VOICE: 7, CUT_HI: 22, RES: 23, MODE: 24 };
 const CTRL = { GATE: 1, TEST: 8, PULSE: 0x40, NOISE: 0x80, WAVES: 0xf0 };
 const NOTE = { FIRST: 0x60, REST: 0xbd, OFF: 0xbe, END: 0xff, HIGHEST: 92 };
 const CMD = { TIE: 3, FUNK: 0xe, TEMPO: 0xf };
@@ -109,7 +109,7 @@ const runsOf = (values) => {
       last.sum += d;
       last.changes++;
     } else {
-      runs.push({ sum: d, changes: 1, at: i });
+      runs.push({ sum: d, changes: 1 });
     }
   }
   return runs;
@@ -127,7 +127,7 @@ const vibratoOf = (freqs) => {
   return { center };
 };
 
-export function notesOf(frames, pitch) {
+function notesOf(frames, pitch) {
   const onsets = [];
   frames.forEach((f, i) => { if (f.rose) onsets.push(i); });
   return onsets.map((start, k) => {
@@ -212,14 +212,14 @@ const segmentedPlan = (all) => {
   return { segments, cost };
 };
 
-export function segmentsOf(onsets) {
+function segmentsOf(onsets) {
   const all = [...new Set(onsets)].sort((a, b) => a - b);
   if (all.length === 0) return [{ start: 0, lengths: [6] }];
   const whole = wholePlan(all), cut = segmentedPlan(all);
   return (cut.cost < whole.cost * CUT_GAIN ? cut : whole).segments;
 }
 
-export function rowStarts(segments, frames) {
+function rowStarts(segments, frames) {
   const first = segments[0];
   const pair = first.lengths.reduce((x, y) => x + y, 0);
   const rows = [];
@@ -234,7 +234,7 @@ export function rowStarts(segments, frames) {
   return rows.filter((row, i) => i + 1 >= rows.length || rows[i + 1].at - row.at >= MIN_TEMPO);
 }
 
-export function rowIndex(starts) {
+function rowIndex(starts) {
   return (frame) => {
     let lo = 0, hi = starts.length - 1;
     while (lo < hi) {
@@ -259,7 +259,7 @@ const periodOf = (offsets) => {
 const encodeRelative = (o) => (o >= 0 ? Math.min(o, 0x5f) : Math.max(0x60, WAVE.DOWN + o));
 const encodeAbsolute = (n) => WAVE.ABS + Math.max(1, Math.min(n, 0x5f));
 
-export function shapeOf(n) {
+function shapeOf(n) {
   const len = n.end - n.start;
   const steady = n.pitches.slice(1).map((p) => (p === null ? null : p - n.note));
   const transient = Math.min(TRANSIENT_FRAMES, n.body.length - 1);
@@ -293,7 +293,7 @@ const distance = (a, b) => {
   return d + (String(a.loop) === String(b.loop) ? 0 : 6) + Math.abs((a.pw >> 8) - (b.pw >> 8)) / 4;
 };
 
-export function clusterShapes(shapes, cap = MAX_INSTRUMENTS_A_VOICE) {
+function clusterShapes(shapes, cap = MAX_INSTRUMENTS_A_VOICE) {
   const counts = new Map();
   shapes.forEach((s) => {
     const k = keyOf(s);
@@ -365,7 +365,7 @@ const filterRows = (f) => [[FILTER_SET | (f.mode & 0x70), f.res], [FILTER_CUT, f
 
 const firstWave = (ctrl) => (ctrl & CTRL.TEST && ctrl & CTRL.GATE ? ctrl : FIRST_WAVE_DEFAULT);
 
-export function analyse(chipFrames, { pitch, voices: wanted }) {
+function analyse(chipFrames, { pitch, voices: wanted }) {
   const tracks = chipFrames.map(tracksOf);
   const voices = [];
   tracks.forEach((t, chip) => t.voices.forEach((frames, v) => voices.push({ chip, v, frames, notes: notesOf(frames, pitch) })));
@@ -399,7 +399,7 @@ const legatoOf = (n, rowAt) => {
   return out;
 };
 
-export function buildSong(a, { timeline, name = "", author = "", released = "" }) {
+function buildSong(a, { timeline, name = "", author = "", released = "" }) {
   const starts = timeline.map((r) => r.at);
   const rows = starts.length;
   const rowAt = rowIndex(starts);
@@ -543,7 +543,7 @@ const padded = (s, n) => {
   return b;
 };
 
-export function writeSng(song) {
+function writeSng(song) {
   const out = [];
   const push = (...xs) => xs.forEach((x) => (typeof x === "number" ? out.push(x & 0xff) : out.push(...x)));
   push(..."GTS5".split("").map((c) => c.charCodeAt(0)));
@@ -565,7 +565,7 @@ export function previewSong(song) {
   return writeSng({ ...song, channels: VOICES_A_CHIP, orders: song.orders.slice(0, VOICES_A_CHIP) });
 }
 
-export function simplifications(a, song, run) {
+function simplifications(a, song, run) {
   const out = [];
   const anyVolumeDigi = a.tracks.some((t) => t.chip.some((c) => c.volumeWrites >= DIGI_VOLUME_WRITES));
   if (anyVolumeDigi) out.push("digi samples (fast volume-register writes) are dropped");
