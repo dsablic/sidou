@@ -80,6 +80,7 @@ mod song_pattern_at;
 mod song_rec;
 mod song_view;
 mod step_view;
+mod swing;
 mod store;
 mod store_layout;
 mod sysex;

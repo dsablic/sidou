@@ -156,7 +156,7 @@ static void head_look(const song_view* sv, uint8_t out[HEAD_LOOK]) {
     out[0] = (uint8_t)song_view_playing(sv);
     out[1] = (uint8_t)bpm;
     out[2] = (uint8_t)(bpm >> 8);
-    out[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u));
+    out[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | song_gen_swing(sv) << 2);
     out[4] = sv->voice;
     out[5] = (uint8_t)(sv->mute | sv->solo << 3);
     out[6] = lane_of(sv, sv->voice).pattern;
@@ -259,17 +259,7 @@ static void build_head(song_view* sv) {
     }
     const char mark[2] = {(char)(song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE), 0};
     big(c, 24, 0, mark, song_view_playing(sv) ? THEME_ATTR(th, hot) : THEME_ATTR(th, label));
-    uint32_t bpm = song_view_shown_bpm(sv);
-    char t[5] = " ---";
-    if (bpm != SONG_VIEW_NO_BPM) {
-        bpm = bpm > 9999u ? 9999u : bpm;
-        for (int i = 3; i >= 0; i--) {
-            t[i] = (char)(bpm || i == 3 ? '0' + bpm % 10u : ' ');
-            bpm /= 10u;
-        }
-    }
-    grid_canvas_text(c, 26, 0, t, THEME_ATTR(th, label));
-    grid_canvas_text(c, 26, 1, "BPM", THEME_ATTR(th, hint));
+    song_view_tempo(sv, c);
     uint32_t col = TRACKER_VIEW_STRIP_COL;
     for (uint32_t w = 0, at = TRACKER_VIEW_STRIP_COL - TRACKER_VIEW_STRIP_STEP; w < SONG_T_VOICES; w++) {
         uint8_t a = sv->solo >> w & 1u ? GRID_ATTR(th->bg, th->hot)

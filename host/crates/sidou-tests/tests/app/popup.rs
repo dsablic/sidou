@@ -1166,12 +1166,6 @@ const NO_POPUP: &[NoPopup] = &[
         why: "the voice at 2x in the header; EDIT + PRESETS inserts or removes a row, which the rows show",
     },
     NoPopup {
-        state: "TRACKER EDIT+SCL",
-        plain: ALG,
-        edit: ALG,
-        why: "the voice at 2x in the header",
-    },
-    NoPopup {
         state: "ORDER subtune",
         plain: K1BIT | K2BIT,
         edit: K1BIT | K2BIT,

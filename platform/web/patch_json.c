@@ -1827,7 +1827,7 @@ int patch_json_read_step(patch_step* st, const char* s, uint32_t len) {
     return step_checked(&r, st, format);
 }
 
-#define SONG_FIELDS "format, name, bpm, instruments, sections, order"
+#define SONG_FIELDS "format, name, bpm, swing, instruments, sections, order"
 #define SONG_LABEL "1 to 8 characters"
 #define SONG_ORDER "a list of 1 to 64 section names"
 #define SONG_INSTRUMENT "the name of one of instruments, or \"pulse\", \"bass\" or \"kit\""
@@ -1857,6 +1857,8 @@ enum { VOICE_INSTRUMENT, VOICE_NOTES, VOICE_FIELD_COUNT };
 
 static const field SONG_BPM = {"bpm", K_INT, 0, 0xFF, F_WIDE, PATCH_SONG_BPM_MIN, PATCH_SONG_BPM_MAX, 0};
 static const field SONG_ROWS = {"rows", K_INT, 0, 0xFF, 0, 1, PATCH_SONG_ROWS, 0};
+static const char SWINGS[] = "straight\0light\0shuffle\0hard\0";
+static const field SONG_SWING = {"swing", K_ENUM, 0, 0xFF, 0, 0, 0, SWINGS};
 
 typedef int (*member_fn)(reader* r, const char* key, void* ctx);
 typedef int (*visit_fn)(reader* r, void* ctx);
@@ -2332,7 +2334,7 @@ static int song_order(reader* r, void* ctx) {
 
 static int song_top(reader* r, const char* key, void* ctx) {
     song_read* sr = ctx;
-    uint32_t bpm;
+    uint32_t bpm, swing;
     int part = names_index(SONG_PARTS, key);
     if (part >= 0) {
         return deferred(r, &sr->at[part]);
@@ -2350,6 +2352,13 @@ static int song_top(reader* r, const char* key, void* ctx) {
         sr->sg->bpm = (uint16_t)bpm;
         return 0;
     }
+    if (!strcmp(key, "swing")) {
+        if (whole_value(r, &SONG_SWING, &swing)) {
+            return -1;
+        }
+        sr->sg->swing = (uint8_t)swing;
+        return 0;
+    }
     return fail(r, "no such field. Allowed here: " SONG_FIELDS, NULL);
 }
 
@@ -2361,6 +2370,7 @@ int patch_json_read_song(patch_song* sg, const char* s, uint32_t len) {
     sg->sections = sg->order_len = sg->instruments = 0;
     sg->bpm = SONG_BPM_DEFAULT;
     sg->bpm_played10 = 0;
+    sg->swing = SONG_SWING_STRAIGHT;
     memcpy(sg->name, PATCH_SONG_NAME_DEFAULT, sizeof PATCH_SONG_NAME_DEFAULT);
     while (r.i < r.n && s[r.i] != '{') {
         r.i++;
@@ -2594,9 +2604,30 @@ static song_speeds speeds_of(uint32_t bpm) {
     return best;
 }
 
+static int swing_refused(patch_song* sg, uint32_t speed_sum) {
+    text t = {sg->error, 0, PATCH_JSON_ERROR_MAX};
+    add(&t, "swing: ");
+    quoted(&t, nth(SWINGS, sg->swing));
+    add(&t, " does not fit this bpm. Allowed at this bpm: ");
+    for (uint32_t k = 0, n = 0; k < SONG_SWING_LEVELS; k++) {
+        if (song_swing_gives(speed_sum, k)) {
+            add(&t, n++ ? ", " : "");
+            quoted(&t, nth(SWINGS, k));
+        }
+    }
+    add_char(&t, '.');
+    return -1;
+}
+
 static int song_tempo(gt2_song* s, song_build* b, patch_song* sg) {
     song_speeds sp = speeds_of(sg->bpm);
     sg->bpm_played10 = (uint16_t)sp.bpm10;
+    uint32_t sum = sp.first + sp.second;
+    if (!song_swing_gives(sum, sg->swing)) {
+        return swing_refused(sg, sum);
+    }
+    sp.second = song_swing_long(sum, sg->swing);
+    sp.first = sum - sp.second;
     if (sp.first == SONG_NEW_SPEED && sp.second == SONG_NEW_SPEED) {
         return 0;
     }

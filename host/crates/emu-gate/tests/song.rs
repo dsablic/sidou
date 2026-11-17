@@ -4,8 +4,8 @@
 mod common;
 
 use common::panel::{
-    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, GLO, HOME, K1, K4, KEY0, PLAY,
-    REC, SELECT, SEQ,
+    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, EDIT, GLO, HOME, K1, K4, KEY0,
+    PLAY, REC, SCL, SELECT, SEQ, UI_WAIT_MS,
 };
 use common::*;
 use fm1_core::Bus;
@@ -491,6 +491,54 @@ fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
         "the keys programmed the expected song, lock included"
     );
     check_song("STEP-programmed pattern", &fw, Some(&actual));
+}
+
+#[test]
+fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP swing test") else {
+        return;
+    };
+    const PASSED_AT_SPEED_6: [(u8, u8); 2] = [(5, 7), (4, 8)];
+    const CMD_FUNKTEMPO: u8 = 0x0e;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let mut expected = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&expected, 0);
+    let mut first = cell_of(&expected, pattern, 0);
+    assert_eq!(first[2], 0, "the first row plays at speed 6 with no command");
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, EDIT, |m| {
+        holding(m, SCL, |m| {
+            m.turn(ALGORITHM, PASSED_AT_SPEED_6.len() as i32);
+            m.run_ms(300);
+        });
+    });
+    m.run_ms(UI_WAIT_MS);
+    let end = unsafe { lab_song_table_end(expected.ptr(), GT2_STBL) } as usize;
+    for (k, pair) in PASSED_AT_SPEED_6.into_iter().enumerate() {
+        for (side, value) in [pair.0, pair.1].into_iter().enumerate() {
+            let mut edit = gt2_edit::default();
+            unsafe {
+                let song = expected.ptr_mut();
+                assert_eq!(
+                    gt2_set_table(song, GT2_STBL, (end + k) as u32, side as u32, value, &mut edit),
+                    GT2_OK
+                );
+                gt2_edit_commit(song, &edit);
+            }
+        }
+    }
+    first[2] = CMD_FUNKTEMPO;
+    first[3] = (end + PASSED_AT_SPEED_6.len()) as u8;
+    set_cell(&mut expected, pattern, 0, first);
+    let actual = region_song(&mut m, &fw);
+    assert_eq!(
+        actual.write(true),
+        expected.write(true),
+        "the panel wrote the shuffle into the song"
+    );
+    check_song("shuffled song", &fw, Some(&actual));
 }
 
 #[test]

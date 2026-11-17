@@ -38,6 +38,8 @@ typedef struct {
     uint32_t seed;
     uint8_t role, kick, snare, wait;
     uint8_t chord[SONG_GEN_CHORDS];
+    uint8_t swing, swing_turned, swing_refused, swing_wait, swing_due;
+    uint8_t swing_pair[2];
     struct song_pages* pages;
 } song_gen;
 
@@ -66,6 +68,7 @@ uint32_t song_gen_lone_chord(struct song_view* sv, const screen_event* e);
 int song_gen_turn(struct song_view* sv, screen* s, uint32_t enc, int32_t steps);
 int song_gen_popup(const struct song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max);
+uint32_t song_gen_swing(const struct song_view* sv);
 uint32_t song_gen_keys(struct song_view* sv, uint32_t down, uint32_t pressed);
 void song_gen_frame(struct song_view* sv, uint32_t top);
 int song_gen_look(const struct song_view* sv, uint8_t out[SONG_GEN_LOOK]);

@@ -8,6 +8,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **SWING**: EDIT + SCL held + ALGORITHM in STEP or TRACKER sets the song's swing, STRAIGHT,
+  LIGHT, SHUFFLE or HARD, with the big popup; the song views' header says it under the BPM. It is
+  GoatTracker's funktempo on the song's first row (rows of 7 and 5, 8 and 4, 9 and 3 frames at
+  speed 6), so the song swings the same in GoatTracker and the BPM stays; a level a speed cannot
+  give is refused in the popup. `sidou-song/1` takes it as `"swing"`.
+
 ## [1.20.0] - 2026-11-16
 
 Bluetooth keyboards connect to SIDOU and stay paired; RED MOON RITE's art is a file on the FM-1 you can redraw on the site; SCENE opens on DEMO, with SCOPE new and RED MOON RITE fighting to the keys; the mod wheel adds vibrato.

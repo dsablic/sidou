@@ -284,7 +284,8 @@ solo is.
 TRACKER's header (rows 0-1): the shown voice **V1** at 2× in its colour (light red, cyan, light
 green), its pattern **PAT 03** at 2× (hex), a play mark or a stop square, the tempo in BPM small (the
 frame rate times the play routine's calls a frame, over the calls a row and the rows a beat, 4;
-funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125) and REC in red. Row 2
+funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125), under it the song's
+[swing](#step) (`BPM` while straight) and REC in red. Row 2
 numbers the strips. The rows: 12 pattern rows of two cell rows, each its number small (yellow on
 the current row), the note at 2×, the instrument at 2× in the voice's colour and the command
 small; the current row a dark grey bar. At the foot: the orderlist from the shown voice's entry,
@@ -327,6 +328,7 @@ HELD STEP frame (`HELD STEP 22`).
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
 | EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
+| EDIT + SCL held + ALGORITHM | the song's **SWING**, a detent a level: `STRAIGHT`, `LIGHT`, `SHUFFLE`, `HARD` (below, **Swing**). The popup says it large (`SWING` over `SHUFFLE`); TRACKER takes it too. A turn spoils the roll, as K1-K4's do |
 | EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ACID`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
@@ -375,6 +377,21 @@ beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 2
 the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
 or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
 STRAIGHT and 2 OCT.
+
+**Swing** (EDIT + SCL held + ALGORITHM, in STEP and TRACKER; the frame's foot says `ALG SWING`) is
+the song's shuffle: every second row plays late. It is GoatTracker's **funktempo** (`EXY`), written
+into the first row of voice 1's first pattern, so the song swings the same in GoatTracker and the
+first row's command in TRACKER says `FUNKTEMPO`. At speed 6 the levels are rows of 6 and 6
+frames, 7 and 5, 8 and 4, 9 and 3 (50, 58, 67 and 75 % of each pair of rows on the first row);
+at other speeds the same shares to the nearest frame, a level a speed cannot give (the same pair
+as the level below, or a second row under 2 frames) refused in the popup (`NO LIGHT` at speed 3;
+the song keeps the last level it could give). The two speeds still add up to the tempo's, so the
+BPM shown, their average, stays. The song views' header says the level under the BPM, in yellow
+(`LITE`, `SHUF`, `HARD`; `BPM` while straight). STRAIGHT at speed 6 takes the command away; a
+first row with another command refuses it (`ROW HAS A COMMAND`), and `FXX` (SET TEMPO) there is
+replaced by the funktempo at its speed. Each pair is a row of the speed table, found if the song
+has it and added after the table's last row if not (the rows a turn passes through stay, unused).
+Per-pattern swing is TRACKER's own `E` command.
 
 **Roles** (EDIT + SCL held + PRESETS; the `SCNE` chunk). A **DRUMS** lane keeps its one note, as
 above. An **ARP** lane rolls **chords** (toast `NEW CHORDS`): each hit is a note, the lane's

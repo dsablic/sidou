@@ -3364,6 +3364,42 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   first, with nothing written. Alone they write when let go, when another control is used, and at
   once while REC records.
 
+### Swing (1.21)
+
+- **The song's swing is GoatTracker's funktempo** (`EXY` on the first row of voice 1's first
+  pattern of the shown subtune), not a SIDOU chunk or a live nudge (the owner, 2026-11-17): it is
+  saved in the `.sng` and plays the same in GoatTracker, and costs the audio interrupt nothing.
+- **The pair's order**: the `E` command resets the funktempo index at its row's first tick, after
+  that row's length was loaded, so the rows after it play left, right, left ... and, with a
+  pattern of even length, row 0 of each later pass plays the right speed. So the long speed is the
+  right one: (4, 8) plays rows 0, 2, 4 ... for 8 frames and the odd rows (the second sixteenth of
+  each eighth) for 4, which is swing. The very first row of the song plays the default speed 6,
+  as with any funktempo (the converter's note above). `swing.rs` measures the rows on SIDOU's
+  player and holds them equal to GoatTracker's packed player, call by call.
+- **The levels** (`app/song_tempo.h`): the long row is the sum of the pair times 7, 8 or 9
+  twelfths, rounded to the nearest frame with a half rounded down (towards straight: speed 3's
+  LIGHT would be 3.5 frames and is 3, STRAIGHT's own, so it is refused rather than written as
+  SHUFFLE's 4); STRAIGHT is the pair's halves, the larger one right (the converter's `a, a + 1`).
+  A level is given when its long row is longer than the level below's and its short row at least
+  2 frames: a funktempo speed of 1 reloads the row counter at once in the player (`exec_channel`,
+  `funktempo - 1` is 0) and is not a row of one frame. The popup says `NO LIGHT` for one that is
+  not given and the song keeps the last given level; the wanted level is kept while SCL is held,
+  so a turn goes past a refused level.
+- **Writing it**: the cell through the editor (one undo step); a pair the speed table lacks first
+  through the batch writer after the table's last row, then the cell once the row has landed (a
+  failed row writes no cell). Turns while that is in flight are kept as the wanted level and
+  written after it (`swing_due`), so a quick turn of two detents is SHUFFLE, not LIGHT and
+  WAITING. The rows a turn passes through stay in the speed table unused: finding whether a row
+  is referenced (instrument vibrato, `1`-`4` commands in any pattern) would cost flash for 3
+  rows of 255 at most per tempo. STRAIGHT at speed 6 writes no command (a NEW song's state);
+  a first row with another command is refused (`ROW HAS A COMMAND`, as a SET is), and `FXX` there
+  becomes the funktempo at its speed.
+- **The control** is EDIT + SCL held + ALGORITHM, in STEP and TRACKER alike (shared in
+  `song_gen.c`): there was no free control beside the BPM in both views (ALGORITHM pages STEP and
+  steps TRACKER's voice, EDIT + ALGORITHM is TRACKER's edit step), and SCL held is already where a
+  song's groove settings are (DICE's density and rhythm). The DICE frame's foot names it
+  (`ALG SWING`). The header shows it under the BPM, in the song views' shared `song_view_tempo`.
+
 ### SONG pages (ORDER, INSTR, TABLE)
 
 - Prospective `edit_guard` requests: `pattern` = subtune/instrument/table, `row` = entry/field/row,

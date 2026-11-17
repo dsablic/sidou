@@ -424,7 +424,7 @@ https://dsablic.github.io/sidou/patch.schema.json disagree, the schema is right.
 ## The shape
 
 ```
-{"format": "sidou-song/1", "name": "...", "bpm": 125,
+{"format": "sidou-song/1", "name": "...", "bpm": 125, "swing": "straight",
  "instruments": { "bass": {a sidou-patch/1 sound}, "lead": {...} },
  "sections": { "A": {"rows": 16, "voices": [voice 1, voice 2, voice 3]}, "B": {...} },
  "order": ["A", "A", "B"] }
@@ -432,6 +432,10 @@ https://dsablic.github.io/sidou/patch.schema.json disagree, the schema is right.
 
 - `format` is required: `"sidou-song/1"`. `name` is the song's name on the FM-1, 1 to 16 characters.
 - `bpm` 60 to 250, default 125. It plays as one of the tempos in "The tempo".
+- `swing`: `"straight"` (the default), `"light"`, `"shuffle"` or `"hard"`. A swung song plays every
+  second sixteenth late (58, 67 or 75 % of each pair of rows on the first), at the same `bpm`: the
+  shuffle of a groove. Slow tempos give every swing; the fastest give fewer, and a swing the tempo
+  cannot give is refused with the ones it can.
 - `instruments`: up to 16 sounds, each named by you (1 to 8 characters). A sound is a
   `sidou-patch/1` patch with `format` left out; leave out any field you do not mean (the sound is
   then LAB's starting sound). Three names are built in and need no entry: `"kit"` is the drum kit,

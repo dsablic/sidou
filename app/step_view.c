@@ -153,7 +153,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     h[0] = (uint8_t)song_view_playing(sv);
     h[1] = (uint8_t)bpm;
     h[2] = (uint8_t)(bpm >> 8);
-    h[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u));
+    h[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | song_gen_swing(sv) << 2);
     h[4] = (uint8_t)v;
     h[5] = (uint8_t)(sv->mute | sv->solo << 3);
     h[6] = lanes[v].pattern;
@@ -233,17 +233,7 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
         grid_canvas_text(c, 18, 0, "MUT", THEME_ATTR(th, alert));
     }
     put(c, 22, 0, song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE, base);
-    uint32_t bpm = song_view_shown_bpm(sv);
-    char t[5] = " ---";
-    if (bpm != SONG_VIEW_NO_BPM) {
-        bpm = bpm > 9999u ? 9999u : bpm;
-        for (int i = 3; i >= 0; i--) {
-            t[i] = (char)(bpm || i == 3 ? '0' + bpm % 10u : ' ');
-            bpm /= 10u;
-        }
-    }
-    grid_canvas_text(c, 26, 0, t, THEME_ATTR(th, label));
-    grid_canvas_text(c, 26, 1, "BPM", THEME_ATTR(th, hint));
+    song_view_tempo(sv, c);
     if (sv->rec) {
         grid_canvas_text(c, 22, 1, "REC", THEME_ATTR(th, alert));
     }
@@ -952,6 +942,9 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     lone_due(st, screen_lone_take(&sv->gen.lone));
+    if (song_gen_turn(sv, s, e->id, e->steps)) {
+        return 1;
+    }
     if (e->id == PANEL_ENC_SELECT) {
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
@@ -972,9 +965,6 @@ static int input(screen* s, void* state, const screen_event* e) {
             int32_t last = (int32_t)pages_of(lanes[sv->voice].rows) - 1;
             st->page = (uint8_t)(p < 0 ? 0 : p > last ? last : p);
         }
-        return 1;
-    }
-    if (song_gen_turn(sv, s, e->id, e->steps)) {
         return 1;
     }
     int held = st->held != STEP_VIEW_NONE;
