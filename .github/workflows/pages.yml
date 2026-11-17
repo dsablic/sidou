@@ -15,7 +15,7 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['app/**', 'core/**', 'platform/**', 'assets/**', 'web/**', 'README.md', 'CMakeLists.txt',
-            'tools/web-demo', 'tools/wasm-core', 'tools/wasm-patch', 'docs/prompt-to-patch.md', 'docs/reference/patch.schema.json', 'docs/media/videos/**', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
+            'tools/web-demo', 'tools/wasm-core', 'tools/wasm-patch', 'tools/wasm-tune', 'docs/prompt-to-patch.md', 'docs/reference/patch.schema.json', 'docs/media/videos/**', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read

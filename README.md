@@ -88,6 +88,14 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   song to send: ENV on INSTR opens each in LAB. Its USER sounds button reads the sixteen sounds LAB
   kept on the FM-1 (read only) and opens each as a patch to listen to, link, edit as text or put in
   a bank or a song; `sidou-sysex user-sounds` writes them as one patch file each.
+- **Turn a `.sid` tune into a song.** The Library page runs a PSID tune with SIDOU's own 6502
+  and writes it out as an editable GoatTracker song: rows at the tune's tempo (swing as
+  funktempo), notes, a handful of instruments a voice with their wave, pulse and filter tables,
+  and patterns that repeat where the tune does; six-voice tunes use both chips. The original and
+  the conversion play side by side, the page says how many notes come back on time and what it
+  simplified, and the song downloads, opens in the editor or goes to the FM-1; nothing is
+  uploaded, and a conversion keeps the original's copyright
+  ([convert a tune](docs/manual/sid-tunes.md#6-convert-a-tune-into-a-song)).
 - **A sound from a prompt.** Any language model (ChatGPT, Claude, Gemini or a local one) designs
   a LAB sound from a few words with SIDOU's [instructions](docs/prompt-to-patch.md) (served as
   [llms.txt](https://dsablic.github.io/sidou/llms.txt)): it answers with a short JSON patch in
@@ -217,7 +225,8 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
   `tools/web-demo` serves it at `http://localhost:8642/songs.html`.
 - **Your own files:** the [Library](https://dsablic.github.io/sidou/library.html) page lists,
   downloads, sends, renames, deletes, backs up and restores the FM-1's files, and exports a song
-  for GoatTracker 2 with its instruments ([docs/manual/library.md](docs/manual/library.md)); the
+  for GoatTracker 2 with its instruments, and converts a `.sid` tune into a song
+  ([docs/manual/library.md](docs/manual/library.md)); the
   [editor](https://dsablic.github.io/sidou/editor.html) edits a song and saves it back
   ([docs/manual/editor.md](docs/manual/editor.md)).
 - **Your own RED MOON RITE:** the [art pack builder](https://dsablic.github.io/sidou/art.html)

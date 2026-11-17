@@ -6,7 +6,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SIDOU library</title>
-<meta name="description" content="The FM-1's songs, .sid tunes and instruments from the browser: list, download, send, rename, delete, back up and restore; a sound from a language model's patch, checked, played and sent; export a song for GoatTracker and its instruments as .ins.">
+<meta name="description" content="The FM-1's songs, .sid tunes and instruments from the browser: list, download, send, rename, delete, back up and restore; a sound from a language model's patch, checked, played and sent; export a song for GoatTracker and its instruments as .ins; convert a .sid tune into an editable song.">
 <link rel="icon" href="data:,">
 <style>
   :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
@@ -63,6 +63,12 @@
   label.drop { display: block; border: 2px dashed var(--line); border-radius: 10px; background: var(--card); padding: 18px 14px; text-align: center; color: var(--dim); cursor: pointer; }
   label.drop.over { border-color: var(--accent); color: var(--ink); }
   label.drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; display: grid; gap: 10px; }
+  .panel[hidden] { display: none; }
+  .panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 4px 0 0; }
+  .panel dt { color: var(--dim); }
+  .panel dd { margin: 0; }
+  .panel .row, .panel ul { margin: 0; }
   #song-panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 12px; display: grid; gap: 10px; }
   #song-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 4px 0 0; }
   #song-panel dt { color: var(--dim); }
@@ -92,7 +98,8 @@
     instruments. Download them, send your own, rename, delete, and back the whole
     store up to one <code>.zip</code> and restore it. And any song, from the FM-1 or a file, exported for
     GoatTracker 2 and its instruments as <code>.ins</code> files, by SIDOU's own song code running in the
-    page: what it accepts and refuses is what the FM-1 accepts and refuses.</p>
+    page: what it accepts and refuses is what the FM-1 accepts and refuses. And a <code>.sid</code> tune
+    <a href="#convert">converted into a song</a> you can edit.</p>
 
   <div id="support" class="note" hidden>
     <p><b>This browser cannot reach the FM-1.</b> That needs Web MIDI with SysEx, which Chrome and Edge
@@ -232,6 +239,52 @@
           <tbody id="instruments"></tbody>
         </table>
       </div>
+    </div>
+  </section>
+
+  <section id="convert">
+    <h2>6. A .sid tune: convert it to a song</h2>
+    <p>Drop a PSID tune (from <a href="https://www.hvsc.c64.org/">HVSC</a> or your own) and the page plays it
+      with SIDOU's own 6502 and PSID player, records what it writes to the SID, and writes it out as a song you
+      can edit: rows at the tune's tempo (swing as funktempo), notes, a handful of instruments a voice with their
+      wave, pulse and filter tables, and patterns that repeat where the tune repeats. Listen to the original and
+      the conversion side by side, then download it, send it to the FM-1 or open it in the editor. It all runs
+      here: nothing is uploaded.</p>
+    <label class="drop" id="sid-drop">
+      <input type="file" id="sid-file" accept=".sid,application/octet-stream">
+      <b>Drop a <code>.sid</code> here</b>, or press to choose one.
+    </label>
+    <div id="sid-panel" class="panel" hidden>
+      <div>
+        <h3 id="sid-name"></h3>
+        <dl id="sid-info"></dl>
+      </div>
+      <div class="row">
+        <label>Sub-tune <select id="sid-song"></select></label>
+        <label>Length <select id="sid-seconds"></select></label>
+        <button type="button" id="sid-convert" class="primary">Convert</button>
+      </div>
+    </div>
+    <p id="sid-state" role="status" aria-live="polite"></p>
+    <div id="sid-result" class="panel" hidden aria-live="polite">
+      <dl id="sid-summary"></dl>
+      <div class="row">
+        <button type="button" id="sid-play-original">Play the original</button>
+        <button type="button" id="sid-play-conversion">Play the conversion</button>
+        <button type="button" id="sid-stop">Stop</button>
+        <span id="sid-play-state" role="status"></span>
+      </div>
+      <div class="row">
+        <button type="button" id="sid-download" class="primary">Download .sng</button>
+        <button type="button" id="sid-send" class="needs-fm1" disabled>Send to the FM-1…</button>
+        <button type="button" id="sid-edit">Edit</button>
+      </div>
+      <h3>What the conversion simplifies</h3>
+      <ul id="sid-notes"></ul>
+      <p style="margin:0">A converted song is the original's music: it keeps the original's copyright, and
+        its author and release line are carried into the song. Share it only as the original's licence
+        allows. RSID tunes (which need a whole C64) are not converted yet. A six-voice tune becomes a
+        GoatTracker Stereo song; the FM-1 plays its first three voices, and so does the preview.</p>
     </div>
   </section>
 

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { setupConvert } from "./convert.js";
 import { CoreError, loadCore } from "./core.js";
 import { fromLink, loadPatcher, shareableLink } from "./patch.js";
 import { CHANGED, NO_FM1, clientFor, fillPorts, pairIsTheFm1, refusedWords } from "./ports.js";
@@ -41,7 +42,7 @@ function setBusy(busy) {
   const ready = !!state.lib && !busy;
   $("connect").disabled = busy;
   $("check").disabled = busy || !state.access || !$("out").value || !$("in").value;
-  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1, #sounds .needs-fm1")) b.disabled = !ready;
+  for (const b of document.querySelectorAll("#store button, #store input, #song .needs-fm1, #sounds .needs-fm1, #convert .needs-fm1")) b.disabled = !ready;
   $("patch-send").disabled = !ready || !state.patch?.ok;
   $("progress").hidden = !busy;
 }
@@ -510,6 +511,14 @@ async function showSounds() {
   };
   state.sounds = bank;
 }
+
+setupConvert({
+  $, el, say, save, stemOf, kb, edit: editSong,
+  send: (bytes, suggested) => {
+    const name = window.prompt("The name for this song on the FM-1 (up to 16 characters):", storeName(suggested))?.trim().toUpperCase();
+    if (name) sendBytes(name, bytes, 1);
+  },
+});
 
 showSounds().catch((e) => say($("sounds-state"), `The sounds could not be listed: ${e.message}`, "error"));
 $("patch-check").addEventListener("click", checkPatch);
