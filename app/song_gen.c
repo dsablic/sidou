@@ -857,8 +857,7 @@ static void swing_apply(song_view* sv, screen* s) {
     g->swing_long = (uint8_t)song_swing_long(sum, g->swing_given);
     g->swing_short = (uint8_t)(sum - g->swing_long);
     g->swing_sub = (uint8_t)swing_subtune(sv);
-    g->swing_eighths = (uint8_t)(g->swing_given != SONG_SWING_STRAIGHT &&
-                                 song_swing_eighths(sv->song, g->swing_sub));
+    g->swing_eighths = (uint8_t)(!swing_straight(g) && song_swing_eighths(sv->song, g->swing_sub));
     g->swing_first = (uint8_t)p;
     g->swing_sum = (uint16_t)sum;
     uint32_t order_pos = 0u, row = 0u;
@@ -898,8 +897,8 @@ static void swing_start(song_view* sv, screen* s) {
     song_gen* g = &sv->gen;
     uint8_t data[SWING_PAIRS];
     for (uint32_t k = 0; k < SWING_PAIRS; k++) {
-        uint32_t r = swing_needs(g, k) ? swing_row(sv, k) : GT2_TABLE_ROWS;
-        if (r == GT2_TABLE_ROWS && swing_needs(g, k)) {
+        uint32_t r = swing_needs(g, k) ? swing_row(sv, k) : 0u;
+        if (r == GT2_TABLE_ROWS) {
             refuse(s, g->pages && *song_pages_message(g->pages) ? song_pages_message(g->pages)
                                                                 : "TABLE FULL");
             return;

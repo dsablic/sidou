@@ -3424,7 +3424,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   level and the knob's input stays at about 1,000 instructions. The rows a slower turn passes
   through stay in the speed table unused: finding whether a row is referenced (instrument
   vibrato, `1`-`4` commands in any pattern) would cost flash for 3 rows of 255 at most per tempo.
-  The image grew 1,200 bytes (554,916 of the 579,516 ceiling).
+  The image grew 1,168 bytes (554,916 of the 579,516 ceiling).
 - **The control** is K1 on STEP's [GROOVE page](#the-groove-page-121) (it was EDIT + SCL held +
   ALGORITHM in STEP and TRACKER, which the owner found tedious on the device, 2026-11-17).
   TRACKER has no swing control; its header shows the level, as STEP's does, in the song views'
