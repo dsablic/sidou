@@ -267,22 +267,21 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE keeps it as a USER sound. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: back to the tune, still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.20
-  goal See SIDOU 1.20's highlights: a Bluetooth keyboard picked on DEVICES, SCENE opening on DEMO, SCOPE's traces, RED MOON RITE's art from the store fighting to the keys, LAB's glowing card and the mod wheel's vibrato.
-  prereq On LIVE after the boot; RED MOON RITE's art pack in the store, as the Library page sends it.
-  skills SETTINGS; BLUETOOTH KEYBOARD; DEVICES; SCENE; DEMO; SCOPE; RED MOON RITE; art packs; LAB; the MIDI page's WHEEL
-  related sidou-intro; shape-in-lab; chord-arpeggio
-  art red-moon-rite
-  step keyboard | A *Bluetooth keyboard* | SETTINGS, BLUETOOTH, KEYBOARD: DEVICES lists keyboards nearby. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout BLUETOOTH
-  step pair | Paired, kept, *back by itself* | SAVE connects one; SIDOU keeps it and reconnects by itself. | wait 1000 | view devices; focus card; callout DEVICES > SAVE > KEYBOARD MICROKEY AIR
-  step demo | SCENE opens on *DEMO* | SCENE opens on DEMO: the logo glows with what you play. | press HOME; wait 500; press HOME; wait 500; select-item SCENE; turn ALGORITHM 1; wait 1500; play 150 C4+E4+G4:4 A3+C4+E4:4 F3+A3+C4:4 G3+B3+D4:4 C4:2 E4:2 G4:2 C5:2 | view scene; sound; focus screen; callout SCENE > DEMO
-  step fire | *FIRE* | FIRE: a flame for each voice. | turn SELECT 1; wait 600; play 150 A3+C4+E4:4 F3+A3+C4:4 C4:2 E4:2 G4:2 C5:2 E5:4 C5:4 | view scene; sound; focus screen; callout SELECT > FIRE
-  step plasma | *PLASMA* | PLASMA swells with the music. | turn SELECT 1; wait 600; play 150 D4+F4+A4:4 C4+E4+G4:4 A3+C4+E4:4 G3+B3+D4:4 E5:2 D5:2 C5:2 A4:2 | view scene; sound; focus screen; callout SELECT > PLASMA
-  step duel | RED MOON RITE *fights to the keys* | RED MOON RITE: your notes are the fighter's moves. | turn SELECT 2; wait 1500; play 150 A4:2 E5:2 F3:2 C4:2 E5:1 D5:1 C5:1 B4:1 A4:1 G4:1 F4:1 E4:1 A4+C5+E5:4 F3:4 E5:2 G3:2 G5:2 F3:4 | view scene; sound; focus screen; callout PLAY: RED MOON RITE
-  step art | Your own *art* | The site's art pack builder puts your own PNGs in the duel. | wait 1000 | view scene; focus card; callout YOUR PNGS > ART PACK > RED MOON RITE
-  step glow | LAB's card *glows* | In LAB, the card a knob turns glows. | press HOME; wait 500; press HOME; wait 900; press ENV; wait 1200; sweep K1 -8 800; play 150 A3:2 C4:2 E4:4 | view lab; sound; focus K1; callout PRESS ENV, TURN K1
-  step wheel | The mod wheel's *vibrato* | The mod wheel adds vibrato; MIDI's WHEEL row picks what it moves. | press HOME; wait 600; press HOME; wait 600; select-item MIDI; turn ALGORITHM 1; wait 800; turn SELECT 8; wait 500; down A4; wait 500; cc 1 40; wait 300; cc 1 90; wait 1200; cc 1 127; wait 800; up A4; cc 1 0; wait 400 | view midi; text WHEEL; text VIBRATO; sound; focus screen; callout MIDI > WHEEL
-  step get-it | Get *SIDOU 1.20* | dsablic.github.io/sidou and github.com/dsablic/sidou/releases | wait 1000 | view midi; focus card
+journey whats-new | What's new in SIDOU 1.21
+  goal See SIDOU 1.21's highlights: STEP's GROOVE page on SIDOU LOOP, a snare's RATCHET rolled, the bass lane's HITS and ROTATE, the song's SWING from STRAIGHT to HARD heard while it plays, and the Library page turning a .sid tune into a song.
+  prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
+  skills STEP; the GROOVE page; SWING; HITS; ROTATE; RATCHET; the Library page's .sid converter
+  related step-a-beat; step-generative; play-a-sid
+  step play | SIDOU LOOP in *STEP* | SEQ opens STEP, PLAY starts SIDOU LOOP: drums, bass and lead. | press SEQ; wait 800; press PLAY; wait 3500 | view step; sound; screen 0 0 30 15; focus PLAY; callout SEQ, PLAY
+  step groove | The *GROOVE* page | ALGORITHM past the last page: GROOVE, a knob each. | turn ALGORITHM 1; wait 2500 | view step; text GROOVE; sound; screen 0 14 30 8; focus ALGORITHM; callout ALGORITHM > G
+  step ratchet | A ratchet *roll* | SELECT to the drums, key 13 picks the snare, K4: x3. | turn SELECT 2; wait 600; taps F4 150; wait 300; turn K4 2; wait 4500 | text V3 STEP 13; sound; screen 0 0 30 22; focus K4; callout PICK STEP 13, TURN K4
+  step hits | *HITS* on the bass | SELECT to V2, K2: seven hits spread evenly over the lane. | turn SELECT -1; wait 600; turn K2 7; wait 4500 | text V2 STEP; sound; screen 0 0 30 22; focus K2; callout SELECT V2, TURN K2
+  step rotate | *ROTATE* them | K3 turns the rhythm a step at a time. | turn K3 2; wait 4500 | sound; screen 0 0 30 22; focus K3; callout TURN K3
+  step light | *SWING*, a little | K1 swings the song's eighths: LIGHT. | turn K1 1; wait 3500 | text LITE; sound; focus K1; callout TURN K1
+  step shuffle | A *SHUFFLE* | One more: SHUFFLE, heard within two beats. | turn K1 1; wait 3500 | text SHUF; sound; focus K1; callout TURN K1
+  step hard | *HARD* swing | HARD: the long-short of a C64 shuffle. The BPM stays. | turn K1 1; wait 4500 | text HARD; text 125; sound; focus K1; callout TURN K1
+  step convert | A *.sid* becomes a song | The Library page turns a .sid tune into a song you can edit. | wait 1000 | sound; focus card; callout TUNE.SID <> LIBRARY <> EDITABLE SONG
+  step get-it | Get *SIDOU 1.21* | dsablic.github.io/sidou and github.com/dsablic/sidou/releases | wait 1000 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
