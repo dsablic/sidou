@@ -41,7 +41,7 @@
         }
       ],
       "focus": {
-        "callout": "SETTINGS > BLUETOOTH",
+        "callout": "BLUETOOTH",
         "control": "SAVE"
       },
       "harness": {

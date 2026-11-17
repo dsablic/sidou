@@ -206,8 +206,9 @@ def panel_base(key: tuple) -> Image.Image:
     o = (u(px0), u(py0))
     sc = pixel_scale(8 * k / 0.6)
     small = k < 0.5
+    short_knobs = k < 0.75
     for name, (x, y, rad) in panel.KNOBS.items():
-        t = pixel_text(name if not small else name[:3], sc, (201, 198, 189))
+        t = pixel_text(name if not short_knobs else name[:3], sc, (201, 198, 189))
         px, py = _p(x, y - rad - 20)
         im.alpha_composite(t, (max(0, px - o[0] - t.width // 2), py - o[1]))
     for name, (x, y, ww, hh) in panel.BUTTONS.items():

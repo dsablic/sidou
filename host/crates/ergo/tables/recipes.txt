@@ -273,7 +273,7 @@ journey whats-new | What's new in SIDOU 1.20
   skills SETTINGS; BLUETOOTH KEYBOARD; DEVICES; SCENE; DEMO; SCOPE; RED MOON RITE; art packs; LAB; the MIDI page's WHEEL
   related sidou-intro; shape-in-lab; chord-arpeggio
   art red-moon-rite
-  step keyboard | A *Bluetooth keyboard* | SETTINGS, BLUETOOTH, KEYBOARD: DEVICES lists keyboards nearby. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout SETTINGS > BLUETOOTH
+  step keyboard | A *Bluetooth keyboard* | SETTINGS, BLUETOOTH, KEYBOARD: DEVICES lists keyboards nearby. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices; text SCANNING; focus SAVE; callout BLUETOOTH
   step pair | Paired, kept, *back by itself* | SAVE connects one; SIDOU keeps it and reconnects by itself. | wait 1000 | view devices; focus card; callout DEVICES > SAVE > KEYBOARD MICROKEY AIR
   step demo | SCENE opens on *DEMO* | SCENE opens on DEMO: the logo glows with what you play. | press HOME; wait 500; press HOME; wait 500; select-item SCENE; turn ALGORITHM 1; wait 1500; play 150 C4+E4+G4:4 A3+C4+E4:4 F3+A3+C4:4 G3+B3+D4:4 C4:2 E4:2 G4:2 C5:2 | view scene; sound; focus screen; callout SCENE > DEMO
   step fire | *FIRE* | FIRE: a flame for each voice. | turn SELECT 1; wait 600; play 150 A3+C4+E4:4 F3+A3+C4:4 C4:2 E4:2 G4:2 C5:2 E5:4 C5:4 | view scene; sound; focus screen; callout SELECT > FIRE
