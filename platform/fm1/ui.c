@@ -9,6 +9,9 @@
 #include "settings.h"
 #include "store_fm1.h"
 #include "views.h"
+#if defined(SIDOU_CPU2)
+#include "cpu2.h"
+#endif
 
 #if defined(SIDOU_BLE)
 #include "ble_radio.h"
@@ -200,6 +203,9 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     views_settings(&ui, &persisted);
 #if defined(SIDOU_BLE)
     views_radio_bind(&ui, &radio);
+#endif
+#if defined(SIDOU_CPU2)
+    views_cores_bind(&ui, &cpu2_cores);
 #endif
     views_boot(&ui, !known, home_held);
     last_compose = now_ms;

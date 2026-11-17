@@ -57,6 +57,10 @@ int curtain(const views* v);
 const char* views_bluetooth_mode(const views* v);
 void views_big_menu_compose(screen* s, views* v, menu* m, const char* title, grid* g, uint32_t parts);
 
+#if defined(SIDOU_CPU2)
+int views_status_cores_save(views* v);
+#endif
+
 void views_look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]);
 int views_looks_changed(const views* v, uint32_t blink);
 

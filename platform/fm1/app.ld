@@ -56,6 +56,7 @@ SECTIONS
         *(.text.fm1_cpu1_run .text.fm1_cpu1_wait .text.fm1_cpu1_retire .text.fm1_cpu1_check)
         *(.text.cpu2_core1_run .text.cpu2_core1_wait .text.cpu2_core1_retire)
         *(.text.cpu2_chip_b_away .text.cpu2_chip_b_back .text.cpu2_render_job .text.cpu2_render)
+        *(.text.cpu2_meter_block)
         . = ALIGN(16);
         _rt_end = .;
     } > RAMTEXT AT > XIP

@@ -389,6 +389,9 @@ int global(void* ctx, const screen_event* e) {
     }
     if (e->id == PANEL_BTN_HOME) {
         v->format_arm = 0;
+#if defined(SIDOU_CPU2)
+        v->cores_armed = 0;
+#endif
         v->home_down = 1;
         v->home_at = v->s.now;
         return 1;
@@ -569,6 +572,10 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->route = NULL;
     v->sync = NULL;
     v->radio = NULL;
+#if defined(SIDOU_CPU2)
+    v->cores = NULL;
+    v->cores_armed = 0;
+#endif
     remember(v);
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
@@ -935,6 +942,11 @@ static void settings_save(views* v) {
 }
 
 static void save(views* v, uint32_t held) {
+#if defined(SIDOU_CPU2)
+    if (views_status_cores_save(v)) {
+        return;
+    }
+#endif
     if (learn_view_is_open(&v->learn)) {
         learn_view_save(&v->learn);
         return;

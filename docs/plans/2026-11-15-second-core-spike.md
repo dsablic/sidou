@@ -249,3 +249,11 @@ hold the details.
   RAM, RAMTEXT, image, SRAM-branch, chip B, keys and song gates run on it too (CI's `cpu2` shard).
 - **Still device-only:** the four items above.
 
+
+## The device day (2026-11-17, `cpu2-device`)
+
+The four device-only questions above are [hardware-test §42](../hardware-test.md): the two-core
+build shows them on STATUS's fourth page, CORES (core 1's state and why it is off, its jobs, core
+0's audio time on TIMER4 with chip B on either core, the fault record, `C1_CON` at the boot), and
+SAVE then SAVE AGAIN there lifts the bar and restarts. The design notes ("Second core") hold the
+details; the default image is unchanged.

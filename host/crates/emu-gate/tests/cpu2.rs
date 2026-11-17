@@ -6,15 +6,21 @@ mod common;
 use std::path::PathBuf;
 
 use common::dual::{Core1Fate, Misreads};
+use common::panel::{press, turn, ALGORITHM, HOME, SAVE, SELECT};
 use common::ring::{chip_b_use, note, push, settle, with_b, worst_on_both_chips};
-use common::{run_past_boot, Firmware, Machine, SID_WORST_BLOCK_ONE_CHIP, TAP_PER_SAMPLE};
+use common::{
+    open_status, run_past_boot, top_view, Firmware, Machine, SID_WORST_BLOCK_ONE_CHIP,
+    TAP_PER_SAMPLE,
+};
 use fm1_core::Bus;
+use sidou_sys::{ilp32, GRID_BIG_FIRST, GRID_BIG_PIECES, GRID_COLS};
 
 const CPU2_BUILD: &str = "SIDOU_FM1_CPU2_BUILD";
 const CORE1_LOOP: &str = "fm1_cpu1_main";
 const MAILBOX_REJECTED: u32 = 40;
 const MAILBOX_JOBS: u32 = 48;
 const BAR_BARRED: u32 = 4;
+const FAULT_PC: u32 = 20;
 const SELF_TEST_BLOCKS: u32 = 100;
 
 const SAMPLES_PER_MS: usize = 88;
@@ -82,9 +88,16 @@ fn core1_state(m: &mut Machine, fw: &Firmware) -> Core1State {
 }
 
 fn boot(fw: &Firmware, fate: Core1Fate) -> Machine {
+    boot_after(fw, fate, &[])
+}
+
+fn boot_after(fw: &Firmware, fate: Core1Fate, bar: &[u8]) -> Machine {
     let mut m = Machine::boot(&fw.image);
     if fw.has_symbol(CORE1_LOOP) {
         m.core1.mailbox_loop = fw.function_range(CORE1_LOOP);
+    }
+    for (i, b) in bar.iter().enumerate() {
+        m.soc.write8(fw.symbol("fm1_cpu1_bar") + i as u32, *b);
     }
     m.core1.fate = fate;
     run_past_boot(&mut m, fw);
@@ -464,4 +477,279 @@ fn only_the_two_core_build_has_core_1_its_loop_in_sram_and_its_stacks_in_noinit(
         b.one.image.len()
     );
     assert!(NOINIT.contains(&stacks.start) && stacks.end <= NOINIT.end);
+}
+
+const CORES_PAGE_FROM_THE_FIRST: i32 = -1;
+const CORES_FIRST_ROW: u32 = 5;
+const CORES_LINE_ROWS: u32 = 3;
+const CORES_DETAIL_ROW: u32 = 22;
+const CORES_DETAILS: u32 = 3;
+const CORES_ASK_ROW: u32 = 25;
+const BIG_FIRST_COL: u32 = 2;
+const BIG_LAST_COL: u32 = 26;
+const METER_WINDOW_MS: u64 = 1_200;
+const BAR_BYTES: u32 = 12;
+const PERCENT: f64 = 100.0;
+const CPU_HZ: f64 = 240e6;
+const SAMPLE_RATE: f64 = 44_118.0;
+const METER_TOLERANCE: f64 = 0.1;
+
+#[derive(Debug)]
+struct CoresPage {
+    core1: String,
+    why: String,
+    jobs: u32,
+    chip_b: String,
+    avg: f64,
+    worst: f64,
+    details: Vec<String>,
+    asks: String,
+}
+
+fn grid_cell(m: &mut Machine, fw: &Firmware, field: usize, row: u32, col: u32) -> u8 {
+    m.soc
+        .read8(fw.symbol("cells") + field as u32 + row * GRID_COLS + col)
+}
+
+fn big_row(m: &mut Machine, fw: &Firmware, row: u32) -> String {
+    (BIG_FIRST_COL..=BIG_LAST_COL)
+        .step_by(2)
+        .map(|col| {
+            let piece = grid_cell(m, fw, ilp32::grid::ch, row, col);
+            let big = piece.wrapping_sub(GRID_BIG_FIRST as u8) < GRID_BIG_PIECES as u8;
+            if big {
+                char::from(grid_cell(m, fw, ilp32::grid::src, row, col))
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn small_row(m: &mut Machine, fw: &Firmware, row: u32) -> String {
+    (1..GRID_COLS - 1)
+        .map(|col| char::from(grid_cell(m, fw, ilp32::grid::ch, row, col)))
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn cores_line(m: &mut Machine, fw: &Firmware, line: u32, label: &str) -> String {
+    let text = big_row(m, fw, CORES_FIRST_ROW + line * CORES_LINE_ROWS);
+    text.strip_prefix(label)
+        .unwrap_or_else(|| panic!("the CORES page's line {line} is {text:?}, not {label}"))
+        .trim()
+        .to_string()
+}
+
+fn percent(text: &str) -> f64 {
+    text.trim_end_matches('%')
+        .parse()
+        .unwrap_or_else(|_| panic!("{text:?} is not a percentage"))
+}
+
+fn cores_page(m: &mut Machine, fw: &Firmware) -> CoresPage {
+    CoresPage {
+        core1: cores_line(m, fw, 0, "CORE 1"),
+        why: cores_line(m, fw, 1, "WHY"),
+        jobs: cores_line(m, fw, 2, "JOBS")
+            .parse()
+            .expect("JOBS is a number"),
+        chip_b: cores_line(m, fw, 3, "CHIP B"),
+        avg: percent(&cores_line(m, fw, 4, "AVG")),
+        worst: percent(&cores_line(m, fw, 5, "WORST")),
+        details: (0..CORES_DETAILS)
+            .map(|i| small_row(m, fw, CORES_DETAIL_ROW + i))
+            .collect(),
+        asks: big_row(m, fw, CORES_ASK_ROW),
+    }
+}
+
+fn to_cores_page(m: &mut Machine, fw: &Firmware) -> CoresPage {
+    turn(m, SELECT, CORES_PAGE_FROM_THE_FIRST);
+    m.run_ms(METER_WINDOW_MS);
+    cores_page(m, fw)
+}
+
+fn open_cores(m: &mut Machine, fw: &Firmware) -> CoresPage {
+    open_status(m, fw);
+    to_cores_page(m, fw)
+}
+
+fn both_chips_at_their_worst(m: &mut Machine, fw: &Firmware) {
+    settle(m, fw);
+    push(m, fw, &worst_on_both_chips());
+    chip_b_use(m, fw, true);
+}
+
+fn audio_time_in_the_emulator(m: &Machine, from: usize) -> f64 {
+    let blocks = &m.alnk_blocks[from..];
+    let mean = blocks.iter().sum::<u64>() as f64 / blocks.len() as f64;
+    mean * SAMPLE_RATE / (CPU_HZ * BLOCK_FRAMES) * PERCENT
+}
+
+#[test]
+fn the_cores_page_shows_core_1_running_and_core_0s_audio_time_with_chip_b_on_either_core() {
+    let Some(b) = builds("the CORES page test") else {
+        return;
+    };
+    let fw = &b.two;
+    let mut m = boot(fw, NO_FATE);
+    both_chips_at_their_worst(&mut m, fw);
+    let two = open_cores(&mut m, fw);
+    let from = m.alnk_blocks.len();
+    m.run_ms(METER_WINDOW_MS);
+    let measured = audio_time_in_the_emulator(&m, from);
+    let two = CoresPage {
+        avg: cores_page(&mut m, fw).avg,
+        ..two
+    };
+    turn(&mut m, ALGORITHM, 1);
+    m.run_ms(METER_WINDOW_MS);
+    let one = cores_page(&mut m, fw);
+    m.run_ms(METER_WINDOW_MS);
+    let one_later = cores_page(&mut m, fw);
+    turn(&mut m, ALGORITHM, 1);
+    m.run_ms(METER_WINDOW_MS);
+    let back = cores_page(&mut m, fw);
+    println!(
+        "two cores {two:?}\none core {one:?}\nback {back:?}\nthe emulator's own count: {measured:.1} %"
+    );
+    assert_eq!(
+        (two.core1.as_str(), two.why.as_str(), two.chip_b.as_str()),
+        ("RUNNING", "--", "CORE 1")
+    );
+    assert!(two.jobs > SELF_TEST_BLOCKS, "no jobs counted: {two:?}");
+    assert!(
+        (two.avg - measured).abs() <= measured * METER_TOLERANCE,
+        "the page's AVG {} % against the emulator's {measured:.1} %",
+        two.avg
+    );
+    assert!(two.avg <= two.worst, "{two:?}");
+    assert_eq!(
+        (one.core1.as_str(), one.chip_b.as_str()),
+        ("RUNNING", "CORE 0")
+    );
+    assert_eq!(one_later.jobs, one.jobs, "core 1 still gets jobs on CORE 0");
+    assert!(
+        one.avg > two.avg + 1.0,
+        "chip B on core 0 costs the audio no more: {} % against {} %",
+        one.avg,
+        two.avg
+    );
+    assert_eq!(back.chip_b, "CORE 1");
+    assert!(
+        back.jobs > one_later.jobs,
+        "core 1 got no jobs back: {back:?}"
+    );
+}
+
+fn fell_back(fw: &Firmware, fate: Core1Fate) -> Machine {
+    let mut m = boot(fw, fate);
+    both_chips_at_their_worst(&mut m, fw);
+    m.run_ms(METER_WINDOW_MS);
+    m
+}
+
+fn bar_of(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
+    let at = fw.symbol("fm1_cpu1_bar");
+    (0..BAR_BYTES).map(|i| m.soc.read8(at + i)).collect()
+}
+
+#[test]
+fn the_cores_page_says_why_core_1_fell_back() {
+    let Some(b) = builds("the CORES page fallback test") else {
+        return;
+    };
+    let fw = &b.two;
+    let fates = [
+        (
+            "MISREAD",
+            misreads(MAILBOX_MISREAD_RATE, SEED, Misreads::Anywhere),
+        ),
+        (
+            "SELF-TEST",
+            misreads(MAILBOX_MISREAD_RATE, SEED, Misreads::InJobs),
+        ),
+        (
+            "LATE",
+            Core1Fate {
+                stalls_after_jobs: Some(CHIP_B_PLAYING_JOBS),
+                ..NO_FATE
+            },
+        ),
+        (
+            "FAULT",
+            Core1Fate {
+                faults_at_fpu: true,
+                ..NO_FATE
+            },
+        ),
+    ];
+    for (why, fate) in fates {
+        let mut m = fell_back(fw, fate);
+        let page = open_cores(&mut m, fw);
+        let fault_pc = m.soc.read32(fw.symbol("fm1_cpu1_fault") + FAULT_PC);
+        println!("{why}: {page:?}");
+        assert_eq!(
+            (page.core1.as_str(), page.why.as_str(), page.chip_b.as_str()),
+            ("OFF", why, "CORE 0")
+        );
+        let pc_line = format!("PC {fault_pc:08X}");
+        assert_eq!(
+            page.details[1].starts_with(&pc_line),
+            why == "FAULT",
+            "the fault's line: {:?}",
+            page.details
+        );
+        let bar = bar_of(&mut m, fw);
+        let mut next = boot_after(fw, NO_FATE, &bar);
+        let barred = open_cores(&mut next, fw);
+        assert_eq!(
+            (barred.core1.as_str(), barred.why.as_str()),
+            ("OFF", "BARRED"),
+            "the boot after {why}"
+        );
+    }
+}
+
+#[test]
+fn save_then_save_again_on_the_cores_page_lifts_the_bar_and_restarts_on_two_cores() {
+    let Some(b) = builds("the CORES page restart test") else {
+        return;
+    };
+    let fw = &b.two;
+    let mut fallen = fell_back(
+        fw,
+        Core1Fate {
+            faults_at_fpu: true,
+            ..NO_FATE
+        },
+    );
+    let bar = bar_of(&mut fallen, fw);
+    let mut m = boot_after(fw, NO_FATE, &bar);
+    assert_eq!(open_cores(&mut m, fw).why, "BARRED");
+    press(&mut m, SAVE);
+    m.run_ms(METER_WINDOW_MS);
+    assert_eq!(cores_page(&mut m, fw).asks, "SAVE AGAIN");
+    press(&mut m, HOME);
+    m.run_ms(METER_WINDOW_MS);
+    assert!(m.resets.is_empty(), "HOME restarted it");
+    assert_eq!(
+        top_view(&mut m, fw),
+        fw.symbol("views_menu"),
+        "HOME left STATUS"
+    );
+    turn(&mut m, ALGORITHM, 1);
+    m.run_ms(METER_WINDOW_MS);
+    let page = to_cores_page(&mut m, fw);
+    assert_eq!((page.why.as_str(), page.asks.as_str()), ("BARRED", ""));
+    press(&mut m, SAVE);
+    press(&mut m, SAVE);
+    assert_eq!(m.resets.len(), 1, "SAVE, SAVE AGAIN did not restart");
+    run_past_boot(&mut m, fw);
+    let page = open_cores(&mut m, fw);
+    assert_eq!((page.core1.as_str(), page.why.as_str()), ("RUNNING", "--"));
 }
