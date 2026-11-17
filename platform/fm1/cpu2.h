@@ -25,6 +25,7 @@ typedef struct {
 } cpu2_core1;
 void cpu2_core1_state(cpu2_core1* out);
 void cpu2_core1_unbar(void);
+void cpu2_meter_clear(void);
 void cpu2_meter_block(uint32_t ticks);
 extern const views_cores cpu2_cores;
 

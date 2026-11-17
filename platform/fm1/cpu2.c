@@ -20,11 +20,11 @@ typedef struct {
     scope* tap;
 } cpu2_block;
 
-static cpu2_block chip_b_block __attribute__((aligned(32)));
+static cpu2_block chip_b_block __attribute__((aligned(32), section(".noinit")));
 static uint8_t chip_b_on_core0;
 static struct {
     uint32_t sum, blocks, window, worst, seq;
-} meter;
+} meter __attribute__((section(".noinit")));
 
 static const uint8_t SELF_TEST_PATCH[][2] = {
     {0x00, 0xd6}, {0x01, 0x1c}, {0x02, 0x00}, {0x03, 0x08}, {0x05, 0x09}, {0x06, 0xf5},
@@ -45,6 +45,10 @@ static void cpu2_render(sid* chip, int16_t* out, scope* tap) {
 static void cpu2_render_job(uint32_t arg) {
     const cpu2_block* b = (const cpu2_block*)(uintptr_t)arg;
     cpu2_render(b->chip, b->out, b->tap);
+}
+
+void cpu2_meter_clear(void) {
+    meter = (__typeof__(meter)){0};
 }
 
 void cpu2_meter_block(uint32_t ticks) {

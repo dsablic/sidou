@@ -198,6 +198,7 @@ void cpu2_core1_state(cpu2_core1* out) {
 
 static void cpu2_boot(uint32_t c1_con) {
     c1_con_at_boot = c1_con;
+    cpu2_meter_clear();
     fm1_cpu1_bar_build(SIDOU_CPU2_BUILD);
     if (fm1_cpu1_start() == 0) {
         cpu2_self_test(audio_boot_scratch());
