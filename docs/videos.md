@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.20.0 release](https://github.com/dsablic/sidou/releases/tag/v1.20.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.21.0 release](https://github.com/dsablic/sidou/releases/tag/v1.21.0).
 
-- [SIDOU in 78 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.20](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [SIDOU in 80 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
+- [What's new in 1.21](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -48,7 +48,7 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 80.3 s, 8.6 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.20 highlights: BLUETOOTH KEYBOARD in SETTINGS and DEVICES scanning, a card for pairing and reconnecting; SCENE's DEMO, FIRE and PLASMA to chords, RED MOON RITE with its art from the store fighting to the keys, a card for the art pack builder; LAB's glowing card; the MIDI page's WHEEL on VIBRATO with the mod wheel moved | 63.4 s, 7.0 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.21 highlights: STEP's GROOVE page on SIDOU LOOP, a snare's RATCHET at x3, the bass lane's HITS (7/16) and ROTATE, SWING from STRAIGHT through LIGHT and SHUFFLE to HARD heard while it plays, and a card for the Library page turning a .sid tune into a song | 48.3 s, 4.3 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 30.9 s, 2.6 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 32.7 s, 2.4 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 66.4 s, 5.0 MB |

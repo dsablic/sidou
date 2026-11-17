@@ -7,18 +7,6 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## Next: groove
-
-What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
-1.20 leaves:
-
-- **Swing:** a song's shuffle on a knob (GoatTracker's funktempo may carry it with no format
-  change). S.
-- **Ratchets in STEP:** a step played 2-4 times in its length, as a lock. S-M.
-- **Euclidean rhythms in DICE:** one more rhythm when DICE rolls a pattern. S.
-- **A `.sid` tune to a SIDOU song on the site:** a C64 tune, RSID included, turned into an
-  editable song with its instruments. Site only. M.
-
 ## 2.0
 
 - **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
@@ -53,6 +41,8 @@ What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, 
 
 **Songs**
 
+- **RSID tunes into songs on the site:** 1.21's converter takes PSID tunes; an RSID tune needs
+  the C64's interrupts emulated around SIDOU's 6502. Site only. M.
 - **Combined drum-and-bass instruments** from DICE: a drum's first frames, then the bass's wave
   program, in one instrument (1.5 did the time-shared form). M.
 - **More than 48 keys in the store.** Only if players hit STORE FULL (the starter pack uses 11;
