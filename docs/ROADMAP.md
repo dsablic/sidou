@@ -7,16 +7,7 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## Next: the videos, polished
-
-The owner, 2026-11-16: the how-to videos feel hectic and jerky. A pass on the presentation only
-(tools/videos and the recipes, no firmware): a minimum time on each step by its caption's length,
-a calmer camera (fewer zooms, slower eased moves), 60 fps for the camera and overlays, only
-finished LCD frames (no half-drawn screens), one fixed caption style with fades, callouts that
-glide, crossfaded sound at one loudness. One video before and after first, for the owner; then
-all of them, uploaded to the 1.20 release. M.
-
-## Then: groove
+## Next: groove
 
 What the grooveboxes on the FM-1 (SLOOP, JIANT, Hortator) have and SIDOU lacks, sized to the room
 1.20 leaves:
