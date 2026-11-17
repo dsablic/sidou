@@ -1,0 +1,9 @@
+{
+  "seconds": 10,
+  "callsADigest": 50,
+  "tunes": [
+    { "file": "assets/starter/sidou-loop.sid", "song": 1, "calls": 502, "writes": 7008, "digests": ["fc57c3607fb2af73", "0d7247d16a521e74", "62c1fde7ef94b9a3", "603f980be0309a10", "9c1f1c3400735ba6", "566c5a8a04abec91", "b2db3e2b61e79543", "b8d8b07f747148ca", "3338ea7988ec2c49", "ba550b43b985614c", "134613e7256a30e0"] },
+    { "file": "assets/starter/2xtest.sid", "song": 1, "calls": 1003, "writes": 15056, "digests": ["84f7d98637c0e827", "dab5ba404beacfe9", "774196bae62c7349", "a461aadfb1a5fc75", "10e3d00075d3703c", "9e57936967c02072", "07e0bb1eed5e91aa", "2c22db1acf5cea7d", "41342a6f4b1e9837", "6ab515ed5fc45a7a", "b051cf5be23fb8d6", "7a1fcdc0a0579d73", "322f1b3f64f4ddb7", "dea33f52c1bbfe1e", "4740db670ba298fe", "3cc1f2fddfdd9a47", "88b278ef95e93b28", "09d3230f4170d64b", "bba6dacabcd6ef04", "74036fd9b0d55da3", "9465eceae593130c"] },
+    { "file": "assets/starter/dojo.sid", "song": 2, "calls": 502, "writes": 7540, "digests": ["35eee30fa5210017", "5497950e18b8954d", "63a743950e5dfc0b", "bd64dda7e4433c1f", "b61342b7e56c9e8f", "ea4b0e2e1302bbcb", "f0665d361482ea82", "50f298519f751bfd", "fba035acc212d97e", "a8b2d54cacd18026", "803ae437c79475bb"] }
+  ]
+}

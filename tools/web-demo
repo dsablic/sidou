@@ -103,6 +103,8 @@ mkdir -p "$out/art" && cp "$root/assets/art/red-moon-rite.sidart" "$out/art/"
 cp "$root/tests/golden/scene/rmr-trace.tsv" "$out/art/rmr-pattern.tsv"
 say "the art pack builder's RED MOON RITE (tools/wasm-art)"
 "$root/tools/wasm-art" "$out/sidou-art.wasm"
+say "the .sid converter's 6502 (tools/wasm-tune)"
+"$root/tools/wasm-tune" "$out/sidou-tune.wasm"
 say "RED MOON RITE's art in a fresh browser's store (sidou-sysex art --seed)"
 (cd "$root/host" && cargo run --locked --release -p sidou-sysex -- art ../assets/art/red-moon-rite.sidart --seed "$out/store-seed.bin")
 mkdir -p "$out/videos" && cp "$root"/docs/media/videos/*.webp "$out/videos/" && cp "$root/web/videos.html" "$root/web/cheatsheet.html" "$out/"
