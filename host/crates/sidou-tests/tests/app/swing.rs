@@ -327,13 +327,14 @@ fn straight_gives_the_song_back_and_the_playing_song_its_even_rows_at_once() {
     {
         assert_eq!(pattern(&s, p), pattern(&original, p), "pattern {p}");
     }
-    assert_eq!(
-        s.calls()
-            .into_iter()
-            .filter(|c| matches!(c, Call::Funktempo(..)))
-            .collect::<Vec<_>>(),
-        [Call::Funktempo(6, 6)],
-        "the player's funktempo is even at once"
+    let sent: Vec<Call> = s
+        .calls()
+        .into_iter()
+        .filter(|c| matches!(c, Call::Funktempo(..)))
+        .collect();
+    assert!(
+        !sent.is_empty() && sent.iter().all(|c| *c == Call::Funktempo(6, 6)),
+        "the player's funktempo is even at once: {sent:?}"
     );
 }
 

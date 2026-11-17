@@ -501,47 +501,243 @@ fn open_groove(m: &mut Machine) {
 }
 
 #[test]
-fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_host() {
+fn shuffle_set_on_step_is_voice_1s_funktempo_and_plays_bit_exact_with_the_host() {
     let Some((_, fw)) = build_and_firmware("the STEP swing test") else {
         return;
     };
-    const SHUFFLE_AT_SPEED_6: [u8; 2] = [4, 8];
+    const SHUFFLE_AT_SPEED_6: [[u8; 2]; 2] = [[8, 4], [4, 8]];
     const STRAIGHT_TO_SHUFFLE: i32 = 2;
     const CMD_FUNKTEMPO: u8 = 0x0e;
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
     let mut expected = region_song(&mut m, &fw);
-    let pattern = first_pattern_of_voice(&expected, 0);
-    let mut first = cell_of(&expected, pattern, 0);
+    let first = first_pattern_of_voice(&expected, 0);
     assert_eq!(
-        first[2], 0,
+        cell_of(&expected, first, 0)[2],
+        0,
         "the first row plays at speed 6 with no command"
     );
     open_groove(&mut m);
     m.turn(K1, STRAIGHT_TO_SHUFFLE);
-    m.run_ms(UI_WAIT_MS);
+    m.run_ms(SWING_WRITTEN_MS);
     let end = unsafe { lab_song_table_end(expected.ptr(), GT2_STBL) } as usize;
-    for (side, value) in SHUFFLE_AT_SPEED_6.into_iter().enumerate() {
-        let mut edit = gt2_edit::default();
-        unsafe {
-            let song = expected.ptr_mut();
-            assert_eq!(
-                gt2_set_table(song, GT2_STBL, end as u32, side as u32, value, &mut edit),
-                GT2_OK
-            );
-            gt2_edit_commit(song, &edit);
+    for (k, pair) in SHUFFLE_AT_SPEED_6.into_iter().enumerate() {
+        for (side, value) in pair.into_iter().enumerate() {
+            let mut edit = gt2_edit::default();
+            unsafe {
+                let song = expected.ptr_mut();
+                assert_eq!(
+                    gt2_set_table(
+                        song,
+                        GT2_STBL,
+                        (end + k) as u32,
+                        side as u32,
+                        value,
+                        &mut edit
+                    ),
+                    GT2_OK
+                );
+                gt2_edit_commit(song, &edit);
+            }
         }
     }
-    first[2] = CMD_FUNKTEMPO;
-    first[3] = (end + 1) as u8;
-    set_cell(&mut expected, pattern, 0, first);
+    let (long_first, short_first) = ((end + 1) as u8, (end + 2) as u8);
+    let voice_1: Vec<u32> = (0..LOOP_PATTERNS).map(|k| first + k).collect();
+    for &p in &voice_1 {
+        for row in 0..BAR_ROWS {
+            let mut cell = cell_of(&expected, p, row);
+            let data = match row % 4 {
+                0 if p == first && row == 0 => long_first,
+                1 => long_first,
+                3 => short_first,
+                _ => continue,
+            };
+            cell[2] = CMD_FUNKTEMPO;
+            cell[3] = data;
+            set_cell(&mut expected, p, row, cell);
+        }
+    }
     let actual = region_song(&mut m, &fw);
     assert_eq!(
         actual.write(true),
         expected.write(true),
-        "the panel wrote the shuffle into the song"
+        "the panel wrote SIDOU LOOP's eighth-note shuffle into voice 1's patterns"
     );
     check_song("shuffled song", &fw, Some(&actual));
+}
+
+const SWING_WRITTEN_MS: u64 = 3000;
+const LOOP_PATTERNS: u32 = 4;
+const BASS: u8 = 1;
+const LISTEN_MS: u64 = 2000;
+const HEARD_WITHIN_MS: u64 = 1200;
+
+struct RowTicks {
+    tail: u32,
+}
+
+impl RowTicks {
+    fn new(m: &mut Machine, fw: &Firmware) -> Self {
+        RowTicks {
+            tail: field32(m, fw, ilp32::song_ctl::ev_head),
+        }
+    }
+
+    fn read(&mut self, m: &mut Machine, fw: &Firmware, channel: u8) -> Vec<(u32, u8)> {
+        let head = field32(m, fw, ilp32::song_ctl::ev_head);
+        assert!(
+            head.wrapping_sub(self.tail) <= SONG_EVENT_RING,
+            "the event ring overran"
+        );
+        let mut out = Vec::new();
+        while self.tail != head {
+            let e = transport(fw)
+                + ilp32::song_ctl::ev as u32
+                + (self.tail % SONG_EVENT_RING) * ilp32::song_event::SIZE as u32;
+            let flags = m.soc.read8(e + ilp32::song_event::flags as u32);
+            if u32::from(flags) & GT2_EV_ROW != 0 && flags >> 5 == channel {
+                out.push((
+                    u32::from(m.soc.read16(e + ilp32::song_event::frame as u32)),
+                    m.soc.read8(e + ilp32::song_event::row as u32),
+                ));
+            }
+            self.tail = self.tail.wrapping_add(1);
+        }
+        out
+    }
+
+    fn listen(
+        &mut self,
+        m: &mut Machine,
+        fw: &Firmware,
+        channel: u8,
+        ms: u64,
+    ) -> Vec<(u64, u32, u8)> {
+        const STEP_MS: u64 = 100;
+        let mut out = Vec::new();
+        for _ in 0..ms / STEP_MS {
+            m.run_ms(STEP_MS);
+            let now = m.ms();
+            out.extend(
+                self.read(m, fw, channel)
+                    .into_iter()
+                    .map(|(call, row)| (now, call, row)),
+            );
+        }
+        out
+    }
+}
+
+fn offbeat_delays(rows: &[(u64, u32, u8)], offbeat: u8) -> Vec<(u64, u32)> {
+    rows.windows(usize::from(offbeat) + 1)
+        .filter(|w| w[0].2 % 4 == 0 && w[usize::from(offbeat)].2 == w[0].2 + offbeat)
+        .map(|w| {
+            (
+                w[0].0,
+                w[usize::from(offbeat)].1.wrapping_sub(w[0].1) & 0xffff,
+            )
+        })
+        .collect()
+}
+
+fn all_at(heard: &[(u64, u32)], want: u32) -> bool {
+    !heard.is_empty() && heard.iter().all(|h| h.1 == want)
+}
+
+fn heard_after(heard: &[(u64, u32)], want: u32, turned: u64) -> Option<u64> {
+    let first = heard.iter().position(|h| h.1 == want)?;
+    all_at(&heard[first..], want).then(|| heard[first].0 - turned)
+}
+
+fn swing_heard_on_step(
+    name: &str,
+    song: Option<&Song>,
+    channel: u8,
+    offbeat: u8,
+    frames: [u32; 4],
+) {
+    let Some((_, fw)) = build_and_firmware(name) else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    if let Some(s) = song {
+        inject(&mut m, &fw, s);
+    }
+    press_up_at_once(&mut m, PLAY);
+    m.run_ms(500);
+    open_groove(&mut m);
+    let mut ticks = RowTicks::new(&mut m, &fw);
+    let heard = offbeat_delays(&ticks.listen(&mut m, &fw, channel, LISTEN_MS), offbeat);
+    assert!(all_at(&heard, frames[0]), "STRAIGHT: {heard:?}");
+    let turn = |m: &mut Machine, steps: i32, level: usize, ticks: &mut RowTicks| {
+        let at = m.ms();
+        m.turn(K1, steps);
+        let heard = offbeat_delays(&ticks.listen(m, &fw, channel, LISTEN_MS), offbeat);
+        let first = heard_after(&heard, frames[level], at);
+        println!(
+            "{name}: level {level}: offbeat {} frames after the beat from {first:?} ms after the turn",
+            frames[level]
+        );
+        assert!(
+            first.is_some_and(|ms| ms <= HEARD_WITHIN_MS),
+            "level {level}: {heard:?}"
+        );
+    };
+    for level in 1..frames.len() {
+        turn(&mut m, 1, level, &mut ticks);
+    }
+    press_up_at_once(&mut m, PLAY);
+    m.run_ms(300);
+    press_up_at_once(&mut m, PLAY);
+    m.run_ms(500);
+    let _ = ticks.read(&mut m, &fw, channel);
+    let heard = offbeat_delays(&ticks.listen(&mut m, &fw, channel, LISTEN_MS), offbeat);
+    assert!(all_at(&heard, frames[3]), "HARD after a restart: {heard:?}");
+    turn(&mut m, -3, 0, &mut ticks);
+}
+
+#[test]
+fn every_swing_level_moves_sidou_loops_offbeat_eighths_at_once_and_straight_brings_them_back() {
+    const OFFBEAT_EIGHTH: u8 = 2;
+    swing_heard_on_step(
+        "the SIDOU LOOP swing timing test",
+        None,
+        BASS,
+        OFFBEAT_EIGHTH,
+        [12, 14, 16, 18],
+    );
+}
+
+#[test]
+fn every_swing_level_moves_a_sixteenth_songs_offbeat_sixteenths_at_once() {
+    const OFFBEAT_SIXTEENTH: u8 = 1;
+    let mut spec = sidou_tests::song::SngSpec::new();
+    let mut ins = [0u8; 25];
+    ins[..9].copy_from_slice(&[0x09, 0xa0, 1, 1, 0, 0, 0, 2, 0x09]);
+    spec.instr = vec![ins];
+    spec.tables = vec![
+        vec![(0x41, 0x00), (0xff, 0x00)],
+        vec![(0x88, 0x00), (0xff, 0x00)],
+        vec![],
+        vec![],
+    ];
+    let sixteenths: Vec<[u8; 4]> = (0..BAR_ROWS)
+        .map(|r| [GT2_FIRSTNOTE as u8 + C3 + (r % 2) as u8 * 12, 1, 0, 0])
+        .collect();
+    let rest = vec![sidou_tests::song::REST; BAR_ROWS as usize];
+    spec.patterns = vec![sixteenths, rest.clone(), rest]
+        .into_iter()
+        .map(|p| (p, [0xff, 0, 0, 0]))
+        .collect();
+    let song = device_song(&spec.encode(), None);
+    swing_heard_on_step(
+        "the sixteenth swing timing test",
+        Some(&song),
+        0,
+        OFFBEAT_SIXTEENTH,
+        [6, 7, 8, 9],
+    );
 }
 
 #[test]

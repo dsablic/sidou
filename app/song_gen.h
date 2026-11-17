@@ -45,7 +45,7 @@ typedef struct {
     uint8_t swing_short, swing_long, swing_eighths, swing_first, swing_sub, swing_poke;
     uint8_t swing_first_data;
     uint8_t swing_data[3];
-    uint8_t swing_voice_1[SONG_SWING_SET_BYTES];
+    uint8_t swing_from, swing_from_row, swing_step;
     uint16_t swing_sum;
     uint8_t euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];

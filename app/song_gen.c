@@ -676,7 +676,7 @@ void song_gen_drain(song_view* sv, screen* s) {
     if (g->run) {
         run_now(s, sv);
     }
-    if (!g->run && g->swing_poke) {
+    if (g->swing_poke) {
         swing_live(sv);
     }
 }
@@ -860,7 +860,12 @@ static void swing_apply(song_view* sv, screen* s) {
                                  song_swing_eighths(sv->song, g->swing_sub));
     g->swing_first = (uint8_t)p;
     g->swing_sum = (uint16_t)sum;
-    song_swing_played(sv->song, g->swing_sub, SONG_SWING_VOICE_1, g->swing_voice_1);
+    uint32_t order_pos = 0u, row = 0u;
+    if (song_view_playing(sv)) {
+        song_view_position(sv, 0u, &order_pos, &row);
+    }
+    g->swing_from = (uint8_t)order_pos;
+    g->swing_from_row = (uint8_t)row;
     uint32_t n = 0u;
     for (uint32_t k = 0; k < SWING_PAIRS; k++) {
         if (swing_needs(g, k) && swing_row(sv, k) == GT2_TABLE_ROWS) {
@@ -906,8 +911,8 @@ static void swing_start(song_view* sv, screen* s) {
     g->swing_data[SONG_SWING_LONG_FIRST] = straight ? 0u : data[0];
     g->swing_data[SONG_SWING_SHORT_FIRST] = data[1];
     g->swing_poke = (uint8_t)straight;
-    g->pattern = 0u;
-    g->row = 0u;
+    g->swing_step = 0u;
+    g->row = g->swing_from_row;
     g->run = SONG_GEN_SWING;
 }
 
@@ -927,13 +932,24 @@ static int swing_cell(const song_view* sv, uint32_t r, const uint8_t cell[4], ui
     return (data || cell[2]) && memcmp(to, cell, 4u);
 }
 
+static uint32_t swing_rows(const song_view* sv, const uint8_t* order, uint32_t entries) {
+    const song_gen* g = &sv->gen;
+    uint32_t at = (g->swing_from + g->swing_step) % entries;
+    uint32_t p = order[at];
+    if (p >= GT2_MAX_PATTERNS || !gt2_pattern_data(sv->song, p)) {
+        return 0u;
+    }
+    uint32_t rows = gt2_pattern_rows(sv->song, p) - 1u;
+    return g->swing_step == entries && g->swing_from_row < rows ? g->swing_from_row : rows;
+}
+
 static void swing_run(screen* s, song_view* sv) {
     song_gen* g = &sv->gen;
-    for (; g->pattern < GT2_MAX_PATTERNS; g->pattern++, g->row = 0u) {
-        if (!song_swing_in(g->swing_voice_1, g->pattern) || !gt2_pattern_data(sv->song, g->pattern)) {
-            continue;
-        }
-        uint32_t rows = gt2_pattern_rows(sv->song, g->pattern) - 1u;
+    const uint8_t* order = gt2_order_data(sv->song, g->swing_sub, 0u);
+    uint32_t entries = order ? gt2_order_entries(sv->song, g->swing_sub, 0u) : 0u;
+    for (; entries && g->swing_step <= entries; g->swing_step++, g->row = 0u) {
+        uint32_t rows = swing_rows(sv, order, entries);
+        g->pattern = order[(g->swing_from + g->swing_step) % entries];
         while (g->row < rows) {
             uint32_t r = g->row;
             uint8_t cell[4], to[4];
@@ -952,6 +968,7 @@ static void swing_run(screen* s, song_view* sv) {
         }
     }
     g->run = 0u;
+    g->swing_poke = (uint8_t)swing_straight(g);
 }
 
 static void swing_live(song_view* sv) {
