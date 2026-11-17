@@ -5,7 +5,14 @@
 #include <string.h>
 
 #include "far_call.h"
+#include "fm1_time.h"
 #include "sid/sid_osc.h"
+
+#define CPU2_METER_BLOCKS 345u
+#define CPU2_BLOCK_TICKS_X10 \
+    ((uint32_t)((uint64_t)AUDIO_HALF_FRAMES * FM1_TICKS_PER_US * 10000000u / AUDIO_SAMPLE_RATE))
+#define CPU2_TICKS_SHOWN_MAX 400000u
+#define CPU2_HEX_DIGITS 8u
 
 typedef struct {
     sid* chip;
@@ -14,6 +21,10 @@ typedef struct {
 } cpu2_block;
 
 static cpu2_block chip_b_block __attribute__((aligned(32)));
+static uint8_t chip_b_on_core0;
+static struct {
+    uint32_t sum, blocks, window, worst, seq;
+} meter;
 
 static const uint8_t SELF_TEST_PATCH[][2] = {
     {0x00, 0xd6}, {0x01, 0x1c}, {0x02, 0x00}, {0x03, 0x08}, {0x05, 0x09}, {0x06, 0xf5},
@@ -36,7 +47,23 @@ static void cpu2_render_job(uint32_t arg) {
     cpu2_render(b->chip, b->out, b->tap);
 }
 
+void cpu2_meter_block(uint32_t ticks) {
+    meter.sum += ticks;
+    if (ticks > meter.worst) {
+        meter.worst = ticks;
+    }
+    if (++meter.blocks == CPU2_METER_BLOCKS) {
+        meter.window = meter.sum;
+        meter.sum = 0;
+        meter.blocks = 0;
+        meter.seq++;
+    }
+}
+
 int cpu2_chip_b_away(sid* b, int16_t* out, scope* tap) {
+    if (chip_b_on_core0) {
+        return 0;
+    }
     chip_b_block.chip = b;
     chip_b_block.out = out;
     chip_b_block.tap = tap;
@@ -83,3 +110,54 @@ void cpu2_self_test(sid pair[2]) {
     }
     memset(pair, 0, 2u * sizeof(sid));
 }
+
+static uint16_t tenths_of_a_block(uint32_t ticks) {
+    uint32_t shown = ticks < CPU2_TICKS_SHOWN_MAX ? ticks : CPU2_TICKS_SHOWN_MAX;
+    return (uint16_t)(shown * 10000u / CPU2_BLOCK_TICKS_X10);
+}
+
+static char* put_text(char* at, const char* s) {
+    while (*s) {
+        *at++ = *s++;
+    }
+    *at = 0;
+    return at;
+}
+
+static char* put_hex(char* at, uint32_t v) {
+    for (uint32_t i = CPU2_HEX_DIGITS; i-- > 0; v >>= 4) {
+        at[i] = "0123456789ABCDEF"[v & 15u];
+    }
+    at[CPU2_HEX_DIGITS] = 0;
+    return at + CPU2_HEX_DIGITS;
+}
+
+static void fault_lines(char detail[][VIEWS_CORES_DETAIL], const cpu2_core1* c) {
+    put_hex(put_text(put_hex(put_text(detail[1], "PC "), c->fault_pc), " DBG "), c->fault_dbg);
+    put_hex(put_text(put_text(put_text(detail[2], "CORE "), c->fault_cpu ? "1" : "0"), " EMU "),
+            c->fault_emu);
+}
+
+static void cores_report(views_cores_report* out) {
+    cpu2_core1 c;
+    cpu2_core1_state(&c);
+    memset(out, 0, sizeof *out);
+    out->seq = meter.seq;
+    out->jobs = c.jobs;
+    out->audio_avg = tenths_of_a_block(meter.window / CPU2_METER_BLOCKS);
+    out->audio_worst = tenths_of_a_block(meter.worst);
+    out->running = c.on;
+    out->chip_b_core = (uint8_t)(c.on && !chip_b_on_core0);
+    put_text(out->why, c.why);
+    put_hex(put_text(out->detail[0], "C1_CON AT BOOT "), c.con_at_boot);
+    if (c.faulted) {
+        fault_lines(out->detail, &c);
+    }
+}
+
+static void cores_chip_b(uint32_t core) {
+    chip_b_on_core0 = (uint8_t)(core == 0u);
+    meter.worst = 0;
+}
+
+const views_cores cpu2_cores = {cores_report, cores_chip_b, cpu2_core1_unbar};

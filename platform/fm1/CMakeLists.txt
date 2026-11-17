@@ -51,6 +51,7 @@ if(SIDOU_CPU2)
     string(SHA1 cpu2_build "SIDOU ${PROJECT_VERSION} ${SIDOU_PRODUCT} SIDOU_CPU2")
     string(SUBSTRING "${cpu2_build}" 0 8 cpu2_build)
     target_compile_definitions(${t} PRIVATE SIDOU_CPU2=1)
+    target_compile_definitions(sidou_live PRIVATE SIDOU_CPU2=1)
     set_property(SOURCE main.c APPEND PROPERTY COMPILE_DEFINITIONS FM1_CPU1=1
         FM1_CPU1_FALLBACK=1 FM1_CPU1_TIMEOUT_US=1000u SIDOU_CPU2_BUILD=0x${cpu2_build}u)
 endif()
