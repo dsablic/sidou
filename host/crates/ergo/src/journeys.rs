@@ -1538,7 +1538,8 @@ pub fn run_journey(
         if let Some(c) = &s.caption {
             marks.push((shown_from, c.clone()));
         }
-        if capture_full {
+        let at_power_on = j.poweron && i == 0;
+        if capture_full && !at_power_on {
             d.run(crate::capture::LEAD_IN_MS);
         }
         let (r, cap) = run_step(

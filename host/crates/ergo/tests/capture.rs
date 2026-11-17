@@ -10,6 +10,9 @@ const SHORT: &str = "journey short | Short\n\
   step turn | Turn K1 | Turn K1 to open the filter | turn K1 -4 | popup\n\
   step note | Play | Play a note | note A4 200 | sound\n";
 
+const POWER_ON: &str = "journey boot | Boot | poweron\n\
+  step boot | Boot | HOME held from power-on | hold HOME 2500; wait 3500 | change\n";
+
 const MENUS: &str = "journey menus | Menus\n\
   step keyboard | Keyboard | SETTINGS, BLUETOOTH, DEVICES | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item BLUETOOTH; turn ALGORITHM 2; wait 1500; press SAVE; wait 2000 | view devices\n";
 
@@ -154,4 +157,14 @@ fn walk(d: &std::path::Path) -> Vec<std::path::PathBuf> {
         }
     }
     out
+}
+
+#[test]
+fn a_power_on_journey_acts_at_power_on_with_no_lead_in() {
+    let Some(side) = captured(POWER_ON, &scratch("power-on")) else {
+        return;
+    };
+    let step = &side["steps"][0];
+    let waited = step["inputs"][0]["ms"].as_u64().unwrap() - step["ms"].as_u64().unwrap();
+    assert!(waited < LEAD_IN_MS, "{step}");
 }
