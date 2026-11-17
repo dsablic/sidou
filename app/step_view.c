@@ -153,7 +153,7 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     h[0] = (uint8_t)song_view_playing(sv);
     h[1] = (uint8_t)bpm;
     h[2] = (uint8_t)(bpm >> 8);
-    h[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | song_gen_swing(sv) << 2);
+    h[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | sv->swing << 2);
     h[4] = (uint8_t)v;
     h[5] = (uint8_t)(sv->mute | sv->solo << 3);
     h[6] = lanes[v].pattern;

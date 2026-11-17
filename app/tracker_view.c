@@ -156,7 +156,7 @@ static void head_look(const song_view* sv, uint8_t out[HEAD_LOOK]) {
     out[0] = (uint8_t)song_view_playing(sv);
     out[1] = (uint8_t)bpm;
     out[2] = (uint8_t)(bpm >> 8);
-    out[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | song_gen_swing(sv) << 2);
+    out[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u) | sv->swing << 2);
     out[4] = sv->voice;
     out[5] = (uint8_t)(sv->mute | sv->solo << 3);
     out[6] = lane_of(sv, sv->voice).pattern;

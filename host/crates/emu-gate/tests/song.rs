@@ -505,7 +505,10 @@ fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_
     let mut expected = region_song(&mut m, &fw);
     let pattern = first_pattern_of_voice(&expected, 0);
     let mut first = cell_of(&expected, pattern, 0);
-    assert_eq!(first[2], 0, "the first row plays at speed 6 with no command");
+    assert_eq!(
+        first[2], 0,
+        "the first row plays at speed 6 with no command"
+    );
     press(&mut m, SEQ);
     m.run_ms(500);
     holding(&mut m, EDIT, |m| {
@@ -522,7 +525,14 @@ fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_
             unsafe {
                 let song = expected.ptr_mut();
                 assert_eq!(
-                    gt2_set_table(song, GT2_STBL, (end + k) as u32, side as u32, value, &mut edit),
+                    gt2_set_table(
+                        song,
+                        GT2_STBL,
+                        (end + k) as u32,
+                        side as u32,
+                        value,
+                        &mut edit
+                    ),
                     GT2_OK
                 );
                 gt2_edit_commit(song, &edit);
@@ -568,7 +578,11 @@ fn euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host(
             u8::from((GT2_FIRSTNOTE..=GT2_LASTNOTE).contains(&u32::from(n)))
         })
         .collect();
-    assert_eq!(hits, rhythm[..rows as usize], "E({HITS},{rows}) on voice 1's lane");
+    assert_eq!(
+        hits,
+        rhythm[..rows as usize],
+        "E({HITS},{rows}) on voice 1's lane"
+    );
     check_song("Euclid lane", &fw, Some(&actual));
 }
 

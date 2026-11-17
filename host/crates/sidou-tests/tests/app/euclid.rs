@@ -4,10 +4,10 @@
 use sidou_sys::*;
 
 use crate::song_view::Song;
-use crate::PANEL_ENC_K2;
 use crate::step_view::{
     hold, is_note, locks, loop_song, notes_col, open_step, popup, release, settle, C3,
 };
+use crate::PANEL_ENC_K2;
 
 fn bjorklund(hits: u32, steps: u32) -> String {
     let mut out = [0u8; SONG_GEN_EUCLID_ROWS as usize];

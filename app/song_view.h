@@ -101,6 +101,8 @@ typedef struct song_view {
     uint8_t away;
     uint8_t song_mutes;
     uint8_t instr_from_lab;
+    uint8_t swing, swing_sub, swing_known;
+    uint32_t swing_at;
     song_gen gen;
 } song_view;
 

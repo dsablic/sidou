@@ -40,7 +40,7 @@ typedef struct {
     uint32_t seed;
     uint8_t role, kick, snare, wait;
     uint8_t chord[SONG_GEN_CHORDS];
-    uint8_t swing, swing_turned, swing_refused, swing_wait, swing_due;
+    uint8_t swing, swing_given, swing_turned, swing_refused, swing_wait, swing_due;
     uint8_t swing_pair[2];
     uint8_t euclid_on, euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];

@@ -414,6 +414,8 @@ fn swing_plays_the_odd_rows_short_at_the_same_bpm_and_a_swing_the_bpm_cannot_giv
         swung(250, "light").unwrap_err(),
         "swing: \"light\" does not fit this bpm. Allowed at this bpm: \"straight\", \"shuffle\"."
     );
-    assert!(refusal(&with(GROOVE, r#""bpm": 125"#, r#""swing": "funky""#))
-        .starts_with("swing: \"funky\" is not allowed."));
+    assert!(
+        refusal(&with(GROOVE, r#""bpm": 125"#, r#""swing": "funky""#))
+            .starts_with("swing: \"funky\" is not allowed.")
+    );
 }

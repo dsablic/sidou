@@ -116,7 +116,11 @@ fn every_swing_level_at_speeds_3_to_8_writes_its_funktempo_or_is_refused_in_the_
                     None => assert_eq!(value, format!("NO {level}"), "speed {speed}"),
                 }
                 let (a, b) = funktempo(s).expect("a funktempo");
-                assert_eq!((a, b), kept, "speed {speed} {value}: the last level given plays");
+                assert_eq!(
+                    (a, b),
+                    kept,
+                    "speed {speed} {value}: the last level given plays"
+                );
                 assert_eq!(u32::from(a + b), 2 * u32::from(speed), "the average kept");
             }
         });
@@ -153,12 +157,23 @@ fn a_shuffled_song_plays_its_even_rows_long_as_goattracker_does_and_keeps_it_in_
     let (ours, theirs) = (sidou_calls(&back, calls), reference_calls(&sng, calls));
     assert_eq!(ours, theirs, "GoatTracker plays it the same");
     let rows = row_lengths(&ours);
-    assert_eq!(&rows[ROWS..2 * ROWS], [8, 4].repeat(ROWS / 2), "rows {rows:?}");
+    assert_eq!(
+        &rows[ROWS..2 * ROWS],
+        [8, 4].repeat(ROWS / 2),
+        "rows {rows:?}"
+    );
     let mut reopened = stepping(back);
     assert_eq!(funktempo(&reopened), Some((4, 8)));
-    assert_eq!(reopened.ui.small(1, SONG_VIEW_TEMPO_COL as usize, 4), "SHUF");
+    assert_eq!(
+        reopened.ui.small(1, SONG_VIEW_TEMPO_COL as usize, 4),
+        "SHUF"
+    );
     assert_eq!(swing(&mut reopened, -2).1, "STRAIGHT");
-    assert_eq!(pattern(&reopened, 0)[0], [C3, 1, 0, 0], "straight at 6 is no command");
+    assert_eq!(
+        pattern(&reopened, 0)[0],
+        [C3, 1, 0, 0],
+        "straight at 6 is no command"
+    );
 }
 
 #[test]
@@ -177,4 +192,3 @@ fn tracker_takes_the_same_swing_and_a_first_row_with_another_command_refuses_it(
     assert_eq!(busy.ui.toast().as_deref(), Some("ROW HAS A COMMAND"));
     assert_eq!(pattern(&busy, 0)[0][2..], [CMD_CUTOFF, 0x40]);
 }
-

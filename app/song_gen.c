@@ -815,10 +815,10 @@ static void swing_apply(song_view* sv, screen* s) {
     uint32_t p, sum = 0u, late = 0u;
     uint8_t cell[4];
     const char* why = swing_first(sv, &p, cell, &sum, &late);
-    if (why || !song_swing_gives(sum, g->swing)) {
+    if (why) {
         return;
     }
-    uint32_t right = song_swing_long(sum, g->swing), left = sum - right;
+    uint32_t right = song_swing_long(sum, g->swing_given), left = sum - right;
     uint8_t to[4] = {cell[0], cell[1], 0u, 0u};
     if (left != SWING_NEW_SPEED || right != SWING_NEW_SPEED) {
         to[2] = CMD_FUNKTEMPO;
@@ -867,6 +867,10 @@ static void swing_turn(song_view* sv, screen* s, int32_t steps) {
     g->swing = (uint8_t)want;
     g->swing_turned = 1u;
     g->swing_refused = (uint8_t)!song_swing_gives(sum, (uint32_t)want);
+    if (g->swing_refused) {
+        return;
+    }
+    g->swing_given = (uint8_t)want;
     if (g->swing_wait || g->follow) {
         g->swing_due = 1u;
     } else {
