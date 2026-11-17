@@ -1146,6 +1146,29 @@ fn a_layered_sound_built_on_layers_plays_three_oscillators_on_one_key() {
 }
 
 #[test]
+fn a_layers_level_on_k4_reaches_its_voice_on_the_device() {
+    let Some(fw) = firmware("the LAB level test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_lab(&mut m, &fw);
+    for (enc, detents) in [
+        (SELECT, LAB_PAGE_LAYERS as i32),
+        (ALGORITHM, 2),
+        (K1, 1),
+        (K1 + 3, -60),
+    ] {
+        turn(&mut m, enc, detents);
+    }
+    m.run_ms(60);
+    let s = common::rendered_sid(&mut m, &fw, 0);
+    let cut: Vec<u8> = (0..3)
+        .map(|v| m.soc.read8(s + (ilp32::sid::level_cut + v) as u32))
+        .collect();
+    assert_eq!(cut, [0, 60, 0], "layer 2 at 40 % on voice 2 alone");
+}
+
+#[test]
 fn a_table_built_on_table_steps_the_keys_pitch_on_the_device() {
     let Some(fw) = firmware("the LAB table test") else {
         return;

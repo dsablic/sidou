@@ -113,7 +113,7 @@ static inline void update_mix(sid* s) {
 }
 
 static inline float level_gain(uint32_t cut) {
-    return (float)(SID_LEVEL_FULL - cut) / (float)SID_LEVEL_FULL;
+    return (float)(SID_LEVEL_FULL - cut) * (1.0f / (float)SID_LEVEL_FULL);
 }
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -381,7 +381,7 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
                 } else if (voice == 2u && (s->mode_vol & 0x80u)) {
                     path = 0.0f;
                 }
-                thump_step(s, s->thump * THUMP_GATE * path * level_gain(s->level_cut[voice]) * s->volume *
+                thump_step(s, s->thump * THUMP_GATE * path * s->volume *
                                   THUMP_ATTACK[e->attack] * (float)(255u - e->counter) *
                                   (1.0f / 255.0f));
             }
