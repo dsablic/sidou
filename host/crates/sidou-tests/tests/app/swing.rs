@@ -154,7 +154,7 @@ fn eighths(short: usize, long: usize, row: usize) -> usize {
 }
 
 fn sixteenths(short: usize, long: usize, row: usize) -> usize {
-    if row % 2 == 0 {
+    if row.is_multiple_of(2) {
         long
     } else {
         short

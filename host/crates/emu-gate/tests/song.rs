@@ -630,7 +630,7 @@ impl RowTicks {
 
 fn offbeat_delays(rows: &[(u64, u32, u8)], offbeat: u8) -> Vec<(u64, u32)> {
     rows.windows(usize::from(offbeat) + 1)
-        .filter(|w| w[0].2 % 4 == 0 && w[usize::from(offbeat)].2 == w[0].2 + offbeat)
+        .filter(|w| w[0].2.is_multiple_of(4) && w[usize::from(offbeat)].2 == w[0].2 + offbeat)
         .map(|w| {
             (
                 w[0].0,
