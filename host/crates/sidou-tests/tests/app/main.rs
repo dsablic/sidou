@@ -10,6 +10,7 @@ mod chip_spread;
 mod chip_view;
 mod credits;
 mod demo_song;
+mod euclid;
 mod expression;
 mod font;
 mod fx_live;

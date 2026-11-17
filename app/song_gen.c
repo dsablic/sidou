@@ -417,6 +417,52 @@ static int sweep_row(screen* s, song_view* sv, uint32_t r) {
     return 1;
 }
 
+void song_gen_bjorklund(uint32_t hits, uint32_t steps, uint8_t out[SONG_GEN_EUCLID_ROWS]) {
+    uint8_t a[SONG_GEN_EUCLID_ROWS] = {1u}, b[SONG_GEN_EUCLID_ROWS] = {0u};
+    uint32_t la = 1u, lb = 1u, na = hits, nb = steps - hits;
+    while (nb > 1u && na) {
+        uint8_t was[SONG_GEN_EUCLID_ROWS];
+        memcpy(was, a, la);
+        memcpy(a + la, b, lb);
+        uint32_t lwas = la;
+        la += lb;
+        if (na <= nb) {
+            nb -= na;
+        } else {
+            memcpy(b, was, lwas);
+            lb = lwas;
+            uint32_t pairs = nb;
+            nb = na - nb;
+            na = pairs;
+        }
+    }
+    uint32_t n = 0u;
+    for (uint32_t k = 0; k < na; k++, n += la) {
+        memcpy(out + n, a, la);
+    }
+    for (uint32_t k = 0; k < nb; k++, n += lb) {
+        memcpy(out + n, b, lb);
+    }
+}
+
+static int euclid_hit(const song_gen* g, uint32_t row) {
+    return g->euclid_mask[row / 8u] >> (row % 8u) & 1u;
+}
+
+static int euclid_row(screen* s, song_view* sv, uint32_t r) {
+    uint8_t cell[4];
+    if (!read_cell(sv, r, cell)) {
+        feedback(s, sv);
+        sv->gen.run = 0u;
+        return 1;
+    }
+    if (euclid_hit(&sv->gen, r) == is_note(cell[0])) {
+        return 0;
+    }
+    toggle(s, sv, r, sv->gen.root[sv->gen.voice]);
+    return 1;
+}
+
 static void run_now(screen* s, song_view* sv) {
     song_gen* g = &sv->gen;
     uint32_t rows = sv->song ? gt2_pattern_rows(sv->song, g->pattern) - 1u : 0u;
@@ -444,7 +490,9 @@ static void run_now(screen* s, song_view* sv) {
         while (g->run && g->row < rows) {
             uint32_t r = g->row;
             g->row = (uint8_t)(r + every);
-            if (g->run == SONG_GEN_SWEEP ? sweep_row(s, sv, r) : dice_row(s, sv, r)) {
+            if (g->run == SONG_GEN_SWEEP    ? sweep_row(s, sv, r)
+                : g->run == SONG_GEN_EUCLID ? euclid_row(s, sv, r)
+                                            : dice_row(s, sv, r)) {
                 return;
             }
         }
@@ -537,6 +585,48 @@ void song_gen_start(song_view* sv, screen* s, uint32_t kind, uint32_t pattern, u
               : kind == SONG_GEN_DICE ? (g->role == SONG_ROLE_ARP ? "NEW CHORDS" : "NEW PATTERN")
               : g->up                 ? "SWEEP UP"
                                       : "SWEEP DOWN");
+}
+
+void song_gen_euclid(song_view* sv, screen* s, uint32_t knob, int32_t turn, uint32_t pattern,
+                     uint32_t rows, uint32_t instr) {
+    song_gen* g = &sv->gen;
+    uint32_t v = sv->voice;
+    if (!sv->song || !sv->editor || pattern == 0xffu || !rows || rows > SONG_GEN_EUCLID_ROWS) {
+        feedback(s, sv);
+        return;
+    }
+    if (g->run && g->run != SONG_GEN_EUCLID) {
+        refuse(s, "WAITING");
+        return;
+    }
+    int32_t hits = g->euclid_hits[v], rotate = g->euclid_rotate[v];
+    if (knob == SONG_GEN_EUCLID_HITS) {
+        hits += turn;
+        hits = hits < 0 ? 0 : hits > (int32_t)rows ? (int32_t)rows : hits;
+    } else {
+        rotate = (int32_t)(((uint32_t)rotate + rows + (uint32_t)(turn % (int32_t)rows)) % rows);
+    }
+    g->euclid_hits[v] = (uint8_t)hits;
+    g->euclid_rotate[v] = (uint8_t)(rotate % (int32_t)rows);
+    g->euclid_on |= (uint8_t)(1u << v);
+    uint8_t steps[SONG_GEN_EUCLID_ROWS];
+    song_gen_bjorklund((uint32_t)hits, rows, steps);
+    memset(g->euclid_mask, 0, sizeof g->euclid_mask);
+    for (uint32_t r = 0; r < rows; r++) {
+        uint32_t at = (r + rows - g->euclid_rotate[v]) % rows;
+        g->euclid_mask[r / 8u] |= (uint8_t)(steps[at] << (r % 8u));
+    }
+    g->pattern = (uint8_t)pattern;
+    g->voice = (uint8_t)v;
+    g->instr = (uint8_t)instr;
+    g->legato = (uint8_t)(g->gate ? *g->gate >> v & 1u : 0u);
+    g->row = 0u;
+    g->run = SONG_GEN_EUCLID;
+}
+
+void song_gen_euclid_off(song_view* sv, screen* s) {
+    sv->gen.euclid_on &= (uint8_t)~(1u << sv->voice);
+    refuse(s, "EUCLID OFF");
 }
 
 int song_gen_busy(const song_view* sv) {

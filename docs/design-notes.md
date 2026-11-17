@@ -3400,6 +3400,27 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   song's groove settings are (DICE's density and rhythm). The DICE frame's foot names it
   (`ALG SWING`). The header shows it under the BPM, in the song views' shared `song_view_tempo`.
 
+### Euclid lanes (1.21)
+
+- **The hits are written as real steps** (`SONG_GEN_EUCLID`, a run of `song_gen.c` as DICE's):
+  row by row, a row whose note state differs from the rhythm's is toggled as a step key toggles it
+  (the lane's root and instrument, the gate's key offs); a hit that has a note keeps it. So locks
+  stay on their rows and apply when a hit lands there, the pattern stays GoatTracker data, and
+  undo steps back a cell. Not a play-time mask: that would put SIDOU-only behaviour in the player
+  and GoatTracker would play another rhythm.
+- **Bjorklund** (`song_gen_bjorklund`): the groups algorithm, `1` and `0` groups paired while
+  more than one remainder group is left. Its rhythms start on a hit and are Toussaint's for
+  E(3,8), E(5,8), E(7,16), E(5,12), E(5,16); where an implementation differs only by rotation
+  (E(4,7) `x.x.x.x` here), Bjorklund's own grouping is kept and ROTATE turns it. Three 128-byte
+  buffers on the main loop's stack (8 KiB, half its deepest use).
+- **Over the lane's whole length** (its pattern's rows, as the spec's "0 to the lane's length"),
+  not a 16-step page: an 8- or 16-row pattern gives the classic rhythms, a 64-row one a sparse
+  spread. HITS clamps to 0 and the length, ROTATE wraps.
+- **Controls**: FX held + K1 / K2 (STEP's FX alone does nothing without a held step, and a held
+  step's FX is SLIDE, so FX held with no step is free); off is FX held + LFO, as LFO clears in STEP.
+  HITS and ROTATE live in RAM per lane like the DICE roots, so a song needs no new chunk; the
+  steps carry the rhythm. The HELD STEP frame's foot shows `EUCLID h/n ROT r` while it is on.
+
 ### SONG pages (ORDER, INSTR, TABLE)
 
 - Prospective `edit_guard` requests: `pattern` = subtune/instrument/table, `row` = entry/field/row,

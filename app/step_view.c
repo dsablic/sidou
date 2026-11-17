@@ -16,7 +16,7 @@
 #define LANES_AT (HEAD_AT + HEAD_N)
 #define LANES_N 24u
 #define LOWER_AT (LANES_AT + LANES_N)
-#define LOWER_N (11u + SONG_GEN_LOOK)
+#define LOWER_N (14u + SONG_GEN_LOOK)
 _Static_assert(LOWER_AT + LOWER_N <= STEP_VIEW_LOOK, "the looks fit");
 #define HEAD_ROWS 0x0000001Fu
 #define LANES_ROWS 0x0001FFE0u
@@ -187,7 +187,10 @@ static void look(const step_view* st, uint8_t out[STEP_VIEW_LOOK]) {
     l[8] = lanes[v].pattern;
     l[9] = st->held;
     l[10] = sv->l->theme;
-    (void)song_gen_look(sv, l + 11);
+    l[11] = (uint8_t)(sv->gen.euclid_on >> v & 1u);
+    l[12] = sv->gen.euclid_hits[v];
+    l[13] = sv->gen.euclid_rotate[v];
+    (void)song_gen_look(sv, l + 14);
 }
 
 typedef song_view_canvas canvas;
@@ -441,6 +444,19 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         return;
     }
     frame_box(c, 17u, 22u, frame);
+    if (sv->gen.euclid_on >> v & 1u) {
+        char e[24] = " EUCLID ";
+        uint32_t n = 8u;
+        n += screen_decimal(e + n, sv->gen.euclid_hits[v]);
+        e[n++] = '/';
+        n += screen_decimal(e + n, ln->rows);
+        memcpy(e + n, " ROT ", 5u);
+        n += 5u;
+        n += screen_decimal(e + n, sv->gen.euclid_rotate[v]);
+        e[n++] = ' ';
+        e[n] = 0;
+        grid_canvas_text(c, 2, 22u, e, THEME_ATTR(th, hot));
+    }
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     int held = st->held != STEP_VIEW_NONE && s && ln->pattern != 0xffu && at < ln->rows;
     char title[16] = " HELD STEP ";
@@ -878,6 +894,10 @@ void step_view_buttons(step_view* st, screen* s, uint32_t held) {
     }
 }
 
+static int euclid_held(const step_view* st, const screen_event* e) {
+    return (e->held >> PANEL_BTN_FX & 1u) && st->held == STEP_VIEW_NONE;
+}
+
 static int input(screen* s, void* state, const screen_event* e) {
     step_view* st = state;
     song_view* sv = st->sv;
@@ -885,6 +905,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         return song_view_away_input(s, e);
     }
     int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
+    st->fx_down = (uint8_t)(e->held >> PANEL_BTN_FX & 1u);
     drain(s, st);
     target t;
     if (e->kind == SCREEN_PRESS) {
@@ -899,6 +920,10 @@ static int input(screen* s, void* state, const screen_event* e) {
             return 1;
         }
         lone_due(st, screen_lone_take(&sv->gen.lone));
+        if (e->id == PANEL_BTN_LFO && euclid_held(st, e)) {
+            song_gen_euclid_off(sv, s);
+            return 1;
+        }
         if (song_gen_press(sv, e->id, edit, free)) {
             return 1;
         }
@@ -968,6 +993,15 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     int held = st->held != STEP_VIEW_NONE;
+    if (euclid_held(st, e) && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u)) {
+        lane lanes[SONG_T_VOICES];
+        lanes_of(sv, lanes);
+        const lane* ln = &lanes[sv->voice];
+        song_gen_euclid(sv, s, e->id - PANEL_ENC_K1, e->steps, ln->pattern, ln->rows,
+                        st->instr[sv->voice]);
+        drain(s, st);
+        return 1;
+    }
     if (e->id == 6u) {
         if (held && target_of(st, st->held, &t)) {
             st->touched = st->down;
@@ -1019,6 +1053,16 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
     uint32_t at = page * STEP_VIEW_STEPS + st->held;
     if (song_gen_popup(sv, encoder, name, value, fill, max)) {
         return 1;
+    } else if (st->fx_down && !held && (encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u)) {
+        int hits = encoder == PANEL_ENC_K1;
+        label = hits ? "HITS" : "ROTATE";
+        cur = hits ? sv->gen.euclid_hits[v] : sv->gen.euclid_rotate[v];
+        top = hits ? ln->rows : ln->rows - 1u;
+        uint32_t n = screen_decimal(text, cur);
+        if (hits) {
+            text[n++] = '/';
+            screen_decimal(text + n, ln->rows);
+        }
     } else if (encoder == PANEL_ENC_ALGORITHM && held && sv->song && ln->pattern != 0xffu && at < ln->rows) {
         label = "CHANCE";
         cur = 100u;

@@ -14,6 +14,10 @@ All notable changes are documented here. The format follows
   GoatTracker's funktempo on the song's first row (rows of 7 and 5, 8 and 4, 9 and 3 frames at
   speed 6), so the song swings the same in GoatTracker and the BPM stays; a level a speed cannot
   give is refused in the popup. `sidou-song/1` takes it as `"swing"`.
+- **EUCLID lanes in STEP**: FX held + K1 spreads HITS evenly over the selected lane (Bjorklund's
+  rhythms: E(3,8) `x..x..x.`, E(7,16)), FX held + K2 rotates them, each with the big popup. The
+  hits are written as the lane's steps, so its note, locks and slides apply and GoatTracker plays
+  them; FX + LFO turns EUCLID off and keeps the steps.
 
 ## [1.20.0] - 2026-11-16
 

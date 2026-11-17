@@ -4,8 +4,8 @@
 mod common;
 
 use common::panel::{
-    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, EDIT, GLO, HOME, K1, K4, KEY0,
-    PLAY, REC, SCL, SELECT, SEQ, UI_WAIT_MS,
+    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, EDIT, FX, GLO, HOME, K1, K4,
+    KEY0, PLAY, REC, SCL, SELECT, SEQ, UI_WAIT_MS,
 };
 use common::*;
 use fm1_core::Bus;
@@ -539,6 +539,37 @@ fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_
         "the panel wrote the shuffle into the song"
     );
     check_song("shuffled song", &fw, Some(&actual));
+}
+
+#[test]
+fn euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP Euclid test") else {
+        return;
+    };
+    const HITS: u32 = 5;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let song = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&song, 0);
+    let rows = unsafe { gt2_pattern_rows(song.ptr(), pattern) } - 1;
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, FX, |m| {
+        m.turn(K1, HITS as i32);
+        m.run_ms(300);
+    });
+    m.run_ms(UI_WAIT_MS);
+    let mut rhythm = [0u8; SONG_GEN_EUCLID_ROWS as usize];
+    unsafe { song_gen_bjorklund(HITS, rows, rhythm.as_mut_ptr()) };
+    let actual = region_song(&mut m, &fw);
+    let hits: Vec<u8> = (0..rows)
+        .map(|r| {
+            let n = cell_of(&actual, pattern, r)[0];
+            u8::from((GT2_FIRSTNOTE..=GT2_LASTNOTE).contains(&u32::from(n)))
+        })
+        .collect();
+    assert_eq!(hits, rhythm[..rows as usize], "E({HITS},{rows}) on voice 1's lane");
+    check_song("Euclid lane", &fw, Some(&actual));
 }
 
 #[test]

@@ -322,6 +322,9 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + FX | **SLIDE** on that step, on and off (toast `SLIDE ON`, `SLIDE OFF`; a lock: the yellow notch): the note's gate is held through the rows up to the next note, GoatTracker's hard restart skipped, and the next note glides from this pitch over 4 frames, as a 303's slide |
 | Step held + ENV | **ACCENT** on that step, on and off (`ACCENT ON`, `ACCENT OFF`): for its row the cutoff is 384 higher, the resonance 4 higher (each clamped) and the voice's sustain full |
 | Step held + LFO | clears that step's locks, its chance, its SET, its slide and its accent |
+| FX held + K1 | the selected lane's **EUCLID** **HITS**, 0 to the lane's length: that many hits spread as evenly as the steps allow (Bjorklund's rhythm: 3 of 8 is `x..x..x.`), written as the lane's steps (below, **Euclid**). The popup says `HITS` over `3/8` |
+| FX held + K2 | the lane's EUCLID **ROTATE**: the rhythm a step later a detent, round the lane (`ROTATE` over `1`) |
+| FX held + LFO | the lane's EUCLID off (toast `EUCLID OFF`): the steps stay as they are |
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
@@ -377,6 +380,18 @@ beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 2
 the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
 or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
 STRAIGHT and 2 OCT.
+
+**Euclid** (FX held + K1, K2; STEP only). A turn of HITS or ROTATE turns the selected lane's
+EUCLID on and writes the rhythm into its pattern as ordinary steps, over the whole lane (its
+`STEPS`, up to 128): a step the rhythm hits and that has no note gets the lane's note and
+instrument, a step it misses loses its note, each as a step key's toggle does (the lane's gate
+writes its key offs), and a hit that already has a note keeps it. So the lane's notes, its locks
+(they stay on their steps), SETs and slides apply, the song is plain GoatTracker data, and the
+change is heard on the next pass. While EUCLID is on, the HELD STEP frame's foot says
+`EUCLID 3/8 ROT 1`; FX + LFO turns it off and leaves the steps, and the next turn starts it
+again from the kept HITS and ROTATE. HITS and ROTATE are each lane's, not saved (0 when a song
+loads, as roots are). Bjorklund's rhythms start on a hit: E(5,8) is `x.xx.xx.`, E(7,16)
+`x..x.x.x..x.x.x.`. DICE is unchanged.
 
 **Swing** (EDIT + SCL held + ALGORITHM, in STEP and TRACKER; the frame's foot says `ALG SWING`) is
 the song's shuffle: every second row plays late. It is GoatTracker's **funktempo** (`EXY`), written
