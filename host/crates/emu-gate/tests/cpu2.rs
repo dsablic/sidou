@@ -96,9 +96,8 @@ fn boot_after(fw: &Firmware, fate: Core1Fate, bar: &[u8]) -> Machine {
     if fw.has_symbol(CORE1_LOOP) {
         m.core1.mailbox_loop = fw.function_range(CORE1_LOOP);
     }
-    let at = fw.symbol("fm1_cpu1_bar");
     for (i, b) in bar.iter().enumerate() {
-        m.soc.write8(at + i as u32, *b);
+        m.soc.write8(fw.symbol("fm1_cpu1_bar") + i as u32, *b);
     }
     m.core1.fate = fate;
     run_past_boot(&mut m, fw);
