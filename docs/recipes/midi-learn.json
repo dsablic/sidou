@@ -59,7 +59,7 @@
       "title": "Hold a *chord*"
     },
     {
-      "caption": "Hold SAVE and turn K1: MIDI LEARN opens and waits for a CC. The cutoff does not move.",
+      "caption": "Hold SAVE, turn K1: MIDI LEARN waits for a CC.",
       "control": "hold SAVE and turn K1 clockwise by 1 detents, then wait 2.0 s",
       "expect": [
         {
@@ -106,7 +106,7 @@
       "title": "*SAVE* + K1"
     },
     {
-      "caption": "The first CC that comes in is learned: LEARNED CC 21, CUTOFF.",
+      "caption": "The first CC in is learned: CC 21, CUTOFF.",
       "control": "send MIDI, then wait 0.3 s",
       "expect": [
         {
@@ -151,7 +151,7 @@
       "title": "Turn your *controller*"
     },
     {
-      "caption": "From now on that knob is K1's cutoff, saved with the settings.",
+      "caption": "Now that knob turns the cutoff, saved with the settings.",
       "control": "send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 1.5 s",
       "expect": [
         {
@@ -274,7 +274,7 @@
       "title": "It turns the *cutoff*"
     },
     {
-      "caption": "Turn your controller back: the filter closes, as K1 would close it.",
+      "caption": "Turn it back: the filter closes.",
       "control": "send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then wait 1.5 s",
       "expect": [
         {

@@ -21,7 +21,7 @@
   ],
   "steps": [
     {
-      "caption": "ENV on LIVE opens LAB at its envelope page, with SAW LEAD. Listen first.",
+      "caption": "ENV on LIVE opens LAB with SAW LEAD. Listen first.",
       "control": "press ENV, then wait 0.8 s, then play 4 notes at 120 BPM",
       "expect": [
         {
@@ -95,7 +95,7 @@
       "title": "*ENV* opens LAB"
     },
     {
-      "caption": "PLAY in LAB plays SIDOU LOOP; the keys play your sound over it.",
+      "caption": "PLAY starts SIDOU LOOP; your sound plays over it.",
       "control": "press PLAY, then wait 1.0 s, then wait for the song's next pattern, then play 6 notes at 125 BPM",
       "expect": [
         {
@@ -176,7 +176,7 @@
       "title": "The song plays *on*"
     },
     {
-      "caption": "K2 shortens the decay. SELECT to FILTER, and K1 closes the filter a little.",
+      "caption": "K2 shortens the decay; on FILTER, K1 closes it a little.",
       "control": "turn K2 slowly counter-clockwise by 3 detents over 0.6 s, then turn SELECT clockwise by 1 detent, then wait 0.5 s, then turn K1 slowly counter-clockwise by 20 detents over 0.9 s, then play 6 notes at 125 BPM",
       "expect": [
         {
@@ -271,7 +271,7 @@
       "title": "*Shape* it"
     },
     {
-      "caption": "REC: the sound goes into the song's lowest free instrument as a plain GoatTracker 2 one, a byte at a time, so the song plays on.",
+      "caption": "REC sends it to the song: SENT AS I06.",
       "control": "press REC, then wait 1.3 s",
       "expect": [
         {
@@ -311,8 +311,8 @@
       "title": "*REC* sends it"
     },
     {
-      "caption": "For six seconds the hint line says what GoatTracker could only come close to, or what stayed behind.",
-      "control": "wait 3.0 s",
+      "caption": "The hint line says what GoatTracker only comes close to.",
+      "control": "wait 0.2 s",
       "expect": [
         {
           "kind": "text",
@@ -345,7 +345,7 @@
       "id": "hint",
       "inputs": [
         {
-          "ms": 3000,
+          "ms": 200,
           "op": "wait"
         }
       ],
@@ -353,7 +353,7 @@
       "title": "What it *approximates*"
     },
     {
-      "caption": "SEQ round to INSTR: it opens on 06, SAW LEAD, a song instrument now. The foot says what each program plays.",
+      "caption": "SEQ round to INSTR: 06, SAW LEAD, now a song instrument.",
       "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.8 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s, then turn SELECT clockwise by 2 detents, then wait 1.6 s",
       "expect": [
         {
@@ -449,7 +449,7 @@
       "title": "On *INSTR*"
     },
     {
-      "caption": "ENV on INSTR takes it into LAB again. Sent and not edited since, it comes back exactly: PULLED I06.",
+      "caption": "ENV on INSTR brings it back to LAB, exactly: PULLED I06.",
       "control": "press ENV, then wait 1.3 s",
       "expect": [
         {
@@ -572,7 +572,7 @@
       "title": "A longer *release*"
     },
     {
-      "caption": "EDIT + REC writes over INSTR's instrument instead. It asks first, REPLACE I06?, and EDIT + REC again does it.",
+      "caption": "EDIT + REC replaces it. It asks first; again does it.",
       "control": "hold EDIT and press REC, then wait 1.5 s, then hold EDIT and press REC, then wait 1.3 s",
       "expect": [
         {

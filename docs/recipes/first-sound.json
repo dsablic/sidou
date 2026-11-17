@@ -17,7 +17,7 @@
   ],
   "steps": [
     {
-      "caption": "No waiting for the boot: a key sounds at once, and LIVE takes over.",
+      "caption": "No waiting for the boot: a key sounds at once.",
       "control": "Press the note key marked A (the middle of the keys)",
       "expect": [
         {
@@ -57,7 +57,7 @@
       "title": "Press *any* key"
     },
     {
-      "caption": "The top line says the sound, SAW LEAD. Below: the three voices, the knobs and the chip.",
+      "caption": "The top line names the sound. Below: voices, knobs, chip.",
       "control": "Wait a moment: the title card ends by itself",
       "expect": [
         {
@@ -104,7 +104,7 @@
       "title": "Meet *LIVE*"
     },
     {
-      "caption": "SIDOU plays three voices, like the C64's chip. Hold a chord.",
+      "caption": "Three voices, like the C64's chip. Hold a chord.",
       "control": "Press three keys at once",
       "expect": [
         {
@@ -150,7 +150,7 @@
       "title": "Three voices, *three* keys"
     },
     {
-      "caption": "The keys are F to G, two octaves and a bit.",
+      "caption": "The keys run F to G, two octaves and a bit.",
       "control": "Play a few notes",
       "expect": [
         {
@@ -273,7 +273,7 @@
       "title": "Play a *tune*"
     },
     {
-      "caption": "OCT+ shifts every key up an octave, and says so.",
+      "caption": "OCT+ moves every key up an octave.",
       "control": "Press OCT+",
       "expect": [
         {
@@ -323,7 +323,7 @@
       "title": "*OCT+* for higher"
     },
     {
-      "caption": "The same tune, an octave up. OCT- brings it back.",
+      "caption": "The same tune, higher. OCT- brings it back.",
       "control": "Play a few notes",
       "expect": [
         {

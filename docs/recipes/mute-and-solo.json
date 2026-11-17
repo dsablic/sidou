@@ -18,7 +18,7 @@
   ],
   "steps": [
     {
-      "caption": "SEQ opens STEP over LIVE, SEQ again the TRACKER.",
+      "caption": "SEQ opens STEP, SEQ again the TRACKER.",
       "control": "Press SEQ twice",
       "expect": [
         {
@@ -61,7 +61,7 @@
       "title": "Open the *song*"
     },
     {
-      "caption": "SIDOU LOOP plays: the rows move, the strips on the right show the other voices.",
+      "caption": "SIDOU LOOP plays; the strips show the other voices.",
       "control": "Press PLAY",
       "expect": [
         {
@@ -101,7 +101,7 @@
       "title": "Press *PLAY*"
     },
     {
-      "caption": "Hold GLO and press the second key: the bass goes quiet, its number turns grey.",
+      "caption": "GLO + the second key: the bass goes quiet.",
       "control": "Hold GLO and press note key 2",
       "expect": [
         {
@@ -142,7 +142,7 @@
       "title": "*Mute* voice 2"
     },
     {
-      "caption": "The same keys again, and the bass is back in.",
+      "caption": "The same keys again: the bass is back.",
       "control": "Hold GLO and press note key 2 again",
       "expect": [
         {
@@ -183,7 +183,7 @@
       "title": "And *back*"
     },
     {
-      "caption": "GLO and the fourth key: only voice 1 plays, and SOL says so.",
+      "caption": "GLO + the fourth key: only voice 1, SOL says so.",
       "control": "Hold GLO and press note key 4",
       "expect": [
         {
@@ -273,7 +273,7 @@
       "title": "Everyone *back*"
     },
     {
-      "caption": "PLAY again stops it; each voice's release rings on.",
+      "caption": "PLAY stops it; the release rings on.",
       "control": "Press PLAY",
       "expect": [
         {

@@ -960,6 +960,7 @@ pub struct Ctx {
     pub remembered: Option<Params>,
     pub intended: Option<String>,
     pub off_course: bool,
+    pub heard_before: Option<Vec<f32>>,
 }
 
 pub fn first_sound_ms(x: &[f32], silence_db: f64) -> Option<f64> {
@@ -1273,7 +1274,10 @@ pub fn run_step(
     let params_before = d.params();
     r.remembered_before = ctx.remembered.as_ref() == Some(&params_before);
     let audio_from = d.audio_mark();
-    let pre = d.audio_since(audio_from.saturating_sub((FS * 0.4) as usize));
+    let pre = ctx
+        .heard_before
+        .take()
+        .unwrap_or_else(|| d.audio_since(audio_from.saturating_sub((FS * 0.4) as usize)));
     let mut waited = 0u64;
     let mut efforts = Vec::new();
     let mut detents = 0i32;
@@ -1530,8 +1534,13 @@ pub fn run_journey(
     let mut marks: Vec<(u64, String)> = Vec::new();
     let mut timeline: Vec<crate::capture::StepTimes> = Vec::new();
     for (i, s) in j.steps.iter().enumerate() {
+        let shown_from = d.ms();
         if let Some(c) = &s.caption {
-            marks.push((d.ms(), c.clone()));
+            marks.push((shown_from, c.clone()));
+        }
+        let at_power_on = j.poweron && i == 0;
+        if capture_full && !at_power_on {
+            d.run(crate::capture::LEAD_IN_MS);
         }
         let (r, cap) = run_step(
             &mut d,
@@ -1546,9 +1555,30 @@ pub fn run_journey(
         if let Some(c) = cap {
             res.captured.push(c);
         }
+        let mut end = r.end_ms;
+        if capture_full {
+            let acts_end = s
+                .acts
+                .iter()
+                .zip(&r.act_ms)
+                .filter(|(a, _)| !matches!(a, Act::Wait(_) | Act::Sync))
+                .map(|(_, t)| t.1)
+                .max()
+                .unwrap_or(shown_from);
+            let caption = s.caption.as_deref().unwrap_or("");
+            ctx.heard_before =
+                Some(d.audio_since(d.audio_mark().saturating_sub((FS * 0.4) as usize)));
+            d.run(crate::capture::pad_ms(
+                shown_from,
+                acts_end,
+                d.ms(),
+                caption,
+            ));
+            end = d.ms();
+        }
         timeline.push(crate::capture::StepTimes {
-            start: r.start_ms,
-            end: r.end_ms,
+            start: if capture_full { shown_from } else { r.start_ms },
+            end,
             acts: r.act_ms.clone(),
         });
         res.steps.push(r);

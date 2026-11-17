@@ -21,7 +21,7 @@
   ],
   "steps": [
     {
-      "caption": "In the menu, SONG and NEW: three empty voices, with a lead, a bass and a drum kit.",
+      "caption": "SONG, NEW: three empty voices, a lead, a bass and drums.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.2 s",
       "expect": [
         {
@@ -97,7 +97,7 @@
       "title": "A *new* song"
     },
     {
-      "caption": "SEQ opens STEP. SELECT picks lane V3, PRESETS its instrument, by name: 03 KICK.",
+      "caption": "SEQ opens STEP. Lane V3, instrument 03 KICK.",
       "control": "press SEQ, then wait 1.0 s, then turn SELECT clockwise by 2 detents, then wait 0.6 s, then turn PRESETS clockwise by 2 detents, then wait 1.5 s",
       "expect": [
         {
@@ -160,7 +160,7 @@
       "title": "Open *STEP*"
     },
     {
-      "caption": "The sixteen leftmost keys are the steps. Tap 1 and 9: a kick on each.",
+      "caption": "The keys are the steps. Tap 1 and 9: two kicks.",
       "control": "tap F3, C#4, then wait 1.5 s",
       "expect": [
         {
@@ -210,7 +210,7 @@
       "title": "Kicks on *1* and *9*"
     },
     {
-      "caption": "PRESETS one on: 04 SNARE. The steps you tap now play it: 5 and 13.",
+      "caption": "PRESETS to 04 SNARE, on 5 and 13.",
       "control": "turn PRESETS clockwise by 1 detent, then wait 0.9 s, then tap A3, F4, then wait 1.2 s",
       "expect": [
         {
@@ -275,7 +275,7 @@
       "title": "A *snare* on 5 and 13"
     },
     {
-      "caption": "05 CL HAT on 3, 7 and 11, and 06 OP HAT, the open one, on 15.",
+      "caption": "Closed hats on 3, 7 and 11; an open hat on 15.",
       "control": "turn PRESETS clockwise by 1 detent, then wait 0.7 s, then tap G3, B3, D#4, then turn PRESETS clockwise by 1 detent, then wait 0.7 s, then tap G4, then wait 1.2 s",
       "expect": [
         {
@@ -361,7 +361,7 @@
       "title": "*Hats* in between"
     },
     {
-      "caption": "A pattern is 64 steps: ALGORITHM pages through them. The beat again on pages 2 and 3, and a fill on the toms to end.",
+      "caption": "ALGORITHM pages through 64 steps: the beat, then a tom fill.",
       "control": "turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap G4, then turn PRESETS counter-clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS counter-clockwise by 1 detent, then tap A3, F4, then turn PRESETS counter-clockwise by 1 detent, then tap F3, C#4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then tap F3, C#4, then turn PRESETS clockwise by 1 detent, then tap A3, F4, then turn PRESETS clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS clockwise by 1 detent, then tap G4, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.4 s, then turn PRESETS counter-clockwise by 1 detent, then tap G3, B3, D#4, then turn PRESETS counter-clockwise by 1 detent, then tap A3, then turn PRESETS clockwise by 5 detents, then tap F4, then turn PRESETS counter-clockwise by 1 detent, then tap G4, then turn PRESETS counter-clockwise by 5 detents, then tap F3, C#4, then wait 0.3 s, then turn ALGORITHM counter-clockwise by 3 detents, then wait 1.2 s",
       "expect": [
         {
@@ -638,7 +638,7 @@
       "title": "*Four* pages"
     },
     {
-      "caption": "The kit on one voice, as C64 songs play their drums. The lit step runs along the keys.",
+      "caption": "The whole kit on one voice, as C64 songs do it.",
       "control": "press PLAY, then wait 4.5 s",
       "expect": [
         {
@@ -678,7 +678,7 @@
       "title": "Press *PLAY*"
     },
     {
-      "caption": "0B to 0E are digi drums, samples played as C64 tunes play them. PRESETS to 0D DG CLAP, then tap 16 on each page as it plays.",
+      "caption": "0B to 0E are digi drums. 0D DG CLAP on 16 of each page.",
       "control": "turn PRESETS clockwise by 10 detents, then wait 0.9 s, then wait for the song's next pattern, then wait 0.3 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 1.7 s, then tap G#4, then wait 3.5 s",
       "expect": [
         {

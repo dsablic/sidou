@@ -25,7 +25,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME, SONG, LOAD: SIDOU LOOP, built in, then the store's songs. SELECT to one, ALGORITHM loads it.",
+      "caption": "HOME, SONG, LOAD: SELECT a song, ALGORITHM loads it.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 5.0 s",
       "expect": [
         {
@@ -175,7 +175,7 @@
       "title": "*PLAY*: chip A"
     },
     {
-      "caption": "The keys play the second SID on top. LIVE says KEYS:B.",
+      "caption": "The keys play the second SID on top: KEYS:B.",
       "control": "wait for the song's next pattern, then play 16 notes at 125 BPM",
       "expect": [
         {
@@ -313,7 +313,7 @@
       "title": "*Jam* on chip B"
     },
     {
-      "caption": "The knobs shape the keys' sound, not the song's.",
+      "caption": "The knobs shape your sound, not the song's.",
       "control": "turn K1 slowly counter-clockwise by 36 detents over 1.5 s, then play 7 notes at 125 BPM",
       "expect": [
         {
@@ -406,7 +406,7 @@
       "title": "*K1* on your sound"
     },
     {
-      "caption": "SELECT to FX, ALGORITHM: DELAY on the mix.",
+      "caption": "SELECT to FX, ALGORITHM: DELAY.",
       "control": "turn SELECT clockwise by 3 detents, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then play 4 notes at 125 BPM",
       "expect": [
         {
@@ -487,7 +487,7 @@
       "title": "An *echo*"
     },
     {
-      "caption": "GLO and the first key: voice 1 of the song goes quiet. Again: back.",
+      "caption": "GLO + the first key mutes the song's voice 1. Again: back.",
       "control": "hold GLO and press note key F3, then wait 2.5 s, then hold GLO and press note key F3, then wait 1.5 s",
       "expect": [
         {
@@ -538,7 +538,7 @@
       "title": "*Mute* a voice"
     },
     {
-      "caption": "SEQ to TRACKER, REC, and play: your notes go into the song.",
+      "caption": "TRACKER, REC, play: your notes go into the song.",
       "control": "press SEQ, then wait 0.7 s, then press SEQ, then wait 0.8 s, then press REC, then wait for the song's next pattern, then play 12 notes at 125 BPM, then press REC, then wait 3.0 s",
       "expect": [
         {

@@ -25,7 +25,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME, SIDS, SAVE for the list: ALGORITHM plays THE CONSULTANT.",
+      "caption": "HOME, SIDS: ALGORITHM plays THE CONSULTANT.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then press SAVE, then wait 1.2 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.6 s",
       "expect": [
         {
@@ -90,7 +90,7 @@
       "title": "A *.sid* tune"
     },
     {
-      "caption": "REC: which voice? Keys 1 to 3 light up as the answers, and the bars show which voice plays what.",
+      "caption": "REC asks which voice; keys 1 to 3 answer.",
       "control": "press REC, then wait 1.5 s",
       "expect": [
         {
@@ -134,7 +134,7 @@
       "title": "*REC* asks"
     },
     {
-      "caption": "Key 2: voice 2's last note, the bass, from the last second of the tune, opens in LAB as LIFTED V2.",
+      "caption": "Key 2: the bass's last note opens in LAB.",
       "control": "play F#3 for 0.3 s, then wait 1.5 s",
       "expect": [
         {
@@ -181,7 +181,7 @@
       "title": "A *key* answers"
     },
     {
-      "caption": "The keys play the lifted sound over the tune.",
+      "caption": "The keys play it over the tune.",
       "control": "play 8 notes at 120 BPM, then wait 0.6 s",
       "expect": [
         {
@@ -271,7 +271,7 @@
       "title": "*Play* it"
     },
     {
-      "caption": "SELECT to ENVELOPE, and K4 lengthens its release, as for any LAB sound.",
+      "caption": "K4 on ENVELOPE lengthens its release.",
       "control": "turn SELECT clockwise by 1 detent, then wait 0.5 s, then turn K4 slowly clockwise by 3 detents over 0.6 s, then play 3 notes at 120 BPM, then wait 0.6 s",
       "expect": [
         {
@@ -346,7 +346,7 @@
       "title": "*Shape* it"
     },
     {
-      "caption": "SAVE: a USER sound under its name, for PRESETS to find later.",
+      "caption": "SAVE keeps it as a USER sound.",
       "control": "press SAVE, then wait 2.5 s",
       "expect": [
         {
@@ -382,7 +382,7 @@
       "title": "*SAVE* keeps it"
     },
     {
-      "caption": "HOME: NOW PLAYING, the tune still playing.",
+      "caption": "HOME: back to the tune, still playing.",
       "control": "press HOME, then wait 1.2 s",
       "expect": [
         {

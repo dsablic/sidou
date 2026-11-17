@@ -99,7 +99,7 @@
       "title": "*Dry*"
     },
     {
-      "caption": "SELECT pages TONE, DIST, MOD, FX. Three for FX: the echoes and rooms.",
+      "caption": "SELECT pages to FX: echoes and rooms.",
       "control": "turn SELECT clockwise by 3 detents, then wait 1.5 s",
       "expect": [
         {
@@ -141,7 +141,7 @@
       "title": "*SELECT*: pick a slot"
     },
     {
-      "caption": "ALGORITHM steps the slot's algorithm: DELAY, ready to hear.",
+      "caption": "ALGORITHM picks DELAY.",
       "control": "turn ALGORITHM clockwise by 1 detent, then wait 0.5 s, then play 7 notes at 120 BPM",
       "expect": [
         {
@@ -235,7 +235,7 @@
       "title": "*ALGORITHM*: an algorithm"
     },
     {
-      "caption": "Hold EDIT: K1 to K4 turn the slot. K1 is the feedback, K4 the mix.",
+      "caption": "Hold EDIT: K1 is the feedback, K4 the mix.",
       "control": "hold EDIT and turn K1 clockwise by 24 detents, then hold EDIT and turn K4 clockwise by 20 detents, then play 7 notes at 120 BPM",
       "expect": [
         {

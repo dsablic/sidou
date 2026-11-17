@@ -23,7 +23,7 @@
   ],
   "steps": [
     {
-      "caption": "HOME for the menu: SIDS plays the .sid files in the store.",
+      "caption": "HOME, SIDS: the .sid files in the store.",
       "control": "press HOME, then wait 0.5 s, then turn SELECT until SIDS is selected, then wait 0.6 s",
       "expect": [
         {
@@ -73,7 +73,7 @@
       "title": "The menu's *SIDS*"
     },
     {
-      "caption": "SAVE opens the list: every .sid in the store.",
+      "caption": "SAVE opens the list.",
       "control": "press SAVE, then wait 1.5 s",
       "expect": [
         {
@@ -113,7 +113,7 @@
       "title": "The *tunes*"
     },
     {
-      "caption": "SELECT moves to DOJO, a GoatTracker tune by Cadaver.",
+      "caption": "SELECT to DOJO, by Cadaver.",
       "control": "turn SELECT clockwise by 1 detent, then wait 0.9 s",
       "expect": [
         {
@@ -150,7 +150,7 @@
       "title": "*Pick* one"
     },
     {
-      "caption": "ALGORITHM clockwise plays it: NOW PLAYING, the song, the time, the three voices' levels.",
+      "caption": "ALGORITHM plays it: song, time, the voices' levels.",
       "control": "turn ALGORITHM clockwise by 1 detent, then wait 4.5 s",
       "expect": [
         {
@@ -195,7 +195,7 @@
       "title": "*Play* it"
     },
     {
-      "caption": "DOJO holds four songs. ALGORITHM steps to the next.",
+      "caption": "DOJO has four songs. ALGORITHM steps on.",
       "control": "turn ALGORITHM clockwise by 1 detent, then wait 4.5 s",
       "expect": [
         {
@@ -236,7 +236,7 @@
       "title": "Another *song*"
     },
     {
-      "caption": "GLO and the second key: voice 2 goes quiet, MUT on the screen. The same keys again bring it back.",
+      "caption": "GLO + the second key mutes voice 2: MUT.",
       "control": "hold GLO and press note key F#3, then wait 3.5 s",
       "expect": [
         {
@@ -277,7 +277,7 @@
       "title": "*Mute* a voice"
     },
     {
-      "caption": "GLO and the fourth key: only voice 1 plays, SOL says so. The same keys again let the others in.",
+      "caption": "GLO + the fourth key solos voice 1: SOL.",
       "control": "hold GLO and press note key F#3, then wait 0.3 s, then hold GLO and press note key G#3, then wait 3.5 s",
       "expect": [
         {
@@ -327,7 +327,7 @@
       "title": "*Solo* a voice"
     },
     {
-      "caption": "EDIT + PLAY pauses the tune, and again carries on from where it was.",
+      "caption": "EDIT + PLAY pauses, and again carries on.",
       "control": "hold GLO and press note key G#3, then wait 0.6 s, then hold EDIT and press PLAY, then wait 1.8 s, then hold EDIT and press PLAY, then wait 3.0 s",
       "expect": [
         {
@@ -386,7 +386,7 @@
       "title": "*Pause*"
     },
     {
-      "caption": "PLAY stops it. HOME goes back to the list.",
+      "caption": "PLAY stops it.",
       "control": "press PLAY, then wait 1.5 s",
       "expect": [
         {

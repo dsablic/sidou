@@ -35,6 +35,13 @@ pub mod panel {
 
 pub const FRAME_MS: u64 = 40;
 
+const BUDGETED_MENUS: [usize; 4] = [
+    ilp32::views::home,
+    ilp32::views::midi,
+    ilp32::views::setup,
+    ilp32::views::devices,
+];
+
 pub fn key_of_note(n: u8) -> u8 {
     panel::KEY0 + n - 53
 }
@@ -73,6 +80,23 @@ pub struct Recorder {
     pub t0: u64,
     pub audio_from: usize,
     pub caption_marks: Vec<(u64, String)>,
+    pub drawn: DrawnScreen,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct LcdBus {
+    pixels: u64,
+    windows: u64,
+}
+
+pub struct DrawnScreen {
+    pub fb: Vec<u16>,
+    pub ms: u64,
+    pub torn_ticks: u32,
+    pub longest_hold_ms: u64,
+    ui: u32,
+    pending: u32,
+    idle_work: u32,
 }
 
 pub struct Dev {
@@ -95,6 +119,15 @@ fn symbols_with_sizes(fw: &Firmware) -> Vec<(u32, u32, String)> {
             ))
         })
         .collect()
+}
+
+fn data_symbol(fw: &Firmware, name: &str) -> u32 {
+    use object::{Object, ObjectSymbol, SymbolKind};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    file.symbols()
+        .find(|s| s.kind() == SymbolKind::Data && s.name() == Ok(name))
+        .unwrap_or_else(|| panic!("no data symbol {name} in the firmware ELF"))
+        .address() as u32
 }
 
 impl Dev {
@@ -220,19 +253,57 @@ impl Dev {
         }
         let end = self.m.ms() + ms;
         while self.m.ms() < end {
-            let next = self.rec.as_ref().unwrap().next;
-            let step = (end - self.m.ms()).min(next.saturating_sub(self.m.ms()).max(1));
-            self.m.run_ms(step);
+            let bus = self.lcd_bus();
+            self.m.run_ms(1);
+            let fully_drawn = self.screen_drawn() && self.lcd_bus() == bus;
             let now = self.m.ms();
+            let fb = &self.m.soc.lcd.fb;
             let r = self.rec.as_mut().unwrap();
+            if fully_drawn {
+                r.drawn.ms = now;
+                if r.drawn.fb != *fb {
+                    r.drawn.fb.clone_from(fb);
+                }
+            }
             if now >= r.next {
+                if !fully_drawn && r.drawn.fb != *fb {
+                    r.drawn.torn_ticks += 1;
+                }
+                r.drawn.longest_hold_ms = r.drawn.longest_hold_ms.max(now - r.drawn.ms);
                 r.frames.push(CapFrame {
                     ms: now,
-                    fb: self.m.soc.lcd.fb.clone(),
+                    fb: r.drawn.fb.clone(),
                 });
                 r.next += FRAME_MS;
             }
         }
+    }
+
+    fn lcd_bus(&self) -> LcdBus {
+        LcdBus {
+            pixels: self.m.soc.lcd.pixels_in_window,
+            windows: self.m.soc.lcd.frames,
+        }
+    }
+
+    fn screen_drawn(&mut self) -> bool {
+        let Some(d) = self.rec.as_ref().map(|r| &r.drawn) else {
+            return true;
+        };
+        let (ui, pending, idle_work) = (d.ui, d.pending, d.idle_work);
+        let g = self.m.soc.read32(ui);
+        if g == 0 {
+            return true;
+        }
+        let rows = self.m.soc.read32(g + ilp32::grid::rows as u32);
+        let hold = self.m.soc.read32(g + ilp32::grid::hold as u32);
+        let menus_drawn = BUDGETED_MENUS
+            .iter()
+            .all(|m| self.m.soc.read8(ui + (m + ilp32::menu::pending) as u32) == 0);
+        self.m.soc.read8(pending) == 0
+            && self.m.soc.read8(idle_work) == 0
+            && rows & !hold == 0
+            && menus_drawn
     }
 
     pub fn mid_frame(&mut self) {
@@ -249,15 +320,25 @@ impl Dev {
     pub fn start_capture(&mut self) {
         self.mid_frame();
         let t0 = self.m.ms();
+        let fb = self.m.soc.lcd.fb.clone();
         self.rec = Some(Recorder {
             frames: vec![CapFrame {
                 ms: t0,
-                fb: self.m.soc.lcd.fb.clone(),
+                fb: fb.clone(),
             }],
             next: t0 + FRAME_MS,
             t0,
             audio_from: self.m.soc.periph.audio.len() / 2,
             caption_marks: Vec::new(),
+            drawn: DrawnScreen {
+                fb,
+                ms: t0,
+                torn_ticks: 0,
+                longest_hold_ms: 0,
+                ui: self.fw.symbol("ui"),
+                pending: data_symbol(&self.fw, "pending"),
+                idle_work: data_symbol(&self.fw, "idle_work"),
+            },
         });
     }
 

@@ -18,7 +18,7 @@
   ],
   "steps": [
     {
-      "caption": "A new song has no name yet, so SAVE opens SAVE AS.",
+      "caption": "A new song has no name, so SAVE opens SAVE AS.",
       "control": "press PLAY, then wait 0.5 s, then press SAVE, then wait 1.8 s",
       "expect": [
         {
@@ -71,7 +71,7 @@
       "title": "Press *SAVE*"
     },
     {
-      "caption": "SELECT moves the cursor, ALGORITHM changes the letter: BEAT 1.",
+      "caption": "SELECT moves, ALGORITHM changes the letter: BEAT 1.",
       "control": "turn ALGORITHM counter-clockwise by 12 detents, then turn SELECT clockwise by 2 detents, then turn ALGORITHM counter-clockwise by 22 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM clockwise by 52 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 51 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 30 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 46 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 39 detents, then wait 1.5 s",
       "expect": [
         {
@@ -173,7 +173,7 @@
       "title": "Give it a *name*"
     },
     {
-      "caption": "SAVE writes it to the store: SONG SAVED.",
+      "caption": "SAVE writes it: SONG SAVED.",
       "control": "press SAVE, then wait 2.5 s",
       "expect": [
         {
@@ -211,7 +211,7 @@
       "title": "*Save* it"
     },
     {
-      "caption": "HOME back to SONG, then NEW: the beat is gone from the song views.",
+      "caption": "HOME, SONG, NEW: the beat is gone.",
       "control": "press HOME, then wait 0.9 s, then turn SELECT counter-clockwise by 3 detents, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
@@ -289,7 +289,7 @@
       "title": "Start *another*"
     },
     {
-      "caption": "LOAD lists SIDOU LOOP, built in, then the songs in the store. BEAT 1 is there.",
+      "caption": "LOAD lists the songs in the store. BEAT 1 is there.",
       "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
       "expect": [
         {
@@ -340,7 +340,7 @@
       "title": "*LOAD* it back"
     },
     {
-      "caption": "SELECT down to it, ALGORITHM loads it. It asks first, as the new song was never saved: SAVE AGAIN, and it is done.",
+      "caption": "ALGORITHM loads it, after SAVE AGAIN for the unsaved song.",
       "control": "turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.1 s, then press SAVE, then wait 1.5 s",
       "expect": [
         {

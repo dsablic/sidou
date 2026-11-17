@@ -18,7 +18,7 @@
   ],
   "steps": [
     {
-      "caption": "Hold three keys and keep holding them while you turn the knobs.",
+      "caption": "Hold three keys while you turn the knobs.",
       "control": "Hold the note keys A, C and E down",
       "expect": [
         {
@@ -61,7 +61,7 @@
       "title": "Hold a *chord*"
     },
     {
-      "caption": "Turn K1 counter-clockwise, slowly: the sound goes dark and warm.",
+      "caption": "K1 down, slowly: the sound goes dark and warm.",
       "control": "Turn K1 counter-clockwise about a third of a turn",
       "expect": [
         {
@@ -112,7 +112,7 @@
       "title": "*K1* closes the filter"
     },
     {
-      "caption": "Turn it back up and past: bright again, all the way.",
+      "caption": "Back up and past: bright again.",
       "control": "Turn K1 clockwise about a full turn",
       "expect": [
         {
@@ -160,7 +160,7 @@
       "title": "And *opens* it"
     },
     {
-      "caption": "K2 makes the filter ring at its cutoff. Sweep K1 again to hear it sing.",
+      "caption": "K2 makes the filter ring. Sweep K1 to hear it sing.",
       "control": "Turn K2 clockwise about a quarter turn, then K1 down and up",
       "expect": [
         {
@@ -216,7 +216,7 @@
       "title": "*K2*: resonance"
     },
     {
-      "caption": "The big knob picks the next preset, PWM BASS. Your edits to SAW LEAD are kept.",
+      "caption": "PRESETS: the next sound, PWM BASS. Your edits are kept.",
       "control": "Turn PRESETS one click clockwise",
       "expect": [
         {
@@ -267,7 +267,7 @@
       "title": "*PRESETS*: another sound"
     },
     {
-      "caption": "Let go of the keys: the release rings out.",
+      "caption": "Let go: the release rings out.",
       "control": "Let go of the note keys",
       "expect": [
         {
