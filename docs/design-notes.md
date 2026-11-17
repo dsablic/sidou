@@ -3364,6 +3364,98 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   first, with nothing written. Alone they write when let go, when another control is used, and at
   once while REC records.
 
+### Swing (1.21)
+
+- **The song's swing is GoatTracker's funktempo** (`EXY` on the first row of voice 1's first
+  pattern of the shown subtune), not a SIDOU chunk or a live nudge (the owner, 2026-11-17): it is
+  saved in the `.sng` and plays the same in GoatTracker, and costs the audio interrupt nothing.
+- **The pair's order**: the `E` command resets the funktempo index at its row's first tick, after
+  that row's length was loaded, so the rows after it play left, right, left ... and, with a
+  pattern of even length, row 0 of each later pass plays the right speed. So the long speed is the
+  right one: (4, 8) plays rows 0, 2, 4 ... for 8 frames and the odd rows (the second sixteenth of
+  each eighth) for 4, which is swing. The very first row of the song plays the default speed 6,
+  as with any funktempo (the converter's note above). `swing.rs` measures the rows on SIDOU's
+  player and holds them equal to GoatTracker's packed player, call by call.
+- **The levels** (`app/song_tempo.h`): the long row is the sum of the pair times 7, 8 or 9
+  twelfths, rounded to the nearest frame with a half rounded down (towards straight: speed 3's
+  LIGHT would be 3.5 frames and is 3, STRAIGHT's own, so it is refused rather than written as
+  SHUFFLE's 4); STRAIGHT is the pair's halves, the larger one right (the converter's `a, a + 1`).
+  A level is given when its long row is longer than the level below's and its short row at least
+  2 frames: a funktempo speed of 1 reloads the row counter at once in the player (`exec_channel`,
+  `funktempo - 1` is 0) and is not a row of one frame. The popup says `NO LIGHT` for one that is
+  not given and the song keeps the last given level; the wanted level is kept while SCL is held,
+  so a turn goes past a refused level.
+- **Writing it**: the cell through the editor (one undo step); a pair the speed table lacks first
+  through the batch writer after the table's last row, then the cell once the row has landed (a
+  failed row writes no cell). Turns while that is in flight are kept as the wanted level and
+  written after it (`swing_due`), so a quick turn of two detents is SHUFFLE, not LIGHT and
+  WAITING. The rows a turn passes through stay in the speed table unused: finding whether a row
+  is referenced (instrument vibrato, `1`-`4` commands in any pattern) would cost flash for 3
+  rows of 255 at most per tempo. STRAIGHT at speed 6 writes no command (a NEW song's state);
+  a first row with another command is refused (`ROW HAS A COMMAND`, as a SET is), and `FXX` there
+  becomes the funktempo at its speed.
+- **The control** is EDIT + SCL held + ALGORITHM, in STEP and TRACKER alike (shared in
+  `song_gen.c`): there was no free control beside the BPM in both views (ALGORITHM pages STEP and
+  steps TRACKER's voice, EDIT + ALGORITHM is TRACKER's edit step), and SCL held is already where a
+  song's groove settings are (DICE's density and rhythm). The DICE frame's foot names it
+  (`ALG SWING`). The header shows it under the BPM, in the song views' shared `song_view_tempo`.
+
+### Ratchets (1.21)
+
+- **A copy of the instrument, not a player feature** (the owner, 2026-11-17): the cell's
+  instrument becomes a copy whose wave table retriggers, so the song is GoatTracker data and
+  plays the same there; nothing in the audio interrupt. `app/song_ratchet.c` holds the song-data
+  side (the program, recognising a copy and its base, finding a shared one), `step_view.c` the
+  edits (the copy's rows and bytes through the batch writer, then the cell once they landed, as
+  swing's row and cell).
+- **The frames**: a retrigger is a frame with the gate off then one with it on, so a hit is at
+  least 2 frames: hits `row frames / count` apart. A ratchet the row cannot give is refused in the
+  popup (`NO x4`); at speed 6 that is x4, so x4 needs speed 8. The row is the song's shorter
+  speed (`song_gen_row_frames`: the first row's funktempo, or speed 6), so a swung song's short
+  rows hold every hit. Measured on the player: the instrument's own first frame (`firstwave`) is
+  frame 0 and the wave program starts at frame 1, and GoatTracker clears the gate `gatetimer`
+  frames before the next note (or key off, which a staccato lane writes). With the base's
+  firstwave (often `09`, the test bit) and its gatetimer of 2, x3 at speed 6 lost its last hit; so
+  the copy's firstwave is the program's first waveform (the first hit sounds at frame 0) and its
+  gatetimer is at most 1 (the high bits, no hard restart and no gate-off, kept). Then the last
+  hit, `(count - 1) * hit` frames in, always has a frame before the gate clears.
+- **The program**: before each later hit, a delay row (`hit - 3`, which holds `hit - 2` frames:
+  a delay row `n` takes `n + 1` frames in the player), the waveform with the gate bit cleared and
+  the waveform again, each with the first row's note; then a jump to the instrument's own
+  program, which the last hit plays from its start (a drum's sweep plays on the last hit; the
+  earlier hits are its first waveform). At most 3 rows a hit, 10 in all.
+- **Shared and recognised by their bytes**: a copy is an instrument with the base's envelope,
+  pulse, filter and vibrato bytes whose program is the one the base, count and row length make
+  (`song_ratchet_copy`); a step's count is read from its instrument's program
+  (`song_ratchet_count`: gate-off, gate-on pairs then a jump that is not 0, so a sound whose
+  program gates off and stops is not a ratchet) and its base is the instrument the jump goes to
+  with the same sound. No chunk: GoatTracker and the site see an ordinary instrument, named
+  after the base (`LEAD x2`). A copy no step uses is left in the song (finding every reference
+  costs a scan of the patterns each edit), ready to be shared again.
+- **The ticks** are three glyphs (`TICK2`-`TICK4`, `DD`-`DF`) on the step's notch row, yellow,
+  over the lock notch: a ratchet is the step's most visible lock.
+
+### Euclid lanes (1.21)
+
+- **The hits are written as real steps** (`SONG_GEN_EUCLID`, a run of `song_gen.c` as DICE's):
+  row by row, a row whose note state differs from the rhythm's is toggled as a step key toggles it
+  (the lane's root and instrument, the gate's key offs); a hit that has a note keeps it. So locks
+  stay on their rows and apply when a hit lands there, the pattern stays GoatTracker data, and
+  undo steps back a cell. Not a play-time mask: that would put SIDOU-only behaviour in the player
+  and GoatTracker would play another rhythm.
+- **Bjorklund** (`song_gen_bjorklund`): the groups algorithm, `1` and `0` groups paired while
+  more than one remainder group is left. Its rhythms start on a hit and are Toussaint's for
+  E(3,8), E(5,8), E(7,16), E(5,12), E(5,16); where an implementation differs only by rotation
+  (E(4,7) `x.x.x.x` here), Bjorklund's own grouping is kept and ROTATE turns it. Three 128-byte
+  buffers on the main loop's stack (8 KiB, half its deepest use).
+- **Over the lane's whole length** (its pattern's rows, as the spec's "0 to the lane's length"),
+  not a 16-step page: an 8- or 16-row pattern gives the classic rhythms, a 64-row one a sparse
+  spread. HITS clamps to 0 and the length, ROTATE wraps.
+- **Controls**: FX held + K1 / K2 (STEP's FX alone does nothing without a held step, and a held
+  step's FX is SLIDE, so FX held with no step is free); off is FX held + LFO, as LFO clears in STEP.
+  HITS and ROTATE live in RAM per lane like the DICE roots, so a song needs no new chunk; the
+  steps carry the rhythm. The HELD STEP frame's foot shows `EUCLID h/n ROT r` while it is on.
+
 ### SONG pages (ORDER, INSTR, TABLE)
 
 - Prospective `edit_guard` requests: `pattern` = subtune/instrument/table, `row` = entry/field/row,

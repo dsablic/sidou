@@ -101,6 +101,8 @@ typedef struct song_view {
     uint8_t away;
     uint8_t song_mutes;
     uint8_t instr_from_lab;
+    uint8_t swing, swing_sub, swing_known;
+    uint32_t swing_at;
     song_gen gen;
 } song_view;
 
@@ -135,6 +137,8 @@ void song_view_frame(song_view* sv, int shows);
 int song_view_playing(const song_view* sv);
 #define SONG_VIEW_NO_BPM 0xFFFFu
 uint32_t song_view_shown_bpm(const song_view* sv);
+#define SONG_VIEW_TEMPO_COL 26u
+void song_view_tempo(const song_view* sv, song_view_canvas* c);
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat);
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32_t* row);

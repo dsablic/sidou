@@ -15,7 +15,7 @@ extern "C" {
 struct song_view;
 struct song_pages;
 
-enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP };
+enum { SONG_GEN_MUTATE = 1, SONG_GEN_DICE, SONG_GEN_SWEEP, SONG_GEN_EUCLID };
 #define SONG_GEN_LANES 3u
 #define SONG_GEN_FRAME_ROWS 12u
 #define SONG_GEN_LOOK 6u
@@ -25,6 +25,8 @@ enum { SONG_GEN_MAJ, SONG_GEN_MIN, SONG_GEN_SUS4, SONG_GEN_7, SONG_GEN_CHORDS };
 #define SONG_GEN_SWEEP_EVERY 2u
 #define SONG_GEN_SWEEP_LOW 0x10u
 #define SONG_GEN_SWEEP_HIGH 0xF0u
+#define SONG_GEN_EUCLID_ROWS 128u
+enum { SONG_GEN_EUCLID_HITS, SONG_GEN_EUCLID_ROTATE };
 
 typedef struct {
     uint8_t root[SONG_GEN_LANES];
@@ -38,6 +40,10 @@ typedef struct {
     uint32_t seed;
     uint8_t role, kick, snare, wait;
     uint8_t chord[SONG_GEN_CHORDS];
+    uint8_t swing, swing_given, swing_turned, swing_refused, swing_wait, swing_due;
+    uint8_t swing_pair[2];
+    uint8_t euclid_on, euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
+    uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];
     struct song_pages* pages;
 } song_gen;
 
@@ -66,6 +72,12 @@ uint32_t song_gen_lone_chord(struct song_view* sv, const screen_event* e);
 int song_gen_turn(struct song_view* sv, screen* s, uint32_t enc, int32_t steps);
 int song_gen_popup(const struct song_view* sv, uint32_t enc, char name[SCREEN_POPUP_TEXT],
                    char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max);
+uint32_t song_gen_swing(const struct song_view* sv);
+uint32_t song_gen_row_frames(const struct song_view* sv);
+void song_gen_bjorklund(uint32_t hits, uint32_t steps, uint8_t out[SONG_GEN_EUCLID_ROWS]);
+void song_gen_euclid(struct song_view* sv, screen* s, uint32_t knob, int32_t turn, uint32_t pattern,
+                     uint32_t rows, uint32_t instr);
+void song_gen_euclid_off(struct song_view* sv, screen* s);
 uint32_t song_gen_keys(struct song_view* sv, uint32_t down, uint32_t pressed);
 void song_gen_frame(struct song_view* sv, uint32_t top);
 int song_gen_look(const struct song_view* sv, uint8_t out[SONG_GEN_LOOK]);

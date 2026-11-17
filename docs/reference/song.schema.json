@@ -86,6 +86,15 @@
       "maxProperties": 16,
       "minProperties": 1,
       "type": "object"
+    },
+    "swing": {
+      "description": "the odd rows played late, at the same bpm; not every tempo gives every swing (llms-song.txt)",
+      "enum": [
+        "straight",
+        "light",
+        "shuffle",
+        "hard"
+      ]
     }
   },
   "required": [

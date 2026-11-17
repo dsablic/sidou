@@ -83,7 +83,7 @@ bottom-left corner, over whatever is there; the mirror shows the screen without 
 | 5 | 1 | Cell height in pixels (8) |
 | 6 | 1 | Colours (16) |
 | 7 | 1 | First font code (0) |
-| 8 | 1 | Last font code (`DC`); codes past it draw nothing |
+| 8 | 1 | Last font code (`DF`); codes past it draw nothing |
 | 9 | 1 | First large-text piece code (1) |
 | 10 | 1 | Piece codes (14; 0: none) |
 | 11 | 1 | Timeout in tenths of a second (30) |

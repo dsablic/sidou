@@ -1060,17 +1060,7 @@ static void build_head(song_pages* p) {
     }
     c->ch[0][22] = song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE;
     c->attr[0][22] = base;
-    uint32_t bpm = song_view_shown_bpm(sv);
-    char tempo[5] = " ---";
-    if (bpm != SONG_VIEW_NO_BPM) {
-        bpm = bpm > 9999u ? 9999u : bpm;
-        for (int i = 3; i >= 0; i--) {
-            tempo[i] = (char)(bpm || i == 3 ? '0' + bpm % 10u : ' ');
-            bpm /= 10u;
-        }
-    }
-    grid_canvas_text(c, 26u, 0u, tempo, THEME_ATTR(th, label));
-    grid_canvas_text(c, 26u, 1u, "BPM", THEME_ATTR(th, hint));
+    song_view_tempo(sv, c);
     if (sv->rec)
         grid_canvas_text(c, 22u, 1u, "REC", THEME_ATTR(th, alert));
     if (sv->solo >> sv->voice & 1u)

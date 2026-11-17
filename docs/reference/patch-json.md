@@ -195,7 +195,10 @@ the FM-1's NEW song as GoatTracker patterns and orderlists. Its schema is
 
 - `format` (required), `name` (1 to 16 characters), `bpm` 60 to 250 (125; plays as the nearest
   tempo, 107.4, 115.7, 125.3, 136.7, 150.4 and so on up to 250.6, and the Library page and
-  `sidou-sysex song` report the one that plays).
+  `sidou-sysex song` report the one that plays); `swing` `straight` (the default), `light`,
+  `shuffle` or `hard`: the second row of each pair played late, written as GoatTracker's funktempo
+  on the first row as the FM-1's SWING writes it (one a tempo cannot give is refused in words with
+  the ones it can).
 - `instruments`: up to 16 patches named 1 to 8 characters, `format` optional; `"kit"`, `"pulse"` and
   `"bass"` are the NEW song's own and need no entry (a song's instrument of that name wins).
 - `sections`: up to 16 named, each `rows` 1 to 128 and `voices`, up to three, each

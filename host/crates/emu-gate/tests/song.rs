@@ -4,8 +4,8 @@
 mod common;
 
 use common::panel::{
-    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, GLO, HOME, K1, K4, KEY0, PLAY,
-    REC, SELECT, SEQ,
+    chord, holding, press, select_menu_item, A4_KEY, ALGORITHM, ARP, EDIT, FX, GLO, HOME, K1, K4,
+    KEY0, PLAY, REC, SCL, SELECT, SEQ, UI_WAIT_MS,
 };
 use common::*;
 use fm1_core::Bus;
@@ -491,6 +491,135 @@ fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
         "the keys programmed the expected song, lock included"
     );
     check_song("STEP-programmed pattern", &fw, Some(&actual));
+}
+
+#[test]
+fn shuffle_set_on_step_is_the_first_rows_funktempo_and_plays_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP swing test") else {
+        return;
+    };
+    const PASSED_AT_SPEED_6: [(u8, u8); 2] = [(5, 7), (4, 8)];
+    const CMD_FUNKTEMPO: u8 = 0x0e;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let mut expected = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&expected, 0);
+    let mut first = cell_of(&expected, pattern, 0);
+    assert_eq!(
+        first[2], 0,
+        "the first row plays at speed 6 with no command"
+    );
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, EDIT, |m| {
+        holding(m, SCL, |m| {
+            m.turn(ALGORITHM, PASSED_AT_SPEED_6.len() as i32);
+            m.run_ms(300);
+        });
+    });
+    m.run_ms(UI_WAIT_MS);
+    let end = unsafe { lab_song_table_end(expected.ptr(), GT2_STBL) } as usize;
+    for (k, pair) in PASSED_AT_SPEED_6.into_iter().enumerate() {
+        for (side, value) in [pair.0, pair.1].into_iter().enumerate() {
+            let mut edit = gt2_edit::default();
+            unsafe {
+                let song = expected.ptr_mut();
+                assert_eq!(
+                    gt2_set_table(
+                        song,
+                        GT2_STBL,
+                        (end + k) as u32,
+                        side as u32,
+                        value,
+                        &mut edit
+                    ),
+                    GT2_OK
+                );
+                gt2_edit_commit(song, &edit);
+            }
+        }
+    }
+    first[2] = CMD_FUNKTEMPO;
+    first[3] = (end + PASSED_AT_SPEED_6.len()) as u8;
+    set_cell(&mut expected, pattern, 0, first);
+    let actual = region_song(&mut m, &fw);
+    assert_eq!(
+        actual.write(true),
+        expected.write(true),
+        "the panel wrote the shuffle into the song"
+    );
+    check_song("shuffled song", &fw, Some(&actual));
+}
+
+#[test]
+fn euclid_hits_set_on_step_are_the_lanes_steps_and_play_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP Euclid test") else {
+        return;
+    };
+    const HITS: u32 = 5;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let song = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&song, 0);
+    let rows = unsafe { gt2_pattern_rows(song.ptr(), pattern) } - 1;
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, FX, |m| {
+        m.turn(K1, HITS as i32);
+        m.run_ms(300);
+    });
+    m.run_ms(UI_WAIT_MS);
+    let mut rhythm = [0u8; SONG_GEN_EUCLID_ROWS as usize];
+    unsafe { song_gen_bjorklund(HITS, rows, rhythm.as_mut_ptr()) };
+    let actual = region_song(&mut m, &fw);
+    let hits: Vec<u8> = (0..rows)
+        .map(|r| {
+            let n = cell_of(&actual, pattern, r)[0];
+            u8::from((GT2_FIRSTNOTE..=GT2_LASTNOTE).contains(&u32::from(n)))
+        })
+        .collect();
+    assert_eq!(
+        hits,
+        rhythm[..rows as usize],
+        "E({HITS},{rows}) on voice 1's lane"
+    );
+    check_song("Euclid lane", &fw, Some(&actual));
+}
+
+#[test]
+fn a_ratchet_set_on_step_is_a_copy_of_the_steps_instrument_and_plays_bit_exact_with_the_host() {
+    let Some((_, fw)) = build_and_firmware("the STEP ratchet test") else {
+        return;
+    };
+    const X2: i32 = 1;
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let song = region_song(&mut m, &fw);
+    let pattern = first_pattern_of_voice(&song, 0);
+    let before = cell_of(&song, pattern, 0);
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    holding(&mut m, KEY0, |m| {
+        holding(m, EDIT, |m| {
+            m.turn(ALGORITHM, X2);
+            m.run_ms(300);
+        });
+    });
+    m.run_ms(UI_WAIT_MS);
+    let actual = region_song(&mut m, &fw);
+    let after = cell_of(&actual, pattern, 0);
+    assert_eq!(
+        (after[0], after[2], after[3]),
+        (before[0], before[2], before[3])
+    );
+    unsafe {
+        assert_eq!(song_ratchet_count(actual.ptr(), u32::from(after[1])), 2);
+        assert_eq!(
+            song_ratchet_base(actual.ptr(), u32::from(after[1])),
+            u32::from(before[1])
+        );
+    }
+    check_song("ratcheted step", &fw, Some(&actual));
 }
 
 #[test]

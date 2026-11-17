@@ -206,6 +206,7 @@ void song_view_loaded(song_view* sv) {
     sv->unbuilt = 0;
     sv->rec_n = 0;
     sv->counting = 0;
+    sv->swing_known = 0;
 }
 
 static int going(uint32_t state) {
@@ -546,6 +547,13 @@ void song_view_frame(song_view* sv, int shows) {
     if (shows && sv->want == WANT_NONE) {
         t->status(t->ctx, &sv->st);
         sv->song_edits = sv->st.applied;
+        uint32_t sub = going(sv->st.state) ? sv->st.subtune : sv->subtune;
+        if (!sv->swing_known || sv->swing_at != sv->song_edits || sv->swing_sub != sub) {
+            sv->swing = (uint8_t)song_gen_swing(sv);
+            sv->swing_at = sv->song_edits;
+            sv->swing_sub = (uint8_t)sub;
+            sv->swing_known = 1u;
+        }
         int on = sv->st.state == SONG_T_PLAYING;
         if (on && !sv->was_playing && !entered && sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT) {
             count_in(sv);
@@ -594,6 +602,24 @@ static uint32_t shown_bpm(const song_view* sv) {
 
 uint32_t song_view_shown_bpm(const song_view* sv) {
     return shown_bpm(sv);
+}
+
+void song_view_tempo(const song_view* sv, song_view_canvas* c) {
+    static const char* const SWING_TAGS[SONG_SWING_LEVELS] = {"BPM", "LITE", "SHUF", "HARD"};
+    const theme* th = theme_get(sv->l->theme);
+    uint32_t bpm = shown_bpm(sv);
+    char t[5] = " ---";
+    if (bpm != SONG_VIEW_NO_BPM) {
+        bpm = bpm > 9999u ? 9999u : bpm;
+        for (int i = 3; i >= 0; i--) {
+            t[i] = (char)(bpm || i == 3 ? '0' + bpm % 10u : ' ');
+            bpm /= 10u;
+        }
+    }
+    uint32_t swing = sv->swing;
+    grid_canvas_text(c, SONG_VIEW_TEMPO_COL, 0u, t, THEME_ATTR(th, label));
+    grid_canvas_text(c, SONG_VIEW_TEMPO_COL, 1u, SWING_TAGS[swing],
+                     swing ? THEME_ATTR(th, hot) : THEME_ATTR(th, hint));
 }
 
 int song_view_acquire_canvas(song_view* sv, uint32_t owner) {

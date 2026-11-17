@@ -122,7 +122,7 @@ await test(`HELLO says what the device offers (${fx.name})`, async () => {
   const h = parseHello(parse(bytes(fx.hello[0])).payload);
   assert.equal(h.name, fx.name);
   assert.deepEqual([h.version, h.features, h.cols, h.rows, h.cellW, h.cellH, h.colours, h.fontFirst, h.fontLast, h.pieceFirst, h.pieces, h.timeoutMs, h.buttons, h.encoders],
-    [1, 7, 30, 30, 8, 8, 16, 0, 0xdc, 1, 14, 3000, 14, 7]);
+    [1, 7, 30, 30, 8, 8, 16, 0, 0xdf, 1, 14, 3000, 14, 7]);
   assert.equal(h.fontCrc, fx.font_crc);
   assert.equal(h.paletteCrc, fx.palette_crc);
   const v = await viewer();

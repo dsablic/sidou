@@ -66,7 +66,10 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   for each lane) and a filter sweep write patterns in STEP and TRACKER; a lane given the ARP role
   rolls chords (shared wavetable chord programs, C64 style), an ACID lane a bassline with
   slides and accents, and a BASS+DRUMS lane the kit's kick
-  and snare time-shared with a bass on one voice.
+  and snare time-shared with a bass on one voice. A held step and EDIT + ALGORITHM ratchets it
+  (x2 to x4, a shared copy of its instrument that GoatTracker plays too). SWING shuffles the song (light, shuffle or
+  hard) as GoatTracker's funktempo, so it swings the same in GoatTracker, and a lane's EUCLID
+  spreads a number of hits evenly over it (Bjorklund's rhythms), written as real steps.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from

@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-#define FONT_LAST 0xDCu
+#define FONT_LAST 0xDFu
 
 #define FONT_FULL 0x7Fu
 #define FONT_Q0 0x80u
@@ -106,6 +106,9 @@ extern "C" {
 #define FONT_SLOT_R 0xDAu
 #define FONT_SLOT_LR 0xDBu
 #define FONT_SCOPE_MID 0xDCu
+#define FONT_TICK2 0xDDu
+#define FONT_TICK3 0xDEu
+#define FONT_TICK4 0xDFu
 
 extern const uint8_t font_glyphs[FONT_LAST + 1u][8] __attribute__((aligned(4)));
 

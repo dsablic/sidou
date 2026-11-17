@@ -126,7 +126,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 |---|---|
 | Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
-| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
+| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; STEP takes them with a step held, and FX held for EUCLID; in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
 | K1 (encoder 2) | cutoff: 64 detents from a semitone above the chip's lowest cutoff to its highest, even in pitch (on the CHIP view: its focused section's first value, [below](#chip)) |
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
@@ -284,7 +284,8 @@ solo is.
 TRACKER's header (rows 0-1): the shown voice **V1** at 2× in its colour (light red, cyan, light
 green), its pattern **PAT 03** at 2× (hex), a play mark or a stop square, the tempo in BPM small (the
 frame rate times the play routine's calls a frame, over the calls a row and the rows a beat, 4;
-funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125) and REC in red. Row 2
+funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125), under it the song's
+[swing](#step) (`BPM` while straight) and REC in red. Row 2
 numbers the strips. The rows: 12 pattern rows of two cell rows, each its number small (yellow on
 the current row), the note at 2×, the instrument at 2× in the voice's colour and the command
 small; the current row a dark grey bar. At the foot: the orderlist from the shown voice's entry,
@@ -320,13 +321,18 @@ HELD STEP frame (`HELD STEP 22`).
 | Step held + ALGORITHM | the step's **chance** to play on each pass, 100 % (always) down to 0 in steps of 5; the popup says `CHANCE 75%`, the frame the number beside the note, the notch is yellow (it is a lock) |
 | Step held + FX | **SLIDE** on that step, on and off (toast `SLIDE ON`, `SLIDE OFF`; a lock: the yellow notch): the note's gate is held through the rows up to the next note, GoatTracker's hard restart skipped, and the next note glides from this pitch over 4 frames, as a 303's slide |
 | Step held + ENV | **ACCENT** on that step, on and off (`ACCENT ON`, `ACCENT OFF`): for its row the cutoff is 384 higher, the resonance 4 higher (each clamped) and the voice's sustain full |
-| Step held + LFO | clears that step's locks, its chance, its SET, its slide and its accent |
+| Step held + EDIT + ALGORITHM | the step's **RATCHET**: `OFF`, `x2`, `x3`, `x4`, the step played that many times in its row (below, **Ratchets**); the popup says `RATCHET` over `x3`, the step shows that many short yellow ticks under it. A count the song's rows are too short for is refused in the popup (`NO x4`), a rest says `NO NOTE` |
+| Step held + LFO | clears that step's locks, its chance, its SET, its slide, its accent and its ratchet |
+| FX held + K1 | the selected lane's **EUCLID** **HITS**, 0 to the lane's length: that many hits spread as evenly as the steps allow (Bjorklund's rhythm: 3 of 8 is `x..x..x.`), written as the lane's steps (below, **Euclid**). The popup says `HITS` over `3/8` |
+| FX held + K2 | the lane's EUCLID **ROTATE**: the rhythm a step later a detent, round the lane (`ROTATE` over `1`) |
+| FX held + LFO | the lane's EUCLID off (toast `EUCLID OFF`): the steps stay as they are |
 | EDIT + ARP | **MUTATE**: two small changes to the lane's pattern, a note nudged to the next note of the scale or taken away, or a ghost step of the scale added; toast `MUTATED`. Either finger may land first (ARP first leaves the lane's gate as it was) |
 | EDIT + SCL | **DICE**: a new pattern for the lane, notes of the scale on a rhythm grid; toast `NEW PATTERN`. The roll is made when SCL is let go, unless a knob was turned (or another button pressed) while it was held. It is the same chord whichever lands first: SCL alone on STEP waits for EDIT, and selects the next effect slot (as everywhere) when it is let go, or as soon as another control is used while it is down |
 | EDIT + SCL held + K1 | DICE's **density**: `SPARSE`, `LIGHT`, `MEDIUM` (the default, what DICE always rolled), `BUSY`, `FULL` (a note on every step); the frame shows it at 2x, the popup too |
 | EDIT + SCL held + K2 | DICE's **range**: `1 OCT` (the lane's note and the scale above it), `2 OCT` (the default, what DICE always rolled: and the octave above), `3 OCT`, `BASS` (the lane's octave and the one below); MUTATE's ghost steps keep to it too. A drum lane ignores it (its range shows grey) |
 | EDIT + SCL held + K3 | the selected lane's DICE **scale**: `MIN PENT` (the default), `MAJ PENT`, `MINOR`, `MAJOR`, `DORIAN`, `CHROMATIC`; MUTATE keeps to it too. Each lane has its own (a lane never set has V1's) |
 | EDIT + SCL held + K4 | DICE's **rhythm**: `STRAIGHT` (the default, what DICE always rolled), `OFFBEAT`, `3-3-2`, `FOUR`, `BROKEN`; melodic and drum lanes alike |
+| EDIT + SCL held + ALGORITHM | the song's **SWING**, a detent a level: `STRAIGHT`, `LIGHT`, `SHUFFLE`, `HARD` (below, **Swing**). The popup says it large (`SWING` over `SHUFFLE`); TRACKER takes it too. A turn spoils the roll, as K1-K4's do |
 | EDIT + SCL held + PRESETS | the selected lane's **role**: `AUTO` (the default), `DRUMS`, `BASS`, `BASS+DRUMS`, `ACID`, `ARP`, `LEAD`, `NONE`, a detent a step, stopping at the ends. The frame says it small beside the root (`PRE ROLE`), the popup large; it goes into the song's `SCNE` chunk ([song format](song-format.md)), the other lanes `AUTO` if the song had none. It steers DICE (below, **Roles**) and RED MOON RITE. A turn spoils the roll, as K1-K4's do, and the lane's instrument stays |
 | EDIT + SCL held + a note key | the selected lane's **root**, the note DICE and MUTATE build on (a step key too: it toggles nothing then); the frame says `ROOT` and the note. The key sounds nothing and does not spoil the roll: letting SCL go still rolls, on the new root. Roots are not saved (C-3 when a song loads) |
 | EDIT + ENV | **SWEEP**: a filter sweep on the lane's pattern, GoatTracker's `C` command (FILTER CUTOFF) every second row from the first, `10` to `F0` or `F0` to `10` (the seed picks; toast `SWEEP UP` or `SWEEP DOWN`). A row that has a command keeps it; the sweep writes only empty command cells, one row a turn, and undo steps back one cell. It moves the filter of every voice routed through it (the instrument's filter table or a LOCK), as in GoatTracker |
@@ -375,6 +381,49 @@ beats of sixteenths (percent at MEDIUM, places 1-8): OFFBEAT 10 0 90 0 10 0 90 2
 the octave of each note: the lane's own (1 OCT), it or the next (2 OCT), one of three (3 OCT), or it
 or the one below (BASS, never below C-0). A song with no chunk is MEDIUM, the minor pentatonic,
 STRAIGHT and 2 OCT.
+
+**Ratchets** (Step held + EDIT + ALGORITHM). A ratcheted step plays a **copy of its instrument**
+whose wave table gates the note off and on again, so the song stays GoatTracker data and plays
+the same there. The copy is the instrument's sound (envelope, pulse, filter and vibrato) with its
+first frame the wave program's first waveform (the first hit), its gate cleared 1 frame before the
+next note (its hard restart shortened, so the last hit sounds), and a wave program of the hits
+before the last: a hold, a frame with the gate off and a frame with it on again, then a jump to the
+instrument's own program, which the last hit plays. The hits are a row's frames over the count
+apart (the shorter row of a swung pair): at speed 6, x2 is hits 3 frames apart and x3 2 apart;
+x4 needs rows of 8 frames (speed 8, or a slower swing), since a hit is at least a frame on and one
+off. Copies are **shared**: one for each instrument, count and row length, found by its bytes
+and its program, so ratcheting more steps costs nothing more; each new one takes a free
+instrument slot (named after the instrument, `KICK x3`) and up to 10 wave table rows after the
+table's last. With no free slot the ratchet is refused (`INSTRUMENTS FULL`), with no room in the
+table `TABLE FULL`. OFF, and LFO's clear, give the step its instrument back; a copy no step uses
+stays in the song, ready for the next step ratcheted that way.
+
+**Euclid** (FX held + K1, K2; STEP only). A turn of HITS or ROTATE turns the selected lane's
+EUCLID on and writes the rhythm into its pattern as ordinary steps, over the whole lane (its
+`STEPS`, up to 128): a step the rhythm hits and that has no note gets the lane's note and
+instrument, a step it misses loses its note, each as a step key's toggle does (the lane's gate
+writes its key offs), and a hit that already has a note keeps it. So the lane's notes, its locks
+(they stay on their steps), SETs and slides apply, the song is plain GoatTracker data, and the
+change is heard on the next pass. While EUCLID is on, the HELD STEP frame's foot says
+`EUCLID 3/8 ROT 1`; FX + LFO turns it off and leaves the steps, and the next turn starts it
+again from the kept HITS and ROTATE. HITS and ROTATE are each lane's, not saved (0 when a song
+loads, as roots are). Bjorklund's rhythms start on a hit: E(5,8) is `x.xx.xx.`, E(7,16)
+`x..x.x.x..x.x.x.`. DICE is unchanged.
+
+**Swing** (EDIT + SCL held + ALGORITHM, in STEP and TRACKER; the frame's foot says `ALG SWING`) is
+the song's shuffle: every second row plays late. It is GoatTracker's **funktempo** (`EXY`), written
+into the first row of voice 1's first pattern, so the song swings the same in GoatTracker and the
+first row's command in TRACKER says `FUNKTEMPO`. At speed 6 the levels are rows of 6 and 6
+frames, 7 and 5, 8 and 4, 9 and 3 (50, 58, 67 and 75 % of each pair of rows on the first row);
+at other speeds the same shares to the nearest frame, a level a speed cannot give (the same pair
+as the level below, or a second row under 2 frames) refused in the popup (`NO LIGHT` at speed 3;
+the song keeps the last level it could give). The two speeds still add up to the tempo's, so the
+BPM shown, their average, stays. The song views' header says the level under the BPM, in yellow
+(`LITE`, `SHUF`, `HARD`; `BPM` while straight). STRAIGHT at speed 6 takes the command away; a
+first row with another command refuses it (`ROW HAS A COMMAND`), and `FXX` (SET TEMPO) there is
+replaced by the funktempo at its speed. Each pair is a row of the speed table, found if the song
+has it and added after the table's last row if not (the rows a turn passes through stay, unused).
+Per-pattern swing is TRACKER's own `E` command.
 
 **Roles** (EDIT + SCL held + PRESETS; the `SCNE` chunk). A **DRUMS** lane keeps its one note, as
 above. An **ARP** lane rolls **chords** (toast `NEW CHORDS`): each hit is a note, the lane's

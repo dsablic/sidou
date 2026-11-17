@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 pub const GLYPHS: usize = 256;
 
-pub const LAST: usize = 0xDC;
+pub const LAST: usize = 0xDF;
 
 pub fn compiled_glyph(code: u8) -> [u8; 8] {
     let rows = unsafe { *std::ptr::addr_of!(sidou_sys::font_glyphs) };

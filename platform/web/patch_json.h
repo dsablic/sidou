@@ -88,6 +88,7 @@ typedef struct {
 typedef struct {
     char name[PATCH_BANK_NAME + 1u];
     uint16_t bpm, bpm_played10;
+    uint8_t swing;
     uint8_t sections, order_len, instruments;
     uint8_t order[PATCH_SONG_ORDER];
     char labels[PATCH_SONG_INSTRUMENTS][PATCH_SONG_LABEL + 1u];

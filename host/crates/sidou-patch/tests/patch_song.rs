@@ -60,7 +60,7 @@ fn every_mistake_is_refused_in_words_a_model_can_act_on() {
     ) + "}";
     let sixty_five = listed(r#""order": ["#, (0..65).map(|_| r#""A""#.to_string())) + "]";
     let cases = [
-        (GROOVE, r#""bpm": 125"#, r#""tempo": 125"#, "tempo: no such field. Allowed here: format, name, bpm, instruments, sections, order."),
+        (GROOVE, r#""bpm": 125"#, r#""tempo": 125"#, "tempo: no such field. Allowed here: format, name, bpm, swing, instruments, sections, order."),
         (GROOVE, r#""format": "sidou-song/1", "#, "", "format: is missing. Allowed: \"sidou-song/1\"."),
         (GROOVE, "sidou-song/1", "sidou-song/2", "format: is not this format. Allowed: \"sidou-song/1\"."),
         (GROOVE, r#""name": "GROOVE""#, r#""name": "A NAME FAR TOO LONG""#, "name: is too long. Allowed: 1 to 16 characters"),
@@ -385,4 +385,37 @@ fn bpm_60_plays_rows_of_twelve_then_thirteen_frames() {
     .unwrap();
     let lengths = row_lengths_after_the_first(&made.sng, GROOVE_ROWS);
     assert_eq!(lengths[..4], [12, 13, 12, 13]);
+}
+
+#[test]
+fn swing_plays_the_odd_rows_short_at_the_same_bpm_and_a_swing_the_bpm_cannot_give_is_refused() {
+    let swung = |bpm: u32, swing: &str| {
+        json::check_song(
+            &with(
+                GROOVE,
+                r#""bpm": 125"#,
+                &format!(r#""bpm": {bpm}, "swing": "{swing}""#),
+            ),
+            SID_MODEL_6581,
+        )
+    };
+    for (swing, rows) in [
+        ("straight", [6, 6]),
+        ("light", [5, 7]),
+        ("shuffle", [4, 8]),
+        ("hard", [3, 9]),
+    ] {
+        let made = swung(125, swing).unwrap();
+        assert_eq!(made.bpm_played10, bpm10(12), "{swing}: the average plays");
+        let lengths = row_lengths_after_the_first(&made.sng, GROOVE_ROWS);
+        assert_eq!(lengths[..4], rows.repeat(2), "{swing}");
+    }
+    assert_eq!(
+        swung(250, "light").unwrap_err(),
+        "swing: \"light\" does not fit this bpm. Allowed at this bpm: \"straight\", \"shuffle\"."
+    );
+    assert!(
+        refusal(&with(GROOVE, r#""bpm": 125"#, r#""swing": "funky""#))
+            .starts_with("swing: \"funky\" is not allowed.")
+    );
 }
