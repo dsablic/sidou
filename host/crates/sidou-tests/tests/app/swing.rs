@@ -88,7 +88,9 @@ fn stepping(m: Model) -> Song {
     s
 }
 
-const PAIRS: [(u8, [Option<(u8, u8)>; 3]); 6] = [
+type Pair = Option<(u8, u8)>;
+
+const PAIRS: [(u8, [Pair; 3]); 6] = [
     (3, [None, Some((2, 4)), None]),
     (4, [Some((3, 5)), None, Some((2, 6))]),
     (5, [Some((4, 6)), Some((3, 7)), None]),
