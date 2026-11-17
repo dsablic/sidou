@@ -17,6 +17,7 @@ pub(crate) enum Call {
     Resume,
     Mute(u32),
     Jam(u32, u32, u32),
+    Funktempo(u32, u32),
 }
 
 pub(crate) struct Fake {
@@ -51,7 +52,7 @@ impl Fake {
             Call::Stop => self.st.state = SONG_T_STOPPED as u8,
             Call::Resume => self.st.state = SONG_T_PLAYING as u8,
             Call::Mute(m) => self.st.mute = m as u8,
-            Call::Jam(..) => {}
+            Call::Jam(..) | Call::Funktempo(..) => {}
         }
         1
     }
@@ -83,6 +84,9 @@ unsafe extern "C" fn mute(ctx: *mut c_void, mask: u32) -> i32 {
 }
 unsafe extern "C" fn jam(ctx: *mut c_void, voice: u32, note: u32, instr: u32) -> i32 {
     fake(ctx).cmd(Call::Jam(voice, note, instr))
+}
+unsafe extern "C" fn funktempo(ctx: *mut c_void, left: u32, right: u32) -> i32 {
+    fake(ctx).cmd(Call::Funktempo(left, right))
 }
 unsafe extern "C" fn held(ctx: *mut c_void, voice: u32, locks: *const u8, n: u32) -> i32 {
     let f = fake(ctx);
@@ -195,6 +199,7 @@ impl Song {
             edit_done: Some(edit_done),
             edit_guard: Some(edit_guard),
             held: Some(held),
+            funktempo: Some(funktempo),
             ..Default::default()
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };

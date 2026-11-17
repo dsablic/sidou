@@ -75,6 +75,7 @@ add_library(sidou_live STATIC
     song_edit.c
     song_gen.c
     song_ratchet.c
+    song_swing.c
     step_view.c
     store.c
     sysex.c
@@ -122,7 +123,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(scene_px.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(widget.c grid_cold.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(midi_out.c PROPERTIES COMPILE_OPTIONS "-Oz")
-    set_source_files_properties(song_gen.c song_ratchet.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
+    set_source_files_properties(song_gen.c song_ratchet.c song_swing.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
     set_source_files_properties(step_view.c PROPERTIES COMPILE_OPTIONS "-Oz;-fno-inline-functions;-fno-jump-tables")
     set_source_files_properties(sid_view.c PROPERTIES COMPILE_OPTIONS "-Oz")
     set_source_files_properties(tracker_view.c PROPERTIES COMPILE_OPTIONS "-Oz")

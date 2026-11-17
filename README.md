@@ -67,8 +67,9 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   rolls chords (shared wavetable chord programs, C64 style), an ACID lane a bassline with
   slides and accents, and a BASS+DRUMS lane the kit's kick
   and snare time-shared with a bass on one voice. STEP's GROOVE page, the page after the
-  pattern's last, has a knob each and no held keys: SWING shuffles the song (light, shuffle or
-  hard) as GoatTracker's funktempo, so it swings the same in GoatTracker, a lane's HITS and ROTATE
+  pattern's last, has a knob each and no held keys: SWING shuffles the song's eighths or
+  sixteenths, whichever it plays (light, shuffle or hard, heard as you turn), as GoatTracker's
+  funktempo, so it swings the same in GoatTracker, a lane's HITS and ROTATE
   spread a number of hits evenly over it (Bjorklund's rhythms) as real steps, and RATCHET plays a
   picked step two to four times in its row (a shared copy of its instrument that GoatTracker
   plays too).

@@ -88,7 +88,7 @@
       "type": "object"
     },
     "swing": {
-      "description": "the odd rows played late, at the same bpm; not every tempo gives every swing (llms-song.txt)",
+      "description": "the offbeats played late (eighths when the song plays eighths, else sixteenths), at the same bpm; not every tempo gives every swing (llms-song.txt)",
       "enum": [
         "straight",
         "light",

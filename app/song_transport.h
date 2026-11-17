@@ -82,6 +82,7 @@ typedef struct {
     int (*draft)(void* ctx, uint32_t voice, uint32_t first, uint32_t n, const uint8_t* left,
                  const uint8_t* right);
     int (*held)(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n);
+    int (*funktempo)(void* ctx, uint32_t left, uint32_t right);
 } song_transport;
 
 #ifdef __cplusplus

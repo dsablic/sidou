@@ -16,8 +16,11 @@ use crate::{PANEL_ENC_K2, PANEL_ENC_K3};
 pub(crate) fn settle(ui: &mut crate::views::Ui) {
     for _ in 0..400 {
         let st = &ui.v.step;
-        let g = &ui.v.song.gen_;
-        if st.qn == 0 && st.follow == 0 && g.run == 0 && g.follow == 0 && ui.v.editor.pending == 0 {
+        if st.qn == 0
+            && st.follow == 0
+            && unsafe { song_gen_busy(&ui.v.song) } == 0
+            && ui.v.editor.pending == 0
+        {
             break;
         }
         ui.frame();

@@ -1083,6 +1083,10 @@ static int st_held(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n) 
     return song_away ? 0 : song_ctl_held(ctx, voice, locks, n);
 }
 
+static int st_funktempo(void* ctx, uint32_t left, uint32_t right) {
+    return song_away ? 0 : song_ctl_funktempo(ctx, left, right);
+}
+
 static void song_seen_rows(const song_event* ev, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) {
         uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
@@ -1321,6 +1325,7 @@ static const song_transport song_binding = {
     .edit_with_locks = st_edit_with_locks,
     .draft = st_draft,
     .held = st_held,
+    .funktempo = st_funktempo,
 };
 static song_transport song_bound;
 

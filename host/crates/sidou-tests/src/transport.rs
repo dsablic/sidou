@@ -114,6 +114,10 @@ impl Transport {
         unsafe { song_ctl_edit(&mut *self.sc, e) != 0 }
     }
 
+    pub fn funktempo(&mut self, left: u32, right: u32) -> bool {
+        unsafe { song_ctl_funktempo(&mut *self.sc, left, right) != 0 }
+    }
+
     pub fn seek(&mut self, call: u32) -> bool {
         unsafe { song_ctl_seek(&mut *self.sc, call) != 0 }
     }

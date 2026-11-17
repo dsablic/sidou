@@ -108,6 +108,7 @@ const SOURCES: &[&str] = &[
     "app/song_edit.c",
     "app/song_gen.c",
     "app/song_ratchet.c",
+    "app/song_swing.c",
     "app/step_view.c",
     "app/store.c",
     "app/sysex.c",

@@ -7,6 +7,7 @@
 
 #include "screen.h"
 #include "song/song_ext.h"
+#include "song_swing.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,7 +42,11 @@ typedef struct {
     uint8_t role, kick, snare, wait;
     uint8_t chord[SONG_GEN_CHORDS];
     uint8_t swing, swing_given, swing_turned, swing_refused, swing_wait, swing_due;
-    uint8_t swing_pair[2];
+    uint8_t swing_short, swing_long, swing_eighths, swing_first, swing_sub, swing_poke;
+    uint8_t swing_first_data;
+    uint8_t swing_data[3];
+    uint8_t swing_writing, swing_from, swing_from_row, swing_step, swing_pattern, swing_row;
+    uint16_t swing_sum;
     uint8_t euclid_hits[SONG_GEN_LANES], euclid_rotate[SONG_GEN_LANES];
     uint8_t euclid_mask[SONG_GEN_EUCLID_ROWS / 8u];
     struct song_pages* pages;
