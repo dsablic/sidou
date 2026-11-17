@@ -109,7 +109,10 @@ fn k2_and_k3_tune_the_edited_layer() {
 fn levels_sent(ui: &Ui) -> [u8; 3] {
     let mut sent = [0u8; 3];
     for &(reg, value) in ui.rig.log() {
-        if let Some(v) = u32::from(reg).checked_sub(LIVE_REG_LEVEL_FIRST).filter(|&v| v < 3) {
+        if let Some(v) = u32::from(reg)
+            .checked_sub(LIVE_REG_LEVEL_FIRST)
+            .filter(|&v| v < 3)
+        {
             sent[v as usize] = value;
         }
     }
@@ -125,13 +128,20 @@ fn level_cut(ui: &Ui) -> [u8; 3] {
 #[test]
 fn k4_sets_the_edited_layers_level_on_its_voice_alone() {
     let mut ui = layers_page(2);
-    assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3), ("LEVEL".into(), "100".into()));
+    assert_eq!(
+        card(&ui, LAB_PAGE_LAYERS, 3),
+        ("LEVEL".into(), "100".into())
+    );
     ui.turn(PANEL_ENC_K1, 1);
     ui.turn(PANEL_ENC_K4, -60);
     settle(&mut ui);
     assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3), ("LEVEL".into(), "40".into()));
     assert_eq!(levels_sent(&ui), [100, 40, 100]);
-    assert_eq!(level_cut(&ui), [0, 60, 0], "kept in the sound as 100 less it");
+    assert_eq!(
+        level_cut(&ui),
+        [0, 60, 0],
+        "kept in the sound as 100 less it"
+    );
     ui.turn(PANEL_ENC_K4, -64);
     ui.turn(PANEL_ENC_K4, -64);
     settle(&mut ui);
@@ -139,7 +149,11 @@ fn k4_sets_the_edited_layers_level_on_its_voice_alone() {
     ui.turn(PANEL_ENC_K4, 64);
     ui.turn(PANEL_ENC_K4, 64);
     settle(&mut ui);
-    assert_eq!(levels_sent(&ui), [100, 100, 100], "and no further than full");
+    assert_eq!(
+        levels_sent(&ui),
+        [100, 100, 100],
+        "and no further than full"
+    );
 }
 
 #[test]
@@ -150,7 +164,11 @@ fn one_osc_plays_its_chord_at_the_first_layers_level_and_a_new_layer_starts_ther
     assert_eq!(levels_sent(&ui), [70, 70, 70], "every voice of the chord");
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut ui);
-    assert_eq!(levels_sent(&ui), [70, 70, 100], "layer 2 a copy of the first, voice 3 unused");
+    assert_eq!(
+        levels_sent(&ui),
+        [70, 70, 100],
+        "layer 2 a copy of the first, voice 3 unused"
+    );
     ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(card(&ui, LAB_PAGE_LAYERS, 3).1, "70");
 }

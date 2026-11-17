@@ -19,6 +19,7 @@ const NAK: u8 = 0x7f;
 const SYSEX_MALFORMED: u8 = sidou_sys::SYSEX_MALFORMED as u8;
 const SYSEX_NOT_FOUND: u8 = sidou_sys::SYSEX_NOT_FOUND as u8;
 const CONFIG_LEN: usize = 175;
+const USB_FRAME_MS: u64 = 1;
 
 fn host(m: &mut Machine) -> &mut UsbHost {
     m.usb.as_mut().expect("a host")
@@ -1455,7 +1456,7 @@ fn waits_while_the_song_plays(
     for w in waits.windows(2) {
         let gap = w[1] - w[0];
         assert!(
-            (u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS)
+            (u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS) - USB_FRAME_MS
                 ..=u64::from(sidou_sys::SYSEX_WAIT_EVERY_MS) + 50)
                 .contains(&gap),
             "WAITs {gap} ms apart"

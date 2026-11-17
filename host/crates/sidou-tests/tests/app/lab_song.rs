@@ -397,7 +397,9 @@ fn a_layers_level_is_kept_with_the_sound_in_the_song() {
     s[LAB_SOUND_LAYERS as usize] = 2;
     s[LAB_SOUND_LEVEL_CUT as usize + 2] = 35;
     let (song, _) = sent_song(&s, 3, [1, 1, 1, 1]);
-    let chunk = song.ext_find(unsafe { lab_song_tag(3) }).expect("the chunk");
+    let chunk = song
+        .ext_find(unsafe { lab_song_tag(3) })
+        .expect("the chunk");
     assert_eq!(chunk.len(), 9 + BYTES);
     let mut back = Song::device();
     back.read(&song.write(true), 4).map_err(|i| i.msg).unwrap();

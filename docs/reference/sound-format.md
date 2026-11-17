@@ -88,7 +88,7 @@ has a character out of the range or whose sound is not one is empty.
 
 ## The unsaved edit
 
-A store value, key `0x109`, type `4`, 128 bytes (1.0's: 61, 1.1 to 1.5's: 64, 1.6's: 84, 1.7 to 1.21's: 125): the sound playing, written by the
+A store value, key `0x109`, type `4`, 125 bytes while every layer is at full level and 128 with a layer's level (1.0's: 61, 1.1 to 1.5's: 64, 1.6's: 84, 1.7 to 1.21's: 125): the sound playing, written by the
 settings' debounce before the [settings record](settings-format.md) and applied at boot after it.
 
 | Offset | Bytes | Value |
@@ -97,8 +97,8 @@ settings' debounce before the [settings record](settings-format.md) and applied 
 | 1 | 1 | Preset, the settings record's byte: `0..4` a built-in or DICE, `5 + n` USER sound n + 1 |
 | 2 | 1 | Edited: `1` while the sound differs from its base (the preset as loaded, or the slot as kept) |
 | 3 | 12 | The base's name, NUL-padded |
-| 15 | 1 | The bytes of the sound that follow, `112` (1.0's: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`, 1.7 to 1.21's: `109`) |
-| 16 | 112 | The sound |
+| 15 | 1 | The bytes of the sound that follow, `109` while every layer is at full level, `112` with a layer's level (1.0's: `45`, 1.1 to 1.5's: `48`, 1.6's: `68`) |
+| 16 | 109 or 112 | The sound |
 
 At boot the settings record loads its preset (a USER sound's from the file: its base), then
 the unsaved edit's sound is applied over it when the record's preset is the one loaded, so the

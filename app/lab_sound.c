@@ -30,15 +30,6 @@ static uint32_t u16_at(const uint8_t* s, uint32_t at) {
     return (uint32_t)s[at] | (uint32_t)s[at + 1u] << 8;
 }
 
-uint32_t lab_sound_used_bytes(const uint8_t s[LAB_SOUND_BYTES]) {
-    for (uint32_t n = 0; n < LIVE_VOICES; n++) {
-        if (s[LAB_SOUND_LEVEL_CUT + n]) {
-            return LAB_SOUND_BYTES;
-        }
-    }
-    return LAB_SOUND_BYTES_1_7;
-}
-
 uint32_t lab_sound_equal(const uint8_t a[LAB_SOUND_BYTES], const uint8_t b[LAB_SOUND_BYTES]) {
     return memcmp(a, b, LAB_SOUND_BYTES) == 0;
 }

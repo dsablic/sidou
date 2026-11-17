@@ -70,7 +70,6 @@ typedef struct {
     uint8_t noise_writeback;
     uint8_t mute;
     uint8_t voice_path;
-    uint8_t level_cut[3];
     float voice_gain[3];
 } sid;
 
@@ -182,7 +181,7 @@ static inline void sid_set_mute(sid* s, uint8_t mask) {
 }
 
 static inline void sid_set_level(sid* s, uint32_t voice, uint32_t level) {
-    s->level_cut[voice % 3u] = (uint8_t)(SID_LEVEL_FULL - (level < SID_LEVEL_FULL ? level : SID_LEVEL_FULL));
+    s->voice_gain[voice % 3u] = (float)(level < SID_LEVEL_FULL ? level : SID_LEVEL_FULL) * (1.0f / (float)SID_LEVEL_FULL);
 }
 
 void sid_clock(sid* s, uint32_t cycles);

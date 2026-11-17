@@ -1162,10 +1162,10 @@ fn a_layers_level_on_k4_reaches_its_voice_on_the_device() {
     }
     m.run_ms(60);
     let s = common::rendered_sid(&mut m, &fw, 0);
-    let cut: Vec<u8> = (0..3)
-        .map(|v| m.soc.read8(s + (ilp32::sid::level_cut + v) as u32))
+    let gain: Vec<f32> = (0..3)
+        .map(|v| f32::from_bits(m.soc.read32(s + (ilp32::sid::voice_gain + 4 * v) as u32)))
         .collect();
-    assert_eq!(cut, [0, 60, 0], "layer 2 at 40 % on voice 2 alone");
+    assert_eq!(gain, [1.0, 0.4, 1.0], "layer 2 at 40 % on voice 2 alone");
 }
 
 #[test]

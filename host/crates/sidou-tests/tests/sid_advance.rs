@@ -258,7 +258,11 @@ fn mute(s: &mut sid, mask: u32) {
 
 fn level_zero(s: &mut sid, mask: u32) {
     for v in 0..3 {
-        let level = if mask >> v & 1 != 0 { 0 } else { SID_LEVEL_FULL };
+        let level = if mask >> v & 1 != 0 {
+            0
+        } else {
+            SID_LEVEL_FULL
+        };
         unsafe { sid_set_level(s, v, level) };
     }
 }
@@ -358,7 +362,12 @@ fn a_layers_level_scales_its_voice_alone() {
             levels[v] = level;
             let whole = played_at([FULL; 3], 0);
             let without = played_at([FULL; 3], 1 << v);
-            let peak = whole.iter().zip(&without).map(|(a, b)| (a - b).abs()).max().unwrap();
+            let peak = whole
+                .iter()
+                .zip(&without)
+                .map(|(a, b)| (a - b).abs())
+                .max()
+                .unwrap();
             assert!(peak > 2_000, "voice {v} is heard: {peak}");
             let got = played_at(levels, 0);
             for (i, ((&w, &o), &g)) in whole.iter().zip(&without).zip(&got).enumerate() {
@@ -374,7 +383,10 @@ fn a_layers_level_scales_its_voice_alone() {
 
 #[test]
 fn levels_above_full_play_at_full() {
-    assert_eq!(played_at([255, 101, 200], 0), played_at([SID_LEVEL_FULL; 3], 0));
+    assert_eq!(
+        played_at([255, 101, 200], 0),
+        played_at([SID_LEVEL_FULL; 3], 0)
+    );
 }
 
 #[test]

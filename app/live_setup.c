@@ -486,6 +486,7 @@ uint32_t live_sound_edited(const live* l, const uint8_t now[LAB_SOUND_BYTES]) {
 }
 
 #define SOUND_WORDS (LAB_SOUND_BYTES / 4u)
+_Static_assert(LAB_SOUND_BYTES % 4u == 0u, "a sound compares a word at a time");
 
 uint32_t live_preset_edited(const live* l) {
     _Alignas(4) uint8_t now[LAB_SOUND_BYTES];
@@ -503,7 +504,7 @@ uint32_t live_preset_edited(const live* l) {
             return 1;
         }
     }
-    return memcmp(now + 4u * SOUND_WORDS, l->base + 4u * SOUND_WORDS, LAB_SOUND_BYTES % 4u) != 0;
+    return 0;
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
@@ -603,6 +604,7 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
         uint8_t* t = &out[LAB_SOUND_LAYER_TUNING + n * LAB_SOUND_LAYER_TUNING_BYTES];
         t[0] = (uint8_t)l->transpose[n];
         t[1] = (uint8_t)l->detune[n];
+        out[LAB_SOUND_LEVEL_CUT + n] = l->level_cut[n];
     }
     for (uint32_t n = 0; n < LIVE_LAYERS_MAX; n++) {
         uint8_t* v = &out[LAB_SOUND_LAYER_VOICE + n * LAB_SOUND_LAYER_VOICE_BYTES];
@@ -616,7 +618,6 @@ void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_FILTER_ENV_SR] = l->fenv_sr;
     memcpy(&out[LAB_SOUND_TABLE], l->table, LAB_SOUND_TABLE_BYTES);
     memcpy(&out[LAB_SOUND_LFO], l->lfo, sizeof l->lfo);
-    memcpy(&out[LAB_SOUND_LEVEL_CUT], l->level_cut, sizeof l->level_cut);
 }
 
 static const struct {

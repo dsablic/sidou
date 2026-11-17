@@ -262,10 +262,12 @@ uint32_t user_sound_edit_gather(const live* l, uint8_t* out) {
     for (uint32_t i = 0; i < LAB_SOUND_NAME && l->base_name[i]; i++) {
         out[3u + i] = (uint8_t)l->base_name[i];
     }
-    out[3u + LAB_SOUND_NAME] = LAB_SOUND_BYTES;
-    live_sound_get(l, &out[4u + LAB_SOUND_NAME]);
-    out[2] = (uint8_t)live_sound_edited(l, &out[4u + LAB_SOUND_NAME]);
-    return USER_SOUND_EDIT_BYTES;
+    uint8_t* sound = &out[4u + LAB_SOUND_NAME];
+    live_sound_get(l, sound);
+    out[2] = (uint8_t)live_sound_edited(l, sound);
+    uint32_t used = lab_sound_used_bytes(sound);
+    out[3u + LAB_SOUND_NAME] = (uint8_t)used;
+    return 4u + LAB_SOUND_NAME + used;
 }
 
 int user_sound_edit_apply(live* l, const uint8_t* rec, uint32_t len) {

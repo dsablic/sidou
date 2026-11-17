@@ -264,12 +264,12 @@ typedef struct {
     int8_t reso_link, pwm_link;
     uint8_t layers;
     int8_t transpose[LIVE_VOICES], detune[LIVE_VOICES];
-    uint8_t level_cut[LIVE_VOICES];
     live_layer layer[LIVE_LAYERS_MAX];
     int8_t fenv_depth;
     uint8_t fenv_ad, fenv_sr;
     uint8_t table[LAB_SOUND_TABLE_BYTES];
     uint8_t lfo[LAB_SOUND_LFOS][LAB_SOUND_LFO_BYTES];
+    uint8_t level_cut[LIVE_VOICES];
 } live_edit;
 
 typedef struct {
@@ -374,7 +374,6 @@ typedef struct {
     uint8_t layers;
     int8_t transpose[LIVE_VOICES];
     int8_t detune[LIVE_VOICES];
-    uint8_t level_cut[LIVE_VOICES];
     live_layer layer[LIVE_LAYERS_MAX];
     uint8_t layer_edit;
     int8_t fenv_depth;
@@ -394,6 +393,7 @@ typedef struct {
     uint32_t lfo_rng;
     uint8_t lfo_edit;
     uint8_t vol_out;
+    uint8_t level_cut[LIVE_VOICES];
 } live;
 
 #define LIVE_PROFILE_NONE 0xffu

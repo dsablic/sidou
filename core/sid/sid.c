@@ -112,10 +112,6 @@ static inline void update_mix(sid* s) {
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
-static inline float level_gain(uint32_t cut) {
-    return (float)(SID_LEVEL_FULL - cut) * (1.0f / (float)SID_LEVEL_FULL);
-}
-
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -123,9 +119,6 @@ static inline void update_voice_masks(sid* s) {
     uint32_t off = s->routing | s->mute | ((s->mode_vol & 0x80u) ? 4u : 0u);
     s->voice_path = (uint8_t)((s->routing & 7u & ~(uint32_t)s->mute) * SID_PATH_FILTER |
                               (~off & 7u) * SID_PATH_DIRECT);
-    for (uint32_t v = 0; v < 3u; ++v) {
-        s->voice_gain[v] = level_gain(s->level_cut[v]);
-    }
 }
 
 static float exp_neg(float x) {
@@ -279,6 +272,7 @@ void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_
         sid_osc_set_model(&s->osc[v], model == SID_MODEL_6581);
         s->osc[v].tri_saw = 0x555u;
         s->env[v].counter = SID_ENV_POWER_ON;
+        sid_set_level(s, (uint32_t)v, SID_LEVEL_FULL);
         sid_osc_reset(&s->osc[v]);
         sid_env_reset_settled(&s->env[v]);
     }

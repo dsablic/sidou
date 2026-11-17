@@ -345,14 +345,19 @@ fn the_edit_comes_back_after_a_power_cycle() {
     assert!(u.edited());
     u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
     let rec = u.st.get(USER_SOUND_EDIT_KEY).expect("the unsaved edit");
-    assert_eq!(rec.len(), USER_SOUND_EDIT_BYTES as usize);
+    let full = LAB_SOUND_BYTES_1_7 as usize;
+    assert_eq!(
+        rec.len(),
+        USER_SOUND_EDIT_BYTES as usize - (BYTES - full),
+        "every layer at full level: 1.7's record"
+    );
     assert_eq!(
         rec[..4],
         [USER_SOUND_EDIT_VERSION as u8, 1, 1, b'P'],
         "version, PWM BASS, edited, its name"
     );
-    assert_eq!(rec[15], BYTES as u8);
-    assert_eq!(rec[16..], edit);
+    assert_eq!(rec[15], full as u8);
+    assert_eq!(rec[16..], edit[..full]);
     let u = u.power_cycle();
     assert_eq!(u.rig.live.preset, 1);
     assert_eq!(u.sound(), edit);
@@ -417,6 +422,23 @@ fn the_edit_comes_back_after_a_power_cycle() {
         0
     );
     u.st.assert_clean();
+}
+
+#[test]
+fn an_edit_with_a_layers_level_comes_back_after_a_power_cycle_whole() {
+    let mut u = Unit::blank();
+    u.rig.preset_step(1);
+    let mut edit = u.sound();
+    edit[LAB_SOUND_LAYERS as usize] = 1;
+    edit[LAB_SOUND_LEVEL_CUT as usize + 1] = 45;
+    u.apply(&edit);
+    let edit = u.sound();
+    u.ticks(SETTINGS_AND_EDIT_SAVED_MS);
+    let rec = u.st.get(USER_SOUND_EDIT_KEY).expect("the unsaved edit");
+    assert_eq!(rec.len(), USER_SOUND_EDIT_BYTES as usize);
+    assert_eq!((rec[15], &rec[16..]), (BYTES as u8, &edit[..]));
+    let u = u.power_cycle();
+    assert_eq!(u.sound(), edit);
 }
 
 #[test]

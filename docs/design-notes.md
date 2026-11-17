@@ -4619,31 +4619,36 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 
 - The SID has no volume a voice, so the level is the render's: `sid.voice_gain[v]` scales the
   voice's output (`wave * env`) before it goes to the filter or straight out, in both render
-  loops. Measured on one core (`sid_budget`, the fm1 build) against three ways: a multiply before
-  the voice's routing branches, about 6 instructions a sample a chip (the worst scenario from
-  537.0 to 543.2 of `SID_WORST_PER_CHIP`'s 550, the worst block from 697.5 to 703.5 of 711 on
-  one chip and from 1,402.8 to 1,415.0 of 1,426 on two; RAMTEXT 44,880 to 45,088 of 49,152, the
-  image 554,916 to 555,860, 23,656 under the ceiling); a branch-free sum
-  (`filt_in += x * to_filter[v]`, `direct += x * to_direct[v]`), 8.3 a chip and the two-chip
-  mean at 548.3 of 550; a per-voice envelope DAC table scaled by the level, near 0 instructions
-  but 1 KB of RAM a voice of each of the three `sid`s. The first is built: every budget holds on
-  one core unchanged, and `SIDOU_CPU2` only widens the room.
+  loops. Measured on one core (`sid_budget`, the fm1 build), three ways against 1.21: a multiply
+  before the voice's routing branches, about 6 to 8 instructions a sample a chip; a branch-free
+  sum (`filt_in += x * to_filter[v]`, `direct += x * to_direct[v]`), 8.3 a chip; a per-voice
+  envelope DAC table scaled by the level, near 0 instructions but 1 KB of RAM a voice of each of
+  the three `sid`s. The first is built: the worst scenario from 537.0 to 545.0 of
+  `SID_WORST_PER_CHIP`'s 550, the worst block from 697.5 to 705.4 of 711 on one chip and from
+  1,402.8 to 1,418.7 of 1,426 on two; RAMTEXT 44,880 to 45,088 of 49,152. Every budget holds on
+  one core unchanged; `SIDOU_CPU2` only widens the room.
 - `x * 1.0f` is exact, so a layer at 100 % is the chip of 1.21 bit for bit (the render goldens),
   and `x * 0.0f` adds nothing, so a layer at 0 sounds as a voice that outputs nothing (the
-  zero-voice build's test, as the mute's). The gain is worked out once a block from
-  `level_cut[v]`, `100 -` the level, so a `sid` zeroed and never `sid_init`ed plays at full level
-  (a multiply by 0.01, which gives 1.0 exactly at 100). The thump at a gate stays the chip's, not
-  scaled: scaling it in `sid_write` cost the song player's worst block 12 instructions, and the
+  zero-voice build's test, as the mute's). The chip keeps only the three floats, set as the level
+  times 0.01 (1.0 exactly at 100) by `sid_set_level` and to 1.0 by `sid_init`: a byte of the level
+  beside them, or the gains worked out at each render, grew the `sid` or the loops enough to cost
+  the main loop's CC flood (below) or 3 more instructions a sample. The thump at a gate stays the
+  chip's: scaling it in `sid_write` cost the song player's worst call 12 instructions, and the
   player's slice (`SONG_FF_CALLS` x its worst call within `SONG_SLICE_INSTRUCTIONS`) had 6.
+- The main loop's CC flood (`midi.rs`, under 5M instructions a second; 1.21 at 4,999,968) is the
+  tight one: the settings' debounce gathers and CRCs the unsaved edit each CC. The edit record
+  and a song's kept LAB sound (`LBnn`) keep 1.7's 109 sound bytes while every layer is at full
+  level (`lab_sound_used_bytes`), so a sound without a level costs and stores what it did; the
+  flood is at 4,999,755. A sound with a level writes all 112.
 - The level reaches the chip as a pseudo-register a voice, `0x8A..0x8C` (`LIVE_REG_LEVEL`), through
   the ring as the mute's does, applied between blocks. A chip reset is a fresh chip at full level;
   live sends its levels with every register (`li_write_all`). The chip a song plays is at full
   level: the keys leaving a chip set it full, the keys under a song (KEYS A) drop their level
   registers as they drop the setup's and set the song's chip full as they go under it, and silent
   keys (a 2SID tune) set theirs full. The song's instrument has no level; the kept LAB sound does.
-- The sound keeps `100 -` each layer's level at offset 109, so a 1.7 to 1.21 sound's zeros are full.
-  A song's kept LAB sound (`LBnn`) is written at 1.7's 109 bytes while every layer is full, so a
-  song saved without a level is the same file as before.
+- The sound keeps `100 -` each layer's level at offset 109, so a 1.7 to 1.21 sound's zeros are
+  full. `live` keeps the same (`level_cut`), at the end of `live` and of `live_edit` so that no
+  field before it moves.
 - LAYERS' K4 is LEVEL; FILT is gone from the panel because FILTER's VOICES routes the same bits
   (layer n is voice n). NRPN 7/9 keeps routing the edited layer and the level is 7/20, added at
   the end so no card's number moves. The card value is three characters, shown large and lit as it
@@ -4653,6 +4658,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   not what the sound is, and a walk of varies would drift the layers quieter. The audibility
   estimate takes each layer's level off its dB (`level_loss_db`, 6 dB a halving, `0` silent), so
   a roll or vary never lands on a layer turned down to nothing.
+- `usb.rs`'s WAITs are sent 2,000 ms apart by the firmware's clock and received a USB frame later
+  or not: the gap allows one frame less, since the render's cost moved the first one's receipt.
 
 ### LAB cards over MIDI (1.7)
 

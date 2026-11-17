@@ -11,7 +11,7 @@ All notable changes are documented here. The format follows
 ### Added
 - **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
   (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a
-  bar and a number. The audio interrupt scales each voice by its level in the render, about 6
+  bar and a number. The audio interrupt scales each voice by its level in the render, about 8
   instructions a sample per chip, inside every audio budget on one core; a layer at 100 % plays
   bit for bit as before. The level is kept in the sound (3 bytes, a sound is 112): USER sounds,
   the unsaved edit, a song's kept LAB sound and `sidou-patch/1` (`level` at the top and in each of

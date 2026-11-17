@@ -99,7 +99,11 @@ typedef enum {
 
 uint32_t lab_sound_equal(const uint8_t a[LAB_SOUND_BYTES], const uint8_t b[LAB_SOUND_BYTES]);
 uint32_t lab_sound_valid(const uint8_t s[LAB_SOUND_BYTES]);
-uint32_t lab_sound_used_bytes(const uint8_t s[LAB_SOUND_BYTES]);
+
+static inline uint32_t lab_sound_used_bytes(const uint8_t s[LAB_SOUND_BYTES]) {
+    uint32_t cut = s[LAB_SOUND_LEVEL_CUT] | s[LAB_SOUND_LEVEL_CUT + 1u] | s[LAB_SOUND_LEVEL_CUT + 2u];
+    return cut ? LAB_SOUND_BYTES : LAB_SOUND_BYTES_1_7;
+}
 int32_t lab_table_offset(uint8_t note);
 uint32_t lab_table_absolute(uint8_t note);
 

@@ -121,7 +121,10 @@ pub const LAB: [(&str, [Card; 4], &str); 10] = [
             ("EDIT", "the layer OSC and ENVELOPE edit"),
             ("TRANS", "its transpose"),
             ("DETUNE", "up: wider, fatter"),
-            ("LEVEL", "up: louder; down to 0, silent; a quiet layer for colour under the first"),
+            (
+                "LEVEL",
+                "up: louder; down to 0, silent; a quiet layer for colour under the first",
+            ),
         ],
         "one, two or three oscillators",
     ),

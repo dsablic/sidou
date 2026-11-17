@@ -375,8 +375,10 @@ fn a_song_moves_the_keys_to_chip_b_and_back_when_no_key_is_held() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
-fn cut(k: &mut Keys, x: u32) -> [u8; 3] {
-    k.chip(x).level_cut
+fn levels(k: &mut Keys, x: u32) -> [u32; 3] {
+    k.chip(x)
+        .voice_gain
+        .map(|g| (g * SID_LEVEL_FULL as f32).round() as u32)
 }
 
 fn quiet_layer_two(k: &mut Keys) {
@@ -393,17 +395,21 @@ fn a_song_on_a_chip_plays_at_full_level_and_the_keys_bring_their_levels_where_th
     let mut k = Keys::new();
     k.ticks(20);
     quiet_layer_two(&mut k);
-    assert_eq!(cut(&mut k, 0), [0, 70, 0], "the keys' levels on A");
+    assert_eq!(levels(&mut k, 0), [100, 30, 100], "the keys' levels on A");
     k.song(true);
     k.tick();
     assert_eq!(k.moves, [1]);
-    assert_eq!(cut(&mut k, 0), [0; 3], "the song has A at full level");
-    assert_eq!(cut(&mut k, 1), [0, 70, 0], "the keys' levels on B");
+    assert_eq!(levels(&mut k, 0), [100; 3], "the song has A at full level");
+    assert_eq!(levels(&mut k, 1), [100, 30, 100], "the keys' levels on B");
     k.song(false);
     k.ticks(30);
     assert_eq!(k.moves, [1, 0]);
-    assert_eq!(cut(&mut k, 1), [0; 3], "B at full level once the keys leave it");
-    assert_eq!(cut(&mut k, 0), [0, 70, 0], "and back on A");
+    assert_eq!(
+        levels(&mut k, 1),
+        [100; 3],
+        "B at full level once the keys leave it"
+    );
+    assert_eq!(levels(&mut k, 0), [100, 30, 100], "and back on A");
 }
 
 #[test]
@@ -413,10 +419,10 @@ fn silent_keys_leave_their_chip_at_full_level_for_a_two_chip_tune() {
     quiet_layer_two(&mut k);
     unsafe { keys_route_set_silent(&mut *k.kr, 1) };
     k.tick();
-    assert_eq!(cut(&mut k, 0), [0; 3]);
+    assert_eq!(levels(&mut k, 0), [100; 3]);
     unsafe { keys_route_set_silent(&mut *k.kr, 0) };
     k.ticks(2);
-    assert_eq!(cut(&mut k, 0), [0, 70, 0]);
+    assert_eq!(levels(&mut k, 0), [100, 30, 100]);
 }
 
 #[test]
@@ -428,13 +434,25 @@ fn keys_a_under_a_song_leave_the_songs_voices_at_full_level() {
     k.song(true);
     k.tick();
     assert!(k.moves.is_empty());
-    assert_eq!(cut(&mut k, 0), [0; 3], "the song's voices at full level");
+    assert_eq!(
+        levels(&mut k, 0),
+        [100; 3],
+        "the song's voices at full level"
+    );
     unsafe { live_layer_level_set(&mut *k.live, 10) };
     k.tick();
-    assert_eq!(cut(&mut k, 0), [0; 3], "a level turned under the song stays off its chip");
+    assert_eq!(
+        levels(&mut k, 0),
+        [100; 3],
+        "a level turned under the song stays off its chip"
+    );
     k.song(false);
     k.ticks(30);
-    assert_eq!(cut(&mut k, 0), [0, 90, 0], "the keys' levels back after the song");
+    assert_eq!(
+        levels(&mut k, 0),
+        [100, 10, 100],
+        "the keys' levels back after the song"
+    );
 }
 
 #[test]

@@ -14,7 +14,7 @@ Sizes: S is under a day of work, M a few days, L more.
   is there since RED MOON RITE's art moved into the store (1.20): with pairing the ON image is
   547,796 bytes, 31,720 under the 579,516 ceiling, and its size gate is checked again.
 - **A layer's level in LAB**: built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)), LAYERS' K4
-  LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 6
+  LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
   instructions a sample per chip, inside every audio budget unchanged
   ([design notes](design-notes.md#a-layers-level-20)).
 - **SIDOU as a DAW plugin**, starting from its design session (the owner, 2026-11-04): a SIDOU
