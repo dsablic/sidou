@@ -3522,7 +3522,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   length's column and the length loses its ` STEPS` word.
 - **Costs** (fm1-emu, `screen.rs`): opening the page 17.7k instructions a frame and 132 cells at
   most, a pick 16.3k and 84, back to the pattern 18.2k, all under STEP's change budget of 19.9k;
-  playing tempo 3 on GROOVE 11.1k a frame. The inputs: K1 989, K2 1,839, K3 1,401, K4 757,
+  playing tempo 3 on GROOVE 11.1k a frame. The inputs: K1 989, K2 1,975, K3 1,537, K4 3,433 (the
+  ratchet's copy batched in the input when the editor is free),
   PRESETS 581, a key 84 (STEP's 3,900). Swing and Euclid write in the frame's drain, not the
   input: STEP's `input` drains only its own queue on entry (`drain_with(..., 0)`), so a second
   detent of HITS no longer runs the first's row writes inside `ui_encoder`. A HITS turn rewrites
