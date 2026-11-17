@@ -668,19 +668,22 @@ def faded(src: array.array, start: int, n: int, gain: float, fade_in: int, fade_
     return out
 
 
+LIMIT_FIRST = "alimiter=limit=0.5:attack=2:release=60:level=false"
+LIMIT_LAST = "alimiter=limit=0.7:attack=1:release=40:level=false"
+
+
+def integrated(src: Path, pre: str) -> float:
+    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(src), "-af", f"{pre},ebur128",
+                        "-f", "null", "-"], capture_output=True, text=True, check=True)
+    return float(re.findall(r"I:\s+(-?[0-9.]+) LUFS", r.stderr)[-1])
+
+
 def loudnorm(src: Path, dst: Path) -> dict:
-    target = "I=-16:TP=-1.5:LRA=11"
-    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(src), "-af",
-                        f"loudnorm={target}:print_format=json", "-f", "null", "-"],
-                       capture_output=True, text=True, check=True)
-    m = json.loads(r.stderr[r.stderr.rindex("{"):r.stderr.rindex("}") + 1])
-    subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(src), "-af",
-                    f"loudnorm={target}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
-                    f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:"
-                    f"offset={m['target_offset']}:linear=true", "-ar", "48000",
+    measured = integrated(src, LIMIT_FIRST)
+    chain = f"{LIMIT_FIRST},volume={LUFS_TARGET - measured:.2f}dB,{LIMIT_LAST}"
+    subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(src), "-af", chain, "-ar", "48000",
                     "-fflags", "+bitexact", "-flags:a", "+bitexact", str(dst)], check=True)
-    m["aac_peak_db"] = fit_aac_peak(dst)
-    return m
+    return {"input_i": measured, "aac_peak_db": fit_aac_peak(dst)}
 
 
 AAC = ["-c:a", "aac", "-b:a", "192k"]

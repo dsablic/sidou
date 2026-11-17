@@ -6949,7 +6949,9 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 
 ### How-to videos' loudness
 
-- `tools/make-videos` normalises each video's audio to -16 LUFS (true peak -1.5 dBTP), then
+- `tools/make-videos` brings each video's audio to -16 LUFS with a limiter at -6 dBFS, a straight
+  gain to the target and a limiter at -3 dBFS (FFmpeg's two-pass loudnorm left step-a-beat at
+  -17.5 LUFS: its linear mode gives up on punchy takes and its dynamic mode misses), then
   encodes it to AAC as the MP4 will and reads the decoded sample peak: the encode overshoots the
   WAV's peaks, by up to 2.4 dB on the hard-panned pulse waves of chip-spread. Over -1.5 dB, the
   WAV is turned down by the excess plus 0.1 dB and checked again, so such a video ends a little
