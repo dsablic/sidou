@@ -5797,6 +5797,17 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   set the raw width. The pulse width's CC 1 on MIDI out still scales 0..4095, so a loop-back
   lands inside the audible range, not on the same number.
 
+### Live Link waits for a clock that is due
+
+- Under a Live Link session a MIDI clock queued behind a whole frame (up to 25 packets) waited
+  for the frame to drain, and whether one landed there was a matter of phase: main sat at 2 ms
+  of jitter against the bound of 1 + a USB frame, and MULTI's boot and main-loop changes moved
+  the phase to 3 (the clocks were queued at the same instants; only delivery moved). Now
+  `midi_sync_poll` keeps the next clock's sample (`out_next_at`), and `midi_link_run` holds a
+  frame back while a clock is due within 2 ms (`MIDI_LINK_CLOCK_GUARD`), so a clock never
+  queues behind a frame started just before it. The frame goes at the next pass after the clock.
+  The same phase move redrew SCENE's FIRE and SCOPE goldens one frame on.
+
 ### The USER sounds hint
 
 - USER sounds were hard to find: a DICE roll you liked was gone at the next turn. The first roll

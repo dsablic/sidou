@@ -64,6 +64,8 @@ typedef struct midi_sync {
     uint8_t out_common_wait;
     uint8_t out_room;
     uint32_t out_clock;
+    uint32_t out_next_at;
+    uint8_t out_next;
     uint32_t sent;
     uint32_t aligns, periods, lost;
     midi_sync_tune_fn tune;
@@ -78,6 +80,7 @@ void midi_sync_set(midi_sync* s, uint32_t mode, uint32_t clock_out);
 void midi_sync_rows(midi_sync* s, uint32_t rows_per_beat);
 void midi_sync_anchor(midi_sync* s, uint32_t ticks, uint32_t samples);
 uint32_t midi_sync_sample_of(const midi_sync* s, uint32_t ticks);
+int midi_sync_out_soon(const midi_sync* s, uint32_t ticks, uint32_t samples);
 void midi_sync_held(midi_sync* s, uint32_t from, uint32_t to);
 void midi_sync_msg(midi_sync* s, const midi_msg* msg, uint32_t ticks);
 int midi_sync_following(const midi_sync* s);

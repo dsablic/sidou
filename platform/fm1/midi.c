@@ -25,6 +25,7 @@
 
 #define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
 #define MIDI_LOST_WRITES LIVE_VOICES
+#define MIDI_LINK_CLOCK_GUARD (2u * AUDIO_SAMPLE_RATE / 1000u)
 #define MIDI_DRAIN_RESERVE (MIDI_ENTRY_WRITES + MIDI_LOST_WRITES + REG_RING_WORST_PASS)
 _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room");
 
@@ -273,7 +274,8 @@ void midi_link_run(const grid* g, uint32_t now_ms) {
         return;
     }
     uint32_t used = mo_w - mo_r;
-    int busy = midi_sysex_running || sx_busy || so_w != so_r;
+    int busy = midi_sysex_running || sx_busy || so_w != so_r ||
+               midi_sync_out_soon(&syncing, fm1_ticks(), MIDI_LINK_CLOCK_GUARD);
     uint8_t f[LINK_FRAME_MAX + 2u];
     uint32_t n = link_poll(&live_link, g, now_ms, used < MQ ? MQ - used : 0u, busy, f);
     f[n] = f[n + 1u] = 0;
