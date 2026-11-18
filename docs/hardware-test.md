@@ -3434,8 +3434,13 @@ Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `
   on core 1. *Result:* Passed 2026-11-18 (the owner): each layer's K4 level its own, the others
   kept; CORES `CORE 1 RUNNING`, JOBS climbing. The hint not seen: this unit keeps USER sounds
   (LAB 01, LAB 02), so the roll rightly says nothing (emu-gate shows it).
-- [ ] **WHOLE A** (once it sounds): POLY chords, CHORD from one key, ARP at a rate and on the
-  clock.
+- [x] **WHOLE A** (the final 2.0 package from main 1aafbba6, app 567,540 B, SHA-256 d1135804…,
+  installed 2026-11-18; MIDI page MODE WHOLE A, CHANNEL 1, SAW LEAD by program 0): POLY chords,
+  CHORD from one key, ARP at a rate and on the clock. *Result:* Passed 2026-11-18, measured:
+  POLY added A3, C♯4, E4 one by one to three voices, a fourth (A4) took the oldest (A3 fell to the
+  floor); CHORD played A3, C♯4, E4 from one A3 (+4, +7) until let go; ARP cycled A, C♯, E on one
+  voice a step every 60 ms (3 FR at 50 Hz), and with ARP RATE CLOCK a 16th of a 120 BPM clock a
+  step (125 ms; 120 measured in 20 ms windows).
 
 ## Result
 
