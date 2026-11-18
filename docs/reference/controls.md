@@ -692,8 +692,7 @@ the song stopped, only the voices you jam sound; the song's own notes never play
 momentary effects for a playing song, played on the **note keys 1-6** (the leftmost six, the keys
 GLO's layer uses) as **held pads**. A pad works while its key is held and is undone exactly when
 it is let go; several can be held at once. Nothing is written into the song, the sound or the
-settings, and the song plays on under the page: **HOME** goes back to the song view, **SEQ** on
-to the next song view, **PLAY** stops or plays the song as everywhere.
+settings, and the song plays on under the page: **HOME** goes back to the song view, **SEQ** opens the song view used last over it (as from any view; HOME comes back to PUNCH), **PLAY** stops or plays the song as everywhere.
 
 | Key | Pad | While held | Let go |
 |---|---|---|---|

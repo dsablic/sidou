@@ -256,9 +256,6 @@ static void remember(views* v) {
 }
 
 static void song_step(views* v) {
-    if (screen_top(&v->s) == &punch_view_view) {
-        screen_pop(&v->s, SCREEN_CUT);
-    }
     const view* top = screen_top(&v->s);
     const view* next = !song_view_is(top) && v->song_last ? v->song_last : song_view_next(top);
     if (!next || next == top || song_refused(v)) {

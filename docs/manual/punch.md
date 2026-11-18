@@ -11,7 +11,7 @@ PUNCH is written into the song.
 - Play a song (**PLAY**) and open any song view: **SEQ** gives STEP, then TRACKER, ORDER, INSTR,
   TABLE.
 - Press **FX**. PUNCH opens over the song view and the song plays on.
-- **HOME** goes back to the song view; **SEQ** goes on to the next one.
+- **HOME** goes back to the song view; **SEQ** opens the song view you used last over PUNCH.
 
 ## 2. Hold the pads
 

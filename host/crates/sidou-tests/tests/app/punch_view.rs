@@ -160,15 +160,15 @@ fn leaving_punch_with_pads_held_lets_them_go() {
 }
 
 #[test]
-fn seq_on_punch_goes_on_to_the_next_song_view() {
+fn seq_on_punch_opens_the_song_view_used_last_over_it_as_from_any_view() {
     let mut s = Song::new();
     punch_over(&mut s, "ORDER");
     s.ui.press(PANEL_BTN_SEQ);
     settle(&mut s.ui);
-    assert_eq!(s.ui.top(), "INSTR");
+    assert_eq!(s.ui.top(), "ORDER");
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
-    assert_eq!(s.ui.top(), "LIVE", "PUNCH is not left under it");
+    assert_eq!(s.ui.top(), "PUNCH", "HOME comes back");
 }
 
 #[test]
