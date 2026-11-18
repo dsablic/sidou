@@ -7456,6 +7456,13 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   WAV's peaks, by up to 2.4 dB on the hard-panned pulse waves of chip-spread. Over -1.5 dB, the
   WAV is turned down by the excess plus 0.1 dB and checked again, so such a video ends a little
   under -16 LUFS rather than near full scale.
+- **The true peak.** 2.0's step-a-beat came out of that chain with a decoded sample peak under
+  -1.5 dB but a true peak of -0.7 dBTP (an overshoot between samples, from the resampling to
+  48 kHz after the last limiter, that the sample peak cannot see), and failed the render's gate;
+  turning it down instead left it at -17.4 LUFS. So a WAV whose AAC encode has a true peak over
+  -1 dBTP is made again with the last limiter run at 192 kHz, which sees those peaks
+  (step-a-beat: -16.5 LUFS, -1.9 dBTP), and the turn-down above also answers a true peak over
+  -1 dBTP. A video under both limits keeps the chain it had.
 - A render fails when the MP4's own loudness is off -16 LUFS by more than 1 LU or its true peak
   is over -1 dBTP; the teaser, title, steps and end crossfade over 300 ms instead of cutting.
 

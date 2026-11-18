@@ -3461,6 +3461,12 @@ branch, `tools/web-demo`, if it is not deployed yet), a starter-pack tune
 (`assets/starter/neon-highway.sid`) and a DAW or §43's script for the MIDI items; headphones on the
 line out.
 
+The release's assets, once this passes: the package as `sidou-2.0.0.fwsc`, `LICENSES/Apache-2.0.txt`
+and `LICENSES/GPL-3.0-only.txt`, and the videos from `build/videos` as `video-ID.mp4`,
+`video-ID-square.mp4`, `video-ID-vertical.mp4` and `video-ID.srt` (66 MP4s and 22 SRTs): the
+`video-` prefix is what `pages.yml` copies into the site (1.20.0's and 1.21.0's assets went up
+without it, so the videos page still plays 1.10.0's).
+
 - [ ] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-2.0.0.fwsc`).
   Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU boots; SONG, LOAD lists the songs it
   had; SETTINGS still says KEYBOARD and the microKEY Air's name. *Emulator:* `package.rs`.
