@@ -5450,8 +5450,10 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - The bend range: the sound's until RPN 0 sets the channel's, and an RPN's range outlasts
   program changes (as the instrument's `bend_range_rpn`).
 - With a song: the song keeps chip A and PLAY does what it always does; a part's held note takes
-  its voice (`song_ctl_take`, the keys' path: `taking` at the note, `multi_taken` in
-  `commit_pass`) and its release write still goes; while the song plays the parts write no
+  its voice (`song_ctl_take`: the parts call `taking` with their whole mask whenever it
+  changes, and `commit_pass` only folds it in when the keys' mask changes: polling it every pass
+  cost about 12,000 instructions a second in a CC flood, and the main loop's flood bounds in
+  emu-gate `midi.rs` had 300 to spare) and its release write still goes; while the song plays the parts write no
   filter or volume register and nothing to a voice not held. The jam rule the docs had
   promised, the simplest for a DAW user (nothing stops). A `.sid` tune owns chip A: the parts
   write nothing until it stops; then, and after a song or a change of chip A's profile, every

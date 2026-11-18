@@ -88,11 +88,10 @@ typedef struct midi_route {
     midi_route_player player;
     live* l;
     keys_route* kr;
-    multi* parts;
-    midi_route_chan ch[MIDI_ROUTE_VOICES];
-    midi_route_voice v[MIDI_ROUTE_VOICES];
     uint8_t to[16];
     uint8_t fast[16];
+    midi_route_chan ch[MIDI_ROUTE_VOICES];
+    midi_route_voice v[MIDI_ROUTE_VOICES];
     uint8_t bank[16][2];
     uint8_t song_req;
     uint8_t locks;
@@ -104,6 +103,7 @@ typedef struct midi_route {
     uint8_t arp_wait;
     uint32_t stamp;
     uint32_t dropped;
+    multi* parts;
 } midi_route;
 
 typedef enum {

@@ -52,10 +52,10 @@ typedef struct {
     const keys_route* kr;
     multi_user_fn user;
     void* user_ctx;
-    void (*taking)(void* ctx, uint32_t voices);
+    void (*taking)(void* ctx, uint32_t taken);
     void* taking_ctx;
     uint8_t locks, resonance_cc, resonance_out, routed_out, mode_out;
-    uint8_t song, tune, profile, table_frame;
+    uint8_t song, tune, profile, table_frame, taken;
     uint16_t cutoff_cc, cutoff_out;
 } multi;
 
@@ -72,7 +72,6 @@ void multi_filter(multi* m, uint32_t locks, uint32_t cutoff, uint32_t resonance)
 void multi_fresh(multi* m);
 void multi_reset(multi* m);
 void multi_tick(multi* m);
-uint8_t multi_taken(const multi* m);
 
 #ifdef __cplusplus
 }

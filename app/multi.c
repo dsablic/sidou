@@ -176,6 +176,19 @@ void multi_fresh(multi* m) {
     write_filter(m);
 }
 
+static void retake(multi* m) {
+    uint8_t taken = 0;
+    for (uint32_t v = 0; m->song && v < MULTI_PARTS; v++) {
+        taken = (uint8_t)(taken | m->p[v].gate << v);
+    }
+    if (taken != m->taken) {
+        m->taken = taken;
+        if (m->taking) {
+            m->taking(m->taking_ctx, taken);
+        }
+    }
+}
+
 static void follow_chip(multi* m) {
     const keys_route* kr = m->kr;
     if (!kr) {
@@ -188,6 +201,7 @@ static void follow_chip(multi* m) {
     m->song = song;
     m->tune = tune;
     m->profile = profile;
+    retake(m);
     if (back) {
         multi_fresh(m);
     }
@@ -327,9 +341,6 @@ void multi_note_on(multi* m, uint32_t part, uint8_t note, uint8_t velocity, uint
         write_freq(m, part);
         return;
     }
-    if (m->song && m->taking) {
-        m->taking(m->taking_ctx, 1u << part);
-    }
     if (p->gate) {
         p->gate = 0;
         put_voice(m, part, 4, part_control(p));
@@ -341,6 +352,7 @@ void multi_note_on(multi* m, uint32_t part, uint8_t note, uint8_t velocity, uint
     p->vibrato_wait = p->s.vibrato_delay;
     p->table_pos = 0;
     p->table_wait = 0;
+    retake(m);
     write_voice(m, part);
     write_filter(m);
 }
@@ -351,6 +363,7 @@ void multi_note_off(multi* m, uint32_t part) {
     }
     multi_part* p = &m->p[part];
     p->gate = 0;
+    retake(m);
     put(m, part * VOICE_REGS + 4u, part_control(p));
 }
 
@@ -441,15 +454,4 @@ void multi_tick(multi* m) {
         }
     }
     write_filter(m);
-}
-
-uint8_t multi_taken(const multi* m) {
-    if (!m->song) {
-        return 0;
-    }
-    uint8_t taken = 0;
-    for (uint32_t v = 0; v < MULTI_PARTS; v++) {
-        taken = (uint8_t)(taken | m->p[v].gate << v);
-    }
-    return taken;
 }

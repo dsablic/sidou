@@ -362,15 +362,11 @@ fn under_a_song_a_note_takes_its_voice_and_the_filter_stays_the_songs() {
     p.kr.song_on = 1;
     p.on(1, C4, 127);
     assert_eq!(p.taken.0, [0b010], "the song gives voice 2 up at once");
-    assert_eq!(unsafe { multi_taken(&*p.m) }, 0b010);
+    assert_eq!(p.m.taken, 0b010);
     assert_eq!(p.filter_writes(), 0);
     assert!(p.gated(1));
     p.off(1);
-    assert_eq!(
-        unsafe { multi_taken(&*p.m) },
-        0,
-        "and gets it back at the release"
-    );
+    assert_eq!(p.taken.0, [0b010, 0], "and gets it back at the release");
     p.chip.log.clear();
     unsafe { multi_wheel(&mut *p.m, 1, 127) };
     for _ in 0..4 {
