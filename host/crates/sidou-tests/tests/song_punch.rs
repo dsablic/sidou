@@ -159,10 +159,9 @@ fn pitch_dive_slows_every_voice_like_tape_an_octave_down_in_half_a_second_and_re
         let step = (sc.samples - BLOCK as u32 - sc.dive_at)
             / (SONG_PUNCH_DIVE_SAMPLES / SONG_PUNCH_DIVE_STEPS);
         for v in 0..3 {
-            let want = u32::from(t.plain.chip.osc[v].freq) * dive_q15(step) / 32768;
+            let want = t.plain.chip.osc[v].freq * dive_q15(step) / 32768;
             assert_eq!(
-                u32::from(t.punched.chip.osc[v].freq),
-                want,
+                t.punched.chip.osc[v].freq, want,
                 "voice {v} after {held} calls (step {step})"
             );
         }
