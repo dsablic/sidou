@@ -1,29 +1,27 @@
 {
-  "goal": "See SIDOU 1.21's highlights: STEP's GROOVE page on SIDOU LOOP, a snare's RATCHET rolled, the bass lane's HITS and ROTATE, the song's SWING from STRAIGHT to HARD heard while it plays, and the Library page turning a .sid tune into a song.",
+  "goal": "See SIDOU 2.0's highlights: PUNCH's held pads over SIDOU LOOP, chip B on the FM-1's second core on STATUS's CORES page, a layer's level in LAB, MULTI's parts and WHOLE A's chords played over MIDI, and a .sid tune's sounds on the Library page.",
   "id": "whats-new",
   "prerequisites": {
     "start": "live",
     "text": "On LIVE after the boot. SIDOU LOOP is the song loaded."
   },
   "related": [
-    "step-a-beat",
-    "step-generative",
-    "play-a-sid"
+    "play-over-a-song",
+    "shape-in-lab",
+    "mute-and-solo"
   ],
   "schema": "sidou-recipe/1",
   "skills": [
-    "STEP",
-    "the GROOVE page",
-    "SWING",
-    "HITS",
-    "ROTATE",
-    "RATCHET",
-    "the Library page's .sid converter"
+    "PUNCH",
+    "STATUS's CORES page",
+    "LAB's LAYERS level",
+    "the MIDI page's MULTI and WHOLE A",
+    "the Library page's .sid sounds"
   ],
   "steps": [
     {
-      "caption": "SEQ opens STEP, PLAY starts SIDOU LOOP: drums, bass and lead.",
-      "control": "press SEQ, then wait 0.8 s, then press PLAY, then wait 3.5 s",
+      "caption": "SEQ opens STEP, PLAY starts SIDOU LOOP.",
+      "control": "press SEQ, then wait 0.8 s, then press PLAY, then wait 3.0 s",
       "expect": [
         {
           "kind": "view",
@@ -36,13 +34,7 @@
       ],
       "focus": {
         "callout": "SEQ, PLAY",
-        "control": "PLAY",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 15
-        }
+        "control": "PLAY"
       },
       "harness": {
         "clip_ms": null,
@@ -68,24 +60,20 @@
           "op": "press"
         },
         {
-          "ms": 3500,
+          "ms": 3000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "SIDOU LOOP in *STEP*"
+      "title": "SIDOU LOOP *playing*"
     },
     {
-      "caption": "ALGORITHM past the last page: GROOVE, a knob each.",
-      "control": "turn ALGORITHM clockwise by 1 detent, then wait 2.5 s",
+      "caption": "FX on a song view: the first six keys are held pads.",
+      "control": "press FX, then wait 2.5 s",
       "expect": [
         {
-          "kind": "view",
-          "value": "step"
-        },
-        {
           "kind": "text",
-          "value": "GROOVE"
+          "value": "PUNCH"
         },
         {
           "assert": "sounding",
@@ -93,14 +81,8 @@
         }
       ],
       "focus": {
-        "callout": "ALGORITHM > G",
-        "control": "ALGORITHM",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 14,
-          "rows": 8
-        }
+        "callout": "PRESS FX",
+        "control": "FX"
       },
       "harness": {
         "clip_ms": null,
@@ -111,12 +93,11 @@
         "remember": false,
         "task": null
       },
-      "id": "groove",
+      "id": "punch",
       "inputs": [
         {
-          "detents": 1,
-          "encoder": "ALGORITHM",
-          "op": "turn"
+          "button": "FX",
+          "op": "press"
         },
         {
           "ms": 2500,
@@ -124,30 +105,20 @@
         }
       ],
       "needs": [],
-      "title": "The *GROOVE* page"
+      "title": "*PUNCH*"
     },
     {
-      "caption": "SELECT to the drums, key 13 picks the snare, K4: x3.",
-      "control": "turn SELECT clockwise by 2 detents, then wait 0.6 s, then tap F4, then wait 0.3 s, then turn K4 clockwise by 2 detents, then wait 4.5 s",
+      "caption": "Hold key 2: the filter slams shut. Let go: back.",
+      "control": "hold note key F#3, then wait 2.5 s, then let go of note key F#3, then wait 1.5 s",
       "expect": [
-        {
-          "kind": "text",
-          "value": "V3 STEP 13"
-        },
         {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "PICK STEP 13, TURN K4",
-        "control": "K4",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 22
-        }
+        "callout": "HOLD KEY 2",
+        "control": "F#3"
       },
       "harness": {
         "clip_ms": null,
@@ -158,115 +129,355 @@
         "remember": false,
         "task": null
       },
-      "id": "ratchet",
+      "id": "slam",
       "inputs": [
         {
-          "detents": 2,
-          "encoder": "SELECT",
-          "op": "turn"
+          "note": "F#3",
+          "op": "down"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "note": "F#3",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Filter *SLAM*"
+    },
+    {
+      "caption": "Key 4 repeats the beat; let go, the song is where it was going.",
+      "control": "hold note key G#3, then wait 2.5 s, then let go of note key G#3, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD KEY 4",
+        "control": "G#3"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "stutter",
+      "inputs": [
+        {
+          "note": "G#3",
+          "op": "down"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "note": "G#3",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*STUTTER*"
+    },
+    {
+      "caption": "Key 5 throws the song into a delay; the echoes ring on.",
+      "control": "hold note key A3, then wait 1.5 s, then let go of note key A3, then wait 3.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD KEY 5",
+        "control": "A3"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "echo",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "down"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        },
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Echo *throw*"
+    },
+    {
+      "caption": "STATUS, CORES: chip B renders on core 1 while you play.",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn SELECT until STATUS is selected, then press SAVE, then wait 0.8 s, then turn SELECT counter-clockwise by 1 detent, then wait 0.8 s, then play 4 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "CORE 1"
+        },
+        {
+          "kind": "text",
+          "value": "RUNNING"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "STATUS > CORES",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "cores",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
         },
         {
           "ms": 600,
           "op": "wait"
         },
         {
-          "ms": 150,
-          "notes": [
-            "F4"
-          ],
-          "op": "taps"
+          "button": "HOME",
+          "op": "press"
         },
         {
-          "ms": 300,
+          "ms": 600,
           "op": "wait"
         },
         {
-          "detents": 2,
-          "encoder": "K4",
-          "op": "turn"
+          "button": "HOME",
+          "op": "press"
         },
         {
-          "ms": 4500,
+          "ms": 600,
           "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A ratchet *roll*"
-    },
-    {
-      "caption": "SELECT to V2, K2: seven hits spread evenly over the lane.",
-      "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.6 s, then turn K2 clockwise by 7 detents, then wait 4.5 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "V2 STEP"
         },
         {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "SELECT V2, TURN K2",
-        "control": "K2",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 22
-        }
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "hits",
-      "inputs": [
+          "op": "select_item",
+          "text": "STATUS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
         {
           "detents": -1,
           "encoder": "SELECT",
           "op": "turn"
         },
         {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "A4",
+                "C5",
+                "E5"
+              ],
+              "sixteenths": 6
+            },
+            {
+              "notes": [
+                "F4",
+                "A4",
+                "C5"
+              ],
+              "sixteenths": 6
+            },
+            {
+              "notes": [
+                "G4",
+                "C5",
+                "E5"
+              ],
+              "sixteenths": 6
+            },
+            {
+              "notes": [
+                "G4",
+                "B4",
+                "D5"
+              ],
+              "sixteenths": 6
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "The *second core*"
+    },
+    {
+      "caption": "Two oscillators, the second an octave up.",
+      "control": "press PLAY, then wait 0.4 s, then press HOME, then wait 0.6 s, then press HOME, then wait 0.9 s, then press ENV, then wait 1.0 s, then turn SELECT clockwise by 7 detents, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.6 s, then turn K1 clockwise by 1 detent, then wait 0.4 s, then turn K2 clockwise by 12 detents, then wait 1.2 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "kind": "text",
+          "value": "LAYERS"
+        }
+      ],
+      "focus": {
+        "callout": "ENV, SELECT > LAYERS",
+        "control": "K2"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "layers",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
           "ms": 600,
           "op": "wait"
         },
         {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
           "detents": 7,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "K1",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "detents": 12,
           "encoder": "K2",
           "op": "turn"
         },
         {
-          "ms": 4500,
+          "ms": 1200,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*HITS* on the bass"
+      "title": "LAB's *LAYERS*"
     },
     {
-      "caption": "K3 turns the rhythm a step at a time.",
-      "control": "turn K3 clockwise by 2 detents, then wait 4.5 s",
+      "caption": "K4 fades the second layer out and back in.",
+      "control": "hold note key A3, then wait 0.5 s, then turn K4 slowly counter-clockwise by 100 detents over 1.8 s, then wait 0.5 s, then turn K4 slowly clockwise by 100 detents over 1.8 s, then wait 0.5 s, then let go of note key A3, then wait 0.4 s",
       "expect": [
+        {
+          "kind": "view",
+          "value": "lab"
+        },
+        {
+          "kind": "text",
+          "value": "LEVEL"
+        },
         {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
       "focus": {
-        "callout": "TURN K3",
-        "control": "K3",
-        "screen": {
-          "col": 0,
-          "cols": 30,
-          "row": 0,
-          "rows": 22
-        }
+        "callout": "TURN K4",
+        "control": "K4"
       },
       "harness": {
         "clip_ms": null,
@@ -277,28 +488,474 @@
         "remember": false,
         "task": null
       },
-      "id": "rotate",
+      "id": "level",
       "inputs": [
         {
-          "detents": 2,
-          "encoder": "K3",
+          "note": "A3",
+          "op": "down"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": -100,
+          "encoder": "K4",
+          "ms": 1800,
+          "op": "sweep"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": 100,
+          "encoder": "K4",
+          "ms": 1800,
+          "op": "sweep"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A layer's *LEVEL*"
+    },
+    {
+      "caption": "The MIDI page's MULTI: three parts on chip A, a sound each, from a DAW.",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn SELECT until MIDI is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.8 s, then turn ALGORITHM counter-clockwise by 3 detents, then wait 1.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then send MIDI, then wait 0.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "midi"
+        },
+        {
+          "kind": "text",
+          "value": "MULTI"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "MIDI > MODE MULTI",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "multi",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "MIDI"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
           "op": "turn"
         },
         {
-          "ms": 4500,
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "detents": -3,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            144,
+            69,
+            100,
+            145,
+            45,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            69,
+            0,
+            129,
+            45,
+            0,
+            144,
+            72,
+            100,
+            145,
+            45,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            72,
+            0,
+            129,
+            45,
+            0,
+            144,
+            76,
+            100,
+            145,
+            45,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            76,
+            0,
+            129,
+            45,
+            0,
+            144,
+            74,
+            100,
+            145,
+            45,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            74,
+            0,
+            129,
+            45,
+            0,
+            144,
+            72,
+            100,
+            145,
+            41,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            72,
+            0,
+            129,
+            41,
+            0,
+            144,
+            69,
+            100,
+            145,
+            41,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            69,
+            0,
+            129,
+            41,
+            0,
+            144,
+            67,
+            100,
+            145,
+            43,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            67,
+            0,
+            129,
+            43,
+            0,
+            144,
+            69,
+            100,
+            145,
+            43,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            146,
+            84,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 240,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            130,
+            84,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "bytes": [
+            128,
+            69,
+            0,
+            129,
+            43,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 600,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*ROTATE* them"
+      "title": "*MULTI*: four parts"
     },
     {
-      "caption": "K1 swings the song's eighths: LIGHT.",
-      "control": "turn K1 clockwise by 1 detent, then wait 3.5 s",
+      "caption": "WHOLE A: one sound on chip A's three voices, as chords.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 1.2 s, then send MIDI, then wait 0.9 s, then send MIDI, then wait 0.0 s, then send MIDI, then wait 0.9 s, then send MIDI, then wait 0.0 s, then send MIDI, then wait 0.9 s, then send MIDI, then wait 0.0 s, then send MIDI, then wait 0.9 s, then send MIDI, then wait 0.0 s, then wait 0.6 s",
       "expect": [
         {
+          "kind": "view",
+          "value": "midi"
+        },
+        {
           "kind": "text",
-          "value": "LITE"
+          "value": "WHOLE"
+        },
+        {
+          "kind": "text",
+          "value": "POLY"
         },
         {
           "assert": "sounding",
@@ -306,8 +963,8 @@
         }
       ],
       "focus": {
-        "callout": "TURN K1",
-        "control": "K1"
+        "callout": "MIDI > MODE WHOLE A",
+        "control": "screen"
       },
       "harness": {
         "clip_ms": null,
@@ -318,118 +975,180 @@
         "remember": false,
         "task": null
       },
-      "id": "light",
+      "id": "whole-a",
       "inputs": [
         {
           "detents": 1,
-          "encoder": "K1",
+          "encoder": "ALGORITHM",
           "op": "turn"
         },
         {
-          "ms": 3500,
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            144,
+            57,
+            100,
+            144,
+            60,
+            100,
+            144,
+            64,
+            100
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 940,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            128,
+            57,
+            0,
+            128,
+            60,
+            0,
+            128,
+            64,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 20,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            144,
+            53,
+            100,
+            144,
+            57,
+            100,
+            144,
+            60,
+            100
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 940,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            128,
+            53,
+            0,
+            128,
+            57,
+            0,
+            128,
+            60,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 20,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            144,
+            55,
+            100,
+            144,
+            60,
+            100,
+            144,
+            64,
+            100
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 940,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            128,
+            55,
+            0,
+            128,
+            60,
+            0,
+            128,
+            64,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 20,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            144,
+            55,
+            100,
+            144,
+            59,
+            100,
+            144,
+            62,
+            100
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 940,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            128,
+            55,
+            0,
+            128,
+            59,
+            0,
+            128,
+            62,
+            0
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 20,
+          "op": "wait"
+        },
+        {
+          "ms": 600,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*SWING*, a little"
+      "title": "*WHOLE A*: chords"
     },
     {
-      "caption": "One more: SHUFFLE, heard within two beats.",
-      "control": "turn K1 clockwise by 1 detent, then wait 3.5 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "SHUF"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "TURN K1",
-        "control": "K1"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "shuffle",
-      "inputs": [
-        {
-          "detents": 1,
-          "encoder": "K1",
-          "op": "turn"
-        },
-        {
-          "ms": 3500,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "A *SHUFFLE*"
-    },
-    {
-      "caption": "HARD: the long-short of a C64 shuffle. The BPM stays.",
-      "control": "turn K1 clockwise by 1 detent, then wait 4.5 s",
-      "expect": [
-        {
-          "kind": "text",
-          "value": "HARD"
-        },
-        {
-          "kind": "text",
-          "value": "125"
-        },
-        {
-          "assert": "sounding",
-          "kind": "audio"
-        }
-      ],
-      "focus": {
-        "callout": "TURN K1",
-        "control": "K1"
-      },
-      "harness": {
-        "clip_ms": null,
-        "defaults": false,
-        "destructive": false,
-        "milestone": null,
-        "probe": false,
-        "remember": false,
-        "task": null
-      },
-      "id": "hard",
-      "inputs": [
-        {
-          "detents": 1,
-          "encoder": "K1",
-          "op": "turn"
-        },
-        {
-          "ms": 4500,
-          "op": "wait"
-        }
-      ],
-      "needs": [],
-      "title": "*HARD* swing"
-    },
-    {
-      "caption": "The Library page turns a .sid tune into a song you can edit.",
+      "caption": "The Library page lists a tune's instruments as LAB sounds to keep and send.",
       "control": "wait 1.0 s",
       "expect": [
         {
-          "assert": "sounding",
-          "kind": "audio"
+          "kind": "view",
+          "value": "midi"
         }
       ],
       "focus": {
-        "callout": "TUNE.SID <> LIBRARY <> EDITABLE SONG",
+        "callout": "TUNE.SID <> LIBRARY <> LAB SOUNDS",
         "control": "card"
       },
       "harness": {
@@ -441,7 +1160,7 @@
         "remember": false,
         "task": null
       },
-      "id": "convert",
+      "id": "sounds",
       "inputs": [
         {
           "ms": 1000,
@@ -449,15 +1168,15 @@
         }
       ],
       "needs": [],
-      "title": "A *.sid* becomes a song"
+      "title": "A *.sid*'s sounds"
     },
     {
       "caption": "dsablic.github.io/sidou and github.com/dsablic/sidou/releases",
       "control": "wait 1.0 s",
       "expect": [
         {
-          "assert": "sounding",
-          "kind": "audio"
+          "kind": "view",
+          "value": "midi"
         }
       ],
       "focus": {
@@ -480,8 +1199,8 @@
         }
       ],
       "needs": [],
-      "title": "Get *SIDOU 1.21*"
+      "title": "Get *SIDOU 2.0*"
     }
   ],
-  "title": "What's new in SIDOU 1.21"
+  "title": "What's new in SIDOU 2.0"
 }

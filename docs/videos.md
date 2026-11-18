@@ -14,10 +14,10 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v1.21.0 release](https://github.com/dsablic/sidou/releases/tag/v1.21.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v2.0.0 release](https://github.com/dsablic/sidou/releases/tag/v2.0.0) as `video-ID.mp4` (the name the videos page plays).
 
 - [SIDOU in 80 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
-- [What's new in 1.21](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [What's new in 2.0](https://dsablic.github.io/sidou/videos.html#whats-new)
 - [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
 - [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
 - [Shape a sound in LAB and keep it](https://dsablic.github.io/sidou/videos.html#shape-in-lab)
@@ -48,7 +48,7 @@ marks.
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
 | [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE, and a closing card for .sid files and LAB | 80.3 s, 8.6 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 1.21 highlights: STEP's GROOVE page on SIDOU LOOP, a snare's RATCHET at x3, the bass lane's HITS (7/16) and ROTATE, SWING from STRAIGHT through LIGHT and SHUFFLE to HARD heard while it plays, and a card for the Library page turning a .sid tune into a song | 48.3 s, 4.3 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The 2.0 highlights: PUNCH over SIDOU LOOP (FX opens it; FILTER SLAM, STUTTER and ECHO THROW held on keys 2, 4 and 5), STATUS's CORES page with chip B on core 1 while the keys play, LAB's LAYERS with the second layer's LEVEL faded out and back on K4, the MIDI page's MULTI with three parts played over MIDI and WHOLE A's chords, and a card for the Library page listing a .sid tune's instruments as LAB sounds | 72.9 s, 5.3 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 30.9 s, 2.6 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 32.7 s, 2.4 MB |
 | [shape-in-lab](recipes/shape-in-lab.json) | ![shape-in-lab](media/videos/shape-in-lab.webp) | ENV opens LAB from LIVE, K1-K4 cards, SELECT through OSC, FILTER, MOD and FX with the drawings moving, EDIT A/B, EDIT + ARP vary, SAVE keeps as KEPT AS U01 LAB 01, PRESETS finds it on LIVE | 66.4 s, 5.0 MB |
@@ -68,7 +68,7 @@ marks.
 | [play-over-a-song](recipes/play-over-a-song.json) | ![play-over-a-song](media/videos/play-over-a-song.webp) | Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY (SELECT, ALGORITHM), a mute, REC the jam | 51.0 s, 5.3 MB |
 | [remix-a-song](recipes/remix-a-song.json) | ![remix-a-song](media/videos/remix-a-song.webp) | Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2 | 45.1 s, 3.5 MB |
 | [play-a-sid](recipes/play-a-sid.json) | ![play-a-sid](media/videos/play-a-sid.webp) | Menu, SIDS, a tune from the store, NOW PLAYING, ALGORITHM changes song, GLO mutes and solos a voice, EDIT + PLAY pauses, PLAY stops | 41.3 s, 2.6 MB |
-| [lift-a-sound](recipes/lift-a-sound.json) | ![lift-a-sound](media/videos/lift-a-sound.webp) | THE CONSULTANT in NOW PLAYING: REC asks LIFT WHICH VOICE?, key 2 opens voice 2's last note in LAB as LIFTED V2, the keys play it, K4 shapes it, SAVE keeps it as a USER sound, HOME back to the tune still playing | 35.3 s, 2.8 MB |
+| [lift-a-sound](recipes/lift-a-sound.json) | ![lift-a-sound](media/videos/lift-a-sound.webp) | THE CONSULTANT in NOW PLAYING: REC asks LIFT WHICH VOICE?, key 2 opens voice 2's last note in LAB as LIFTED V2, the keys play it, K4 shapes it, SAVE keeps it as a USER sound, HOME back to the tune still playing | 35.4 s, 2.8 MB |
 
 ## What a video is
 
@@ -88,8 +88,9 @@ marks.
   drawn frames only, at its own 25.
 - **The sound**: the capture's own audio, the parts crossfaded, brought to -16 LUFS by a peak
   limiter, a straight gain and a second limiter (FFmpeg's loudnorm missed the target on punchy
-  takes), turned down where the AAC encode would take a sample peak over -1.5 dB; a render off
-  -16 LUFS by over 1 LU or over -1 dBTP fails.
+  takes), the second limiter at 192 kHz where the AAC encode would take a true peak over -1 dBTP,
+  and turned down where it would still take a sample peak over -1.5 dB or a true peak over
+  -1 dBTP; a render off -16 LUFS by over 1 LU or over -1 dBTP fails.
 
 The look lives in `tools/videos/template.py` (layouts, colours, fonts, wipes, cards), the
 panel's geometry in `tools/videos/panel.py` (after fm1-emu's panel drawing, MIT), what happens

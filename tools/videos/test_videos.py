@@ -88,6 +88,28 @@ class Sound(unittest.TestCase):
             make.loudnorm(raw, wav)
             self.assertTrue(make.loud_enough(make.loudness(wav)), make.loudness(wav))
 
+    def test_a_punchy_take_meets_the_loudness_target_under_the_true_peak_limit(self):
+        n = make.RATE * 6
+        clicks = array.array("h", [int(30000 if i % 4410 < 2 else -30000 if i % 4410 < 4 else 3000 * math.sin(i / 7))
+                                   for i in range(n) for _ in (0, 1)])
+        with tempfile.TemporaryDirectory() as d:
+            raw, wav, enc = Path(d) / "raw.wav", Path(d) / "out.wav", Path(d) / "out.m4a"
+            make.write_wav(raw, clicks)
+            make.loudnorm(raw, wav)
+            make.encode_aac(wav, enc)
+            self.assertTrue(make.loud_enough(make.loudness(enc)), make.loudness(enc))
+
+    def test_an_intersample_peak_is_turned_under_the_true_peak_limit(self):
+        n = make.RATE * 3
+        amp = 32767 * 10 ** (-2.0 / 20)
+        quarter = array.array("h", [int(amp * math.sin(math.pi * i / 2 + math.pi / 4)) for i in range(n) for _ in (0, 1)])
+        with tempfile.TemporaryDirectory() as d:
+            wav, enc = Path(d) / "in.wav", Path(d) / "out.m4a"
+            make.write_wav(wav, quarter)
+            make.fit_aac_peak(wav)
+            make.encode_aac(wav, enc)
+            self.assertLessEqual(make.loudness(enc)["true_peak_dbtp"], make.TRUE_PEAK_MAX_DB)
+
 
 if __name__ == "__main__":
     unittest.main()

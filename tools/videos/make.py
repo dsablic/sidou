@@ -670,6 +670,7 @@ def faded(src: array.array, start: int, n: int, gain: float, fade_in: int, fade_
 
 LIMIT_FIRST = "alimiter=limit=0.5:attack=2:release=60:level=false"
 LIMIT_LAST = "alimiter=limit=0.7:attack=1:release=40:level=false"
+LIMIT_LAST_OVERSAMPLED = f"aresample=192000,{LIMIT_LAST},aresample=48000"
 
 
 def integrated(src: Path, pre: str) -> float:
@@ -678,11 +679,17 @@ def integrated(src: Path, pre: str) -> float:
     return float(re.findall(r"I:\s+(-?[0-9.]+) LUFS", r.stderr)[-1])
 
 
-def loudnorm(src: Path, dst: Path) -> dict:
-    measured = integrated(src, LIMIT_FIRST)
-    chain = f"{LIMIT_FIRST},volume={LUFS_TARGET - measured:.2f}dB,{LIMIT_LAST}"
+def limited(src: Path, dst: Path, measured: float, last: str) -> None:
+    chain = f"{LIMIT_FIRST},volume={LUFS_TARGET - measured:.2f}dB,{last}"
     subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(src), "-af", chain, "-ar", "48000",
                     "-fflags", "+bitexact", "-flags:a", "+bitexact", str(dst)], check=True)
+
+
+def loudnorm(src: Path, dst: Path) -> dict:
+    measured = integrated(src, LIMIT_FIRST)
+    limited(src, dst, measured, LIMIT_LAST)
+    if aac_peaks(dst)[1] > TRUE_PEAK_MAX_DB:
+        limited(src, dst, measured, LIMIT_LAST_OVERSAMPLED)
     return {"input_i": measured, "aac_peak_db": fit_aac_peak(dst)}
 
 
@@ -691,29 +698,42 @@ AAC_PEAK_DB = -1.5
 AAC_PEAK_MARGIN_DB = 0.1
 
 
-def aac_peak_db(wav: Path) -> float:
-    enc = wav.with_suffix(".peak.m4a")
+def encode_aac(wav: Path, enc: Path) -> None:
     subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(wav), *AAC, "-fflags", "+bitexact",
                     "-flags:a", "+bitexact", str(enc)], check=True)
+
+
+def aac_peaks(wav: Path) -> tuple:
+    enc = wav.with_suffix(".peak.m4a")
+    encode_aac(wav, enc)
     r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(enc), "-af",
                         "astats=measure_perchannel=none:measure_overall=Peak_level", "-f", "null", "-"],
                        capture_output=True, text=True, check=True)
+    true_peak = loudness(enc)["true_peak_dbtp"]
     enc.unlink()
-    return float(re.findall(r"Peak level dB: (-?[0-9.]+|-inf)", r.stderr)[-1])
+    return float(re.findall(r"Peak level dB: (-?[0-9.]+|-inf)", r.stderr)[-1]), true_peak
+
+
+def peak_excess_db(peaks: tuple) -> float:
+    sample, true_peak = peaks
+    over_sample = sample - AAC_PEAK_DB if sample > AAC_PEAK_DB else 0.0
+    over_true = true_peak - TRUE_PEAK_MAX_DB if true_peak > TRUE_PEAK_MAX_DB else 0.0
+    return max(over_sample, over_true)
 
 
 def fit_aac_peak(wav: Path) -> float:
-    peak = aac_peak_db(wav)
+    peaks = aac_peaks(wav)
     for _ in range(3):
-        if peak <= AAC_PEAK_DB:
+        excess = peak_excess_db(peaks)
+        if excess <= 0:
             break
         tmp = wav.with_suffix(".fit.wav")
-        gain = AAC_PEAK_DB - AAC_PEAK_MARGIN_DB - peak
+        gain = -excess - AAC_PEAK_MARGIN_DB
         subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(wav), "-af", f"volume={gain:.2f}dB",
                         "-fflags", "+bitexact", "-flags:a", "+bitexact", str(tmp)], check=True)
         tmp.replace(wav)
-        peak = aac_peak_db(wav)
-    return peak
+        peaks = aac_peaks(wav)
+    return peaks[0]
 
 
 def outputs(plan: dict, segs: list, out: Path, rid: str) -> tuple:

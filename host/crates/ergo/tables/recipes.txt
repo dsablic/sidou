@@ -267,21 +267,23 @@ journey lift-a-sound | Lift a sound from a .sid
   step keep | *SAVE* keeps it | SAVE keeps it as a USER sound. | press SAVE; wait 2500 | text KEPT AS; focus SAVE; callout PRESS SAVE
   step back | *HOME*: back to the tune | HOME: back to the tune, still playing. | press HOME; wait 1200 | view sid_view_playing; text PLAYING; sound; focus HOME; callout PRESS HOME
 
-journey whats-new | What's new in SIDOU 1.21
-  goal See SIDOU 1.21's highlights: STEP's GROOVE page on SIDOU LOOP, a snare's RATCHET rolled, the bass lane's HITS and ROTATE, the song's SWING from STRAIGHT to HARD heard while it plays, and the Library page turning a .sid tune into a song.
+journey whats-new | What's new in SIDOU 2.0
+  goal See SIDOU 2.0's highlights: PUNCH's held pads over SIDOU LOOP, chip B on the FM-1's second core on STATUS's CORES page, a layer's level in LAB, MULTI's parts and WHOLE A's chords played over MIDI, and a .sid tune's sounds on the Library page.
   prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
-  skills STEP; the GROOVE page; SWING; HITS; ROTATE; RATCHET; the Library page's .sid converter
-  related step-a-beat; step-generative; play-a-sid
-  step play | SIDOU LOOP in *STEP* | SEQ opens STEP, PLAY starts SIDOU LOOP: drums, bass and lead. | press SEQ; wait 800; press PLAY; wait 3500 | view step; sound; screen 0 0 30 15; focus PLAY; callout SEQ, PLAY
-  step groove | The *GROOVE* page | ALGORITHM past the last page: GROOVE, a knob each. | turn ALGORITHM 1; wait 2500 | view step; text GROOVE; sound; screen 0 14 30 8; focus ALGORITHM; callout ALGORITHM > G
-  step ratchet | A ratchet *roll* | SELECT to the drums, key 13 picks the snare, K4: x3. | turn SELECT 2; wait 600; taps F4 150; wait 300; turn K4 2; wait 4500 | text V3 STEP 13; sound; screen 0 0 30 22; focus K4; callout PICK STEP 13, TURN K4
-  step hits | *HITS* on the bass | SELECT to V2, K2: seven hits spread evenly over the lane. | turn SELECT -1; wait 600; turn K2 7; wait 4500 | text V2 STEP; sound; screen 0 0 30 22; focus K2; callout SELECT V2, TURN K2
-  step rotate | *ROTATE* them | K3 turns the rhythm a step at a time. | turn K3 2; wait 4500 | sound; screen 0 0 30 22; focus K3; callout TURN K3
-  step light | *SWING*, a little | K1 swings the song's eighths: LIGHT. | turn K1 1; wait 3500 | text LITE; sound; focus K1; callout TURN K1
-  step shuffle | A *SHUFFLE* | One more: SHUFFLE, heard within two beats. | turn K1 1; wait 3500 | text SHUF; sound; focus K1; callout TURN K1
-  step hard | *HARD* swing | HARD: the long-short of a C64 shuffle. The BPM stays. | turn K1 1; wait 4500 | text HARD; text 125; sound; focus K1; callout TURN K1
-  step convert | A *.sid* becomes a song | The Library page turns a .sid tune into a song you can edit. | wait 1000 | sound; focus card; callout TUNE.SID <> LIBRARY <> EDITABLE SONG
-  step get-it | Get *SIDOU 1.21* | dsablic.github.io/sidou and github.com/dsablic/sidou/releases | wait 1000 | sound; focus card
+  skills PUNCH; STATUS's CORES page; LAB's LAYERS level; the MIDI page's MULTI and WHOLE A; the Library page's .sid sounds
+  related play-over-a-song; shape-in-lab; mute-and-solo
+  step play | SIDOU LOOP *playing* | SEQ opens STEP, PLAY starts SIDOU LOOP. | press SEQ; wait 800; press PLAY; wait 3000 | view step; sound; focus PLAY; callout SEQ, PLAY
+  step punch | *PUNCH* | FX on a song view: the first six keys are held pads. | press FX; wait 2500 | text PUNCH; sound; focus FX; callout PRESS FX
+  step slam | Filter *SLAM* | Hold key 2: the filter slams shut. Let go: back. | down F#3; wait 2500; up F#3; wait 1500 | sound; focus F#3; callout HOLD KEY 2
+  step stutter | *STUTTER* | Key 4 repeats the beat; let go, the song is where it was going. | down G#3; wait 2500; up G#3; wait 1500 | sound; focus G#3; callout HOLD KEY 4
+  step echo | Echo *throw* | Key 5 throws the song into a delay; the echoes ring on. | down A3; wait 1500; up A3; wait 3000 | sound; focus A3; callout HOLD KEY 5
+  step cores | The *second core* | STATUS, CORES: chip B renders on core 1 while you play. | press HOME; wait 600; press HOME; wait 600; press HOME; wait 600; select-item STATUS; press SAVE; wait 800; turn SELECT -1; wait 800; play 150 A4+C5+E5:6 F4+A4+C5:6 G4+C5+E5:6 G4+B4+D5:6 | text CORE 1; text RUNNING; sound; focus screen; callout STATUS > CORES
+  step layers | LAB's *LAYERS* | Two oscillators, the second an octave up. | press PLAY; wait 400; press HOME; wait 600; press HOME; wait 900; press ENV; wait 1000; turn SELECT 7; wait 600; turn ALGORITHM 1; wait 600; turn K1 1; wait 400; turn K2 12; wait 1200 | view lab; text LAYERS; focus K2; callout ENV, SELECT > LAYERS
+  step level | A layer's *LEVEL* | K4 fades the second layer out and back in. | down A3; wait 500; sweep K4 -100 1800; wait 500; sweep K4 100 1800; wait 500; up A3; wait 400 | view lab; text LEVEL; sound; focus K4; callout TURN K4
+  step multi | *MULTI*: four parts | The MIDI page's MULTI: three parts on chip A, a sound each, from a DAW. | press HOME; wait 600; press HOME; wait 600; select-item MIDI; turn ALGORITHM 1; wait 800; turn ALGORITHM -3; wait 1200; midi 90 45 64 91 2D 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 45 00 81 2D 00 90 48 64 91 2D 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 48 00 81 2D 00 90 4C 64 91 2D 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 4C 00 81 2D 00 90 4A 64 91 2D 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 4A 00 81 2D 00 90 48 64 91 29 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 48 00 81 29 00 90 45 64 91 29 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 45 00 81 29 00 90 43 64 91 2B 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 43 00 81 2B 00 90 45 64 91 2B 6E; wait 240; midi 92 54 5A; wait 240; midi 82 54 00; midi 80 45 00 81 2B 00; wait 600 | view midi; text MULTI; sound; focus screen; callout MIDI > MODE MULTI
+  step whole-a | *WHOLE A*: chords | WHOLE A: one sound on chip A's three voices, as chords. | turn ALGORITHM 1; wait 1200; midi 90 39 64 90 3C 64 90 40 64; wait 940; midi 80 39 00 80 3C 00 80 40 00; wait 20; midi 90 35 64 90 39 64 90 3C 64; wait 940; midi 80 35 00 80 39 00 80 3C 00; wait 20; midi 90 37 64 90 3C 64 90 40 64; wait 940; midi 80 37 00 80 3C 00 80 40 00; wait 20; midi 90 37 64 90 3B 64 90 3E 64; wait 940; midi 80 37 00 80 3B 00 80 3E 00; wait 20; wait 600 | view midi; text WHOLE; text POLY; sound; focus screen; callout MIDI > MODE WHOLE A
+  step sounds | A *.sid*'s sounds | The Library page lists a tune's instruments as LAB sounds to keep and send. | wait 1000 | view midi; focus card; callout TUNE.SID <> LIBRARY <> LAB SOUNDS
+  step get-it | Get *SIDOU 2.0* | dsablic.github.io/sidou and github.com/dsablic/sidou/releases | wait 1000 | view midi; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
