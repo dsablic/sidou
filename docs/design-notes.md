@@ -7564,10 +7564,17 @@ gain.
   250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
   A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
   row of the first section's first voice carries the funktempo command `E` with that row; the
-  reported BPM is the one that plays, which a test measures from the played frames (the rows after
-  the first: the player starts the song's very first row at the default speed 6, and funktempo
-  takes over from the second, so the first pass's first row is short; the test reads each row's
-  length and pins bpm 60 to 12 then 13). A `swing` is the long speed first and goes on voice 1's
+  reported BPM is the one that plays, which a test measures from the played frames (every row, the
+  first included: GoatTracker's tempo command on row 0 takes effect after that row, so a song that
+  carried only the command played its first row at the default speed 6, short against the song's
+  tempo. The song's last instrument slot (63) now carries the start speed, as GoatTracker's own
+  player reads it (the AD byte of slot 63, with no wave pointer, is the default speed; the
+  packed player and SIDOU's give the same writes, `gt2_match`): the pair's second speed, since row
+  0 takes it and funktempo's first speed then follows on row 1, so the rows run second, first,
+  second ... and row 0 is one of the pair. An even pair has equal rows from row 0; a pair
+  like 7 and 8 starts on the 8. A song whose instruments fill slot 63 is refused, with the
+  tables-full words. The test reads each row's length from the first and pins bpm 60 to 12 then
+  13 after it). A `swing` is the long speed first and goes on voice 1's
   rows as SWING writes it ([Swing](#swing-121): eighths or sixteenths by the song's grid, the
   same `song_swing.c`), after the patterns are written so the grid is the song's. The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by

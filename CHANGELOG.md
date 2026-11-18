@@ -23,6 +23,12 @@ All notable changes are documented here. The format follows
   layer, so a controller mapped to it keeps working.
 - EDIT + ARP on LAYERS leaves the layers' levels as they are.
 
+### Fixed
+- **A text song's first row plays at its tempo**: a `sidou-song/1` at a tempo other than 125.3
+  BPM played its first row at speed 6 and the song's speeds only from the second row. The song's
+  start speed (instrument slot 63's AD, as GoatTracker reads it) now carries the tempo, so row 0
+  is one of the song's speed pair; GoatTracker's own player plays the song the same.
+
 ## [1.21.0] - 2026-11-17
 
 STEP's new GROOVE page puts the song's swing, Euclidean hits and ratchets on a knob each, heard while the song plays; the Library page turns a `.sid` tune into a song you can edit.
