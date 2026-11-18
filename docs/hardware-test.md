@@ -3423,9 +3423,11 @@ Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `
   floor); three envelopes (steady; swelling 2 dB over a second; a pluck falling 30 dB in 0.3 s),
   which OMNI's one instrument cannot give; all four together 6 dB louder, every pitch present, no
   silent runs in the recording.
-- [ ] **PUNCH** (SIDOU LOOP playing, FX): each pad 1..6 alone and two or three at once, let go
-  exactly; STUTTER back on the beat; `PLAY TO PUNCH` stopped; HOME and SEQ. Pass: as
-  [controls.md](reference/controls.md#punch); a held pad's number readable on its colour.
+- [x] **PUNCH** (SIDOU LOOP playing; SEQ to a song view, then FX): each pad 1..6 alone and two or
+  three at once, let go exactly; STUTTER back on the beat; `PLAY TO PUNCH` stopped; HOME and SEQ.
+  Pass: as [controls.md](reference/controls.md#punch); a held pad's number readable on its colour.
+  *Result:* Passed 2026-11-18 (the owner): the pads work, a held pad reads fine. FX on the playing
+  screen opens LAB's FX page, not PUNCH (as designed; the owner looked for PUNCH there first).
 - [ ] **The screens:** LAYERS' K4 card and the level bars; the first DICE roll after power-on says
   `LAB KEEPS 16 USER SOUNDS` (with no USER sound kept); STATUS, CORES: chip B on core 1.
 - [ ] **WHOLE A** (once it sounds): POLY chords, CHORD from one key, ARP at a rate and on the
