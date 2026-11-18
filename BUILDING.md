@@ -366,6 +366,7 @@ tools/wasm-tune                 # build/wasm-tune/sidou-tune.wasm
 tools/wasm-tune OUT.wasm        # elsewhere (tools/web-demo builds it into build/web)
 node web/tune.test.mjs          # the capture against the host build (web/tune-fixtures.json)
 node web/sidconv.test.mjs       # the converter on the starter pack, with sidou-core.wasm
+node web/sidsound.test.mjs      # its instruments as LAB sounds, with the patch module too
 ```
 
 The toolchain is the wasm core's (above). The module is about 79 KB; its budget is 96 KiB,

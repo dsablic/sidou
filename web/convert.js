@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { loadCore } from "./core.js";
 import { VOICES_A_CHIP, convert, measure, previewSong, writesOf } from "./sidconv.js";
+import { tuneSounds } from "./sidsound.js";
 import { loadTune } from "./tune.js";
 
 const LENGTHS = [30, 60, 90, 120], DEFAULT_LENGTH = 60, FRAME_RATE = 50, MODEL_8580 = 2;
 const percent = (x) => `${Math.round(x * 100)} %`;
 
-export function setupConvert({ $, el, say, save, send, edit, stemOf, kb }) {
+export function setupConvert({ $, el, say, save, send, edit, stemOf, kb, patcher, sounds }) {
   const state = { tune: null, core: null, file: null, result: null, ctx: null, source: null };
   window.__convert = state;
 
@@ -24,6 +25,7 @@ export function setupConvert({ $, el, say, save, send, edit, stemOf, kb }) {
     stop();
     $("sid-result").hidden = true;
     state.result = null;
+    sounds.showTune([]);
     try {
       const { tune } = await tools();
       const h = tune.read(new Uint8Array(await file.arrayBuffer()));
@@ -63,9 +65,19 @@ export function setupConvert({ $, el, say, save, send, edit, stemOf, kb }) {
       state.result = { captured, c, bytes, chipA, close, seconds, song, stem: `${stemOf(h.name || state.file.name)}${h.songs > 1 ? `-${song}` : ""}` };
       show();
       say($("sid-state"), `Converted: ${kb(bytes.length)}.`, "ok");
+      await listSounds(c.song);
     } catch (e) {
       $("sid-result").hidden = true;
+      sounds.showTune([]);
       say($("sid-state"), `Not converted: ${e.message}.`, "error");
+    }
+  }
+
+  async function listSounds(song) {
+    try {
+      sounds.showTune(tuneSounds(song, await patcher()));
+    } catch (e) {
+      sounds.status(`The tune's sounds could not be listed: ${e.message}.`, "error");
     }
   }
 
