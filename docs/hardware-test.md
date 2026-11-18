@@ -3442,6 +3442,67 @@ Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `
   voice a step every 60 ms (3 FR at 50 Hz), and with ARP RATE CLOCK a 16th of a 120 BPM clock a
   step (125 ms; 120 measured in 20 ms windows).
 
+## 44. 2.0.0: the release package
+
+What it decides: whether the 2.0.0 package ships. §42 passed the second core and §43 2.0's
+features on test packages from main; this section installs the release package itself over the
+owner's current test build and checks, by ear, what 2.0 adds: chip B on core 1, PUNCH's pads over
+a playing song, a layer's level in LAB, MULTI and WHOLE A from a DAW, a `.sid` tune's sounds sent
+from the Library page, and that the keyboard still reconnects. The image is 567,540 bytes, 11,976
+under the 579,516 ceiling. Every item waits for the owner's yes for that step: nothing is
+flashed, sent, connected or scanned, and no MIDI port is opened, before it.
+
+Set up: the 2.0.0 package (`build/fm1/sidou.fwsc` from the release branch, from a fresh build
+directory, `tools/preflash` passing), the FM-1 on the owner's current test build (§43's final 2.0
+package from main 1aafbba6) with its songs, BLUETOOTH on KEYBOARD and the Korg microKEY Air kept
+(§38); the microKEY Air charged; a Mac with Chrome on the
+[Library page](https://dsablic.github.io/sidou/library.html) (the site built from the release
+branch, `tools/web-demo`, if it is not deployed yet), a starter-pack tune
+(`assets/starter/neon-highway.sid`) and a DAW or §43's script for the MIDI items; headphones on the
+line out.
+
+- [ ] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-2.0.0.fwsc`).
+  Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU boots; SONG, LOAD lists the songs it
+  had; SETTINGS still says KEYBOARD and the microKEY Air's name. *Emulator:* `package.rs`.
+  *Result:*
+- [ ] **The version:** ABOUT and STATUS. Pass: both say 2.0.0. *Result:*
+- [ ] **Chip B on core 1:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
+  RUNNING`, `WHY --`, `JOBS` 100 or more. SONG, LOAD SIDOU LOOP, PLAY, a chord held on the keys
+  (chip B), back to CORES: `CHIP B CORE 1`, `JOBS` rising, `AVG` near §42's 16.6 %; no click or
+  drop-out. *Emulator:*
+  `cpu2.rs::the_cores_page_shows_core_1_running_and_core_0s_audio_time_with_chip_b_on_either_core`,
+  `cpu2.rs::chip_b_on_core_1_sounds_sample_for_sample_as_one_core`. *Result:*
+- [ ] **PUNCH over a playing song:** SIDOU LOOP playing, SEQ to STEP, FX. Pass: the PUNCH page;
+  each of the first six keys held alone is heard (MUTE, FILTER SLAM, PITCH DIVE, STUTTER, ECHO
+  THROW with its echoes ringing on, CHIP SWAP) and let go the song is as before; STUTTER let go
+  lands back on the beat; two pads at once both heard; stopped, `PLAY TO PUNCH`; HOME back to
+  STEP with the song playing. *Emulator:*
+  `punch.rs::each_pad_reaches_chip_a_or_the_fx_slot_while_held_and_lets_go_at_release`,
+  `punch.rs::stutter_loops_a_beat_and_the_song_comes_back_where_it_would_have_been`. *Result:*
+- [ ] **A layer's level:** LIVE, ENV, SELECT to LAYERS, ALGORITHM to TWO OSC; a note held, K1 to
+  L2, K4 down to 0 and back to 100. Pass: K4's card large with `LEVEL`, the page's bar and number
+  for L2 following it, the second oscillator fading out and back in while L1 stays. *Emulator:*
+  `lab.rs::a_layers_level_on_k4_reaches_its_voice_on_the_device`. *Result:*
+- [ ] **MULTI and WHOLE A from a DAW** (the owner's yes before the MIDI ports are opened): the
+  MIDI page, MODE MULTI, CHANNEL 1; CH1..CH3 three different sounds. Notes on channels 1, 2, 3 and
+  4, then all four held. Pass: each channel its own note in its own sound, channel 4 chip B's
+  instrument, all four together with no drop-out. Then MODE WHOLE A: a three-note chord on
+  channel 1 plays all three (POLY); OPTION CHORD: one key a major triad; OPTION ARP: held notes
+  stepped on one voice. MODE back to OMNI. *Emulator:*
+  `midi_modes.rs::multitimbral_plays_three_parts_on_chip_a_and_the_instrument_on_chip_b`,
+  `midi_modes.rs::whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp`.
+  *Result:*
+- [ ] **A `.sid` tune's sounds:** the Library page, *A .sid tune: convert it to a song*, drop
+  `neon-highway.sid`, Convert; under the tune's sounds, Listen to one, then **Send to the FM-1…**
+  (the owner's yes before sending). Pass: the page lists the instruments as LAB sounds with their
+  voice and notes; the FM-1 lists the one-instrument song, its keys play the sound, and ENV on
+  INSTR pulls it into LAB. *Emulator:* `web/sidsound.test.mjs`. *Result:*
+- [ ] **The keyboard still reconnects:** with the microKEY Air on, a few seconds after a power
+  cycle. Pass: the toast `KEYBOARD microKEY Air`, no pairing asked again (no `PASSKEY`), its notes
+  play. *Emulator:*
+  `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`.
+  *Result:*
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -3490,3 +3551,5 @@ Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `
 | 40 1.20.0: the release package | | |
 | 41 1.21.0: the release package | | |
 | 42 2.0: the second core on the device | | |
+| 43 2.0: the features on the device | | |
+| 44 2.0.0: the release package | | |

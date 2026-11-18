@@ -8,6 +8,10 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-18
+
+Chip B renders on the FM-1's second core by default, halving the audio time; PUNCH puts six held effect pads on a playing song; MULTI and WHOLE A really play for a DAW and keyboards; LAB sets a layer's level; the Library page turns a `.sid` tune's instruments into LAB sounds; aftertouch adds vibrato; and two fixes.
+
 ### Added
 - **PUNCH**: FX on any song view opens a page whose first six note keys are held effect pads for
   the playing song, several at once: **MUTE** (chip A silent, its voices running on), **FILTER
@@ -81,6 +85,13 @@ All notable changes are documented here. The format follows
   VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
   layer, so a controller mapped to it keeps working.
 - EDIT + ARP on LAYERS leaves the layers' levels as they are.
+- **The how-to videos on 2.0:** *What's new in 2.0* shows STATUS's CORES page with chip B on
+  core 1, PUNCH's pads over SIDOU LOOP, a layer's level on LAYERS, MULTI and WHOLE A played over
+  MIDI, and a card for a `.sid` tune's sounds on the Library page; every video is re-rendered on
+  2.0.
+- **Measured:** the image is 567,540 bytes, 11,976 under its ceiling of 579,516 (1.21.0:
+  554,916); RAMTEXT holds 45,920 bytes of its 48 KB. The site's modules: the core 167,274 bytes
+  of its 176 KiB, the patch module 85,842 of its 88 KiB, `sidou-tune.wasm` 78,646 of its 96 KiB.
 
 ### Fixed
 - **A second knob while a popup shows no longer sends a frame over 200 cells**: another knob's

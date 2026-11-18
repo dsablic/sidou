@@ -7,29 +7,16 @@ why lives in [decision records](decisions/) and the how in [plans](plans/). What
 in [CHANGELOG.md](../CHANGELOG.md) and on the [releases page](https://github.com/dsablic/sidou/releases).
 Sizes: S is under a day of work, M a few days, L more.
 
-## 2.0
-
-- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on by
-  default, built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)) after the device check
-  (hardware-test §42): core 0's audio time halved on the owner's FM-1, falling back to one core
-  with the same sound; STATUS's CORES page for every player. The default image is 559,796 bytes,
-  19,720 under the 579,516 ceiling.
-- **A layer's level in LAB**: built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)), LAYERS' K4
-  LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
-  instructions a sample per chip, inside every audio budget unchanged
-  ([design notes](design-notes.md#a-layers-level-20)).
-## 2.1: live
+## Next: 2.1, live
 
 What the grooveboxes on the FM-1 have for playing live and SIDOU still lacks (the landscape check,
-2026-11-18; the owner agreed):
+2026-11-18; the owner agreed; 2.0 brought PUNCH's pads and a `.sid` tune's sounds in the Library):
 
 - **The next pattern queued, starting on the bar:** pick the pattern or order position to come
   while the song plays; it starts at the bar's end, shown on the song views. Melodee, SLOOP and
   JIANT have it. S-M.
 - **Copy and paste in STEP:** a lane's steps or a whole pattern, with their locks and ratchets.
   JIANT has it. S.
-- **A small set of punch effects** (about six: mute, filter slam, stutter, freeze and the like),
-  held on a key while it plays. SLOOP, Melodee and JIANT have theirs. M.
 - **USB host for keyboards:** SETTINGS' USB, COMPUTER or KEYBOARD (every power-on starts as
   COMPUTER, so installs always work): a class-compliant USB-MIDI keyboard, controller or synth,
   alone or behind a hub, into the same MIDI queue as USB, TRS and Bluetooth. felucca-bsp's
@@ -37,8 +24,6 @@ What the grooveboxes on the FM-1 have for playing live and SIDOU still lacks (th
   loop's task, its buffers in NOINIT. The FM-1 does not power the port (a powered hub or a
   powered OTG adapter); while a host, no computer over USB. Melodee and JIANT have it. About 3-5 KB
   of flash. S-M.
-- **Sounds from a `.sid` tune into the Library:** the converter's instruments as LAB sounds to
-  keep, edit and send. SID-1's page does the like. Site only. S.
 
 Watched, not planned: C64 speech (SAM, as EVILGENIUS has it; its licence is unclear) and a microSD
 card (felucca-bsp has one on the LCD's SPI; it would need a card fitted).
@@ -48,6 +33,8 @@ card (felucca-bsp has one on the LCD's SPI; it would need a card fitted).
 - **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341. The update loader stays
   Felucca's, byte for byte, on 0x1209:0x0002.
 - **The first-run tour on a real FM-1**: the one part of the device session not yet checked there.
+- **A watchdog reset and core 1**: whether the watchdog resets the second core with the chip,
+  §42's optional item, not yet run on a unit (SIDOU holds core 1 first thing at every boot). S.
 - **The quality pass**: performance headroom (the thin spots in the audio-interrupt gates: LIVE
   noise, SELECT into RULE, STATUS idle, the MIDI floods, the USB drain), knob-curve follow-ups from
   the device sessions, and the two `-Oz` puzzles (`gt2_song.c`'s goldens, `fx_slots_init.c`'s
