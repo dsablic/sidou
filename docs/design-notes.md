@@ -169,8 +169,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   that may crash: only the second-core hold, `fm1_time_init`, the watchdog's arming and the power-on
   UBOOT gesture come before it.
   `fm1_cpu1_halt` (the HAL's second-core hold) runs at every boot and before every reset, because
-  SIDOU never starts the second core but one left running from a previous boot would execute
-  whatever its PC points at during RAM clear and fill. The HAL builds the hold function only when
+  SIDOU starts the second core only after the RAM copy ("Second core", below), and one left
+  running from a previous boot would execute whatever its PC points at during RAM clear and fill. The HAL builds the hold function only when
   `FM1_CPU1_USED` is set: `main.c` sets it to 1 for `fm1_sys.h` (the hold) and to 0 for
   `fm1_irq.h`, whose second-core fault paths need Felucca's `fm1_cpu1.S`.
 - Interrupt priorities in `main.c`: TIMER5 (4) sits above ALNK0 (3), so the tick keeps pace even
@@ -738,17 +738,40 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Second core (`SIDOU_CPU2`)
 
-- **Off by default, the default image unchanged** ([decision 0010](decisions/0010-second-core-reopened.md),
-  [the spike](plans/2026-11-15-second-core-spike.md)). `-DSIDOU_CPU2=ON` builds chip B's render
-  on core 1 for the device check; nothing in the default build changes (577,536 bytes, the same
-  bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
-  (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
-  Players see nothing: no menu entry, no setting.
-- **The ON image's size gate.** Deferred to 2.0 on 2026-11-15 (the owner) while the ON image was
-  581,120 bytes, 1,604 over the 579,516 ceiling (the second core adds about 1,890 bytes, and the
-  default image had 284 to spare). Restored in 1.20 once RED MOON RITE's art left the image: with
-  pairing, the ON image is 547,796 bytes, 31,720 under the ceiling, and `flash_budget.rs` and
-  `psid_budget.rs` check it as they check the default image (`flash_plan::assert_fits`).
+- **On by default since 2.0** (the owner, 2026-11-18, after the device day:
+  [hardware-test §42](hardware-test.md#42-20-the-second-core-on-the-device),
+  [decision 0010](decisions/0010-second-core-reopened.md), [the spike](plans/2026-11-15-second-core-spike.md)).
+  On the owner's FM-1 core 1 has an FPU and runs SIDOU's float render; with SIDOU LOOP and the
+  keys, core 0's audio time is AVG 16.6 %, WORST 29.4 % with chip B on core 1 against AVG 31.4 %,
+  WORST 41.7 % with chip B on core 0 (the average 47 % lower, the worst 30 % lower; about twice
+  fm1-emu's 7.5 % and 14.3 %, which counts instructions and models neither the cache nor flash
+  waits); a 30-minute soak heard nothing wrong and SAVE, SAVE AGAIN restarted on two cores. Every
+  fallback stays: the self-test, one core until power-off with the same sound, the bar in NOINIT,
+  SAVE, SAVE AGAIN on CORES to lift it. The option record names `SIDOU_CPU2=ON` in every release
+  (`DEFAULT_OPTIONS`), so `sidou-pack --verify` and `tools/preflash` fail an OFF package.
+- **The OFF build is kept as the emulator gate's reference, never shipped.** `-DSIDOU_CPU2=OFF`
+  builds the image with no second core at all (no worker, no hand-over, no meter, no CORES page),
+  555,908 bytes. CI and `tools/merge-check` build it into `build/fm1-cpu1` and `cpu2.rs` holds the
+  default image to it: chip B on core 1 and every fallback play its samples, core 0's worst block
+  drops by chip B against its own, and the layout test finds none of core 1's code in it. A
+  reference that has no hand-over can catch a fault common to both of the default image's paths,
+  which the default image fallen back to one core cannot, and it keeps the option buildable for a
+  unit whose core 1 the fallbacks do not catch. Its size needs no gate of its own: it is the
+  default image less the second core's code. Dropping the option would have cost no tests but this
+  reference; the build costs CI nothing new, as it takes the old two-core build's place.
+- **Every gate runs on the default, two-core image**, so core 0's budgets measure with chip B on
+  core 1 wherever chip B plays beside a one-chip player. A unit that falls back renders chip B on
+  core 0 inside the same block, so the two-chip worst case with every slot's heaviest effect is
+  held to the audio target twice (`chip_b.rs`, `..._on_one_core_or_two`): on two cores and on the
+  same image with core 1 retired by a fault at its first FPU instruction
+  (`booted_fallen_back_to_one_core`). The emulator steps core 1 beside core 0, so the gate's
+  run takes longer in time, not in what it checks; the `cpu2` shard, which ran a subset of the
+  gates on the ON image, is gone.
+- **Sizes at the switch:** the default image 559,796 bytes (19,720 under the 579,516 ceiling;
+  +3,888 against the OFF image), RAMTEXT 45,728 of 49,152 (+704), the RAM region 5,128 bytes free
+  (the floor is 5,120), NOINIT 11,384 of 15,696 bytes. The two-chip worst block with every slot's
+  heaviest effect: 1,672.2 instructions a sample on two cores, 2,491.4 fallen back to one, against
+  the target of 2,700.
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).
@@ -814,14 +837,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   21). Comparisons with the default build drive both chips through the register ring at cues on
   the audio's block grid: the main loop's own timing differs between the builds (a song's first
   note or a UI frame can land a block apart), so the song and the tunes are held to the host's
-  render on the two-core image instead (the `cpu2` shard, `tools/emu-shards`).
-- **Device-only:** whether core 1 has an FPU (a trap retires it at the self-test), whether this
-  unit misreads under SIDOU's load, the hand-over's real cost with both cores on the SRAM, and
-  whether the watchdog resets core 1.
-- **The device day's page (hardware-test §42): STATUS's fourth page, CORES, in the two-core build
-  only.** The app's code for it is under `SIDOU_CPU2` (`sidou_live` gets the define with the
-  option), so the default image stays byte for byte the same (554,916 bytes, checked by SHA-1); the
-  two-core image grows by 1,968 bytes to 558,756. The platform hands the page a report
+  render on the default, two-core image instead.
+- **Device-only:** answered on the owner's unit on 2026-11-18 (§42, the first bullet): core 1 has
+  an FPU, it did not misread in 30 minutes of SIDOU's load, and the hand-over's gain is above.
+  Whether the watchdog resets core 1 was not run (it needs §10's hang build); SIDOU holds core 1
+  first thing at every boot either way.
+- **STATUS's fourth page, CORES, for every player since 2.0** (built for the device day,
+  hardware-test §42). The app's code for it is under `SIDOU_CPU2` (`sidou_live` gets the define
+  with the option), so the OFF reference has three STATUS pages. The platform hands the page a report
   (`views_cores`, bound in `ui.c` as the radio is): core 1 RUNNING or OFF, the reason, its jobs,
   where chip B renders, core 0's audio time and the small print. Big text for what the owner reads
   off the device; the register words are small print, read once and photographed.
@@ -832,12 +855,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   In fm1-emu the page's AVG matches the emulator's own instruction count of the interrupt (7.5 %
   with both chips at their worst on two cores, 14.3 % with chip B on core 0, at 240 MHz and one
   instruction a cycle); on the device it is the real time, caches and `csync` included.
-- **One core against two on the same image.** The default build has no meter (it would cost the
-  default image and the interrupt for a question only this build asks), so ALGORITHM on CORES
+- **One core against two on the same image.** The OFF build has no meter, so ALGORITHM on CORES
   switches chip B between core 1 and core 0 (`cpu2_chip_b_away` refuses the hand-over); core 1
   idles in its RAM loop meanwhile and takes jobs again on the way back. Chip B on core 0 is the
   default build's render path plus one byte's test, so the difference between the two AVGs is the
   hand-over's real gain. The switch resets WORST, so each side's worst is its own.
+- **ALGORITHM stays on CORES for players (2.0).** It is one turn on the page that shows its result
+  at 2× (`CHIP B CORE 1` or `CORE 0`, and AVG and WORST moving with it), so the popup rule is met
+  without a popup, and it is the one way a player can hear for themselves that the two cores sound
+  alike and see what the second core gives back. It changes no sound and nothing kept: chip B goes
+  back to core 1 at the next start (`chip_b_on_core0` is in `.bss`). Hiding it behind a held key
+  or a setting would add a gesture for a diagnostic that does no harm.
 - **Lifting the bar: SAVE, then SAVE AGAIN on CORES** (the confirmation every irreversible step
   takes; HOME backs out). It clears the bar's word and restarts through `fm1_reboot` (the audio
   stopped, the boot guard told it is on purpose, core 1 held), because core 1 can only be started

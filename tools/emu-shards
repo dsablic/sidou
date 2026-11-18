@@ -10,10 +10,7 @@ USAGE = """The emulator gate split into CI's shards (TESTING.md, "What runs when
 The thirty longest tests are dealt into GROUPS by their times on CI (the junit-emu-gate-*
 reports), the longest first into the lightest group, a test that spreads over every core counted
 for each core it takes; every other emulator test goes into the REST shards by slice (every Nth
-test of the whole list). Deal them again when the times change much. The cpu2 shard runs the
-default build's gates that the two-core image (-DSIDOU_CPU2=ON) must pass too, CPU2_GATES, with
-SIDOU_FM1_BUILD pointing at that image (check.yml, tools/merge-check); their checks of the
-image's size against the ceiling are deferred to 2.0 for it (flash_plan::assert_fits).
+test of the whole list). Deal them again when the times change much.
 """
 
 GROUPS = [
@@ -59,17 +56,6 @@ GROUPS = [
     ],
 ]
 REST = 6
-CPU2_GATES = [
-    "binary(=flash_budget)",
-    "binary(=ram_audio)",
-    "binary(=chip_b)",
-    "binary(=keys)",
-    "test(=the_stack_lives_in_noinit_and_the_ram_region_keeps_its_floor)",
-    "test(=a_tunes_memory_fits_m3s_budgets)",
-    "test(=play_plays_the_first_song_bit_exact_with_the_host)",
-    "test(=edits_while_playing_are_bit_exact_with_the_host)",
-    "test(=keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate)",
-]
 
 
 def tests(names):
@@ -77,7 +63,7 @@ def tests(names):
 
 
 def shards():
-    return [f"group-{g}" for g in range(1, len(GROUPS) + 1)] + [f"rest-{r}" for r in range(1, REST + 1)] + ["cpu2"]
+    return [f"group-{g}" for g in range(1, len(GROUPS) + 1)] + [f"rest-{r}" for r in range(1, REST + 1)]
 
 
 def arguments(shard):
@@ -85,8 +71,6 @@ def arguments(shard):
     n = int(number) if number.isdigit() else 0
     if kind == "group" and 1 <= n <= len(GROUPS):
         return ["-E", f"package(emu-gate) & ({tests(GROUPS[n - 1])})"]
-    if shard == "cpu2":
-        return ["-E", f"package(emu-gate) & ({' | '.join(CPU2_GATES)})"]
     if kind == "rest" and 1 <= n <= REST:
         grouped = tests(name for group in GROUPS for name in group)
         return ["-E", f"package(emu-gate) & not ({grouped})", "--partition", f"slice:{n}/{REST}"]

@@ -161,7 +161,7 @@ LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the r
 on LIVE, ARP is the [chord arpeggio](#chord-arpeggio) and LFO opens LAB (with ENV and FX); elsewhere
 LFO and ARP do nothing yet, nor do ENV and FX outside LIVE and LAB, and
 PRESETS steps the preset. SELECT does nothing on ABOUT (on STATUS it turns the
-[page](#status-pages)), ALGORITHM nothing on STATUS and ABOUT.
+[page](#status-pages)), ALGORITHM nothing on ABOUT and on STATUS but its CORES page.
 
 ## The button LEDs
 
@@ -1834,7 +1834,7 @@ same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#c
 on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
 <a id="status-pages"></a>The **status screen** (STATUS in the menu) shows the numbers at 2×, on
-three pages that **SELECT** turns (either way, round the three); the title bar's `1/3` says which. It
+four pages that **SELECT** turns (either way, round the four); the title bar's `1/4` says which. It
 opens on the first page every time, as a help card does.
 
 | Page | Shows |
@@ -1842,6 +1842,7 @@ opens on the first page every time, as a help card does.
 | 1 | the sound's knobs, each with its bar: CUTOFF, RESO, PULSE and VOLUME. While a `.sid` tune is loaded, the 6502's rows instead: `6502` and its state, `CPU` (its share), `T/KC`, `LATE`, `OVERRUNS`, then `CYC/S` (cycles a second), `SHADOW` and `3RD SID` (see [SIDS and NOW PLAYING](#sids-and-now-playing)) |
 | 2 | the chip (its model and the profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play), the preset and octave (`OCT +0`), and the held notes |
 | 3 | under the effect slots DIST, MOD and FX each slot's algorithm and Mix (`>` marks the selected slot), then the selected slot's Amount, A and B |
+| 4 | CORES, the FM-1's second core, which renders chip B beside a one-chip player (the song or the keys on chip B, a one-SID tune): `CORE 1` `RUNNING` or `OFF`, `WHY` it is off (`--` while it runs; `MISREAD`, `SELF-TEST`, `LATE`, `SILENT`, `FAULT`, or `BARRED` on the boots after one, until power-off), its `JOBS`, where `CHIP B` renders (`CORE 1` or `CORE 0`), and core 0's audio time as a share of a block, `AVG` over the last second and `WORST` since the last switch; the small print under it holds the register words. **ALGORITHM** moves chip B to the other core and back, to compare the two (the same sound; chip B is on core 1 again at the next start). **SAVE**, then **SAVE AGAIN**, restarts the FM-1 to try two cores again after a fallback; HOME or any other control backs out |
 
 The version number sits after SIDOU in the title. On every page the bottom row, beside `READY.`,
 shows the store's health when it is not clean: `STORE ERR 3` (flash operations that failed since
