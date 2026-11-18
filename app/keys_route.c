@@ -81,6 +81,7 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     kr->taking_ctx = 0;
     kr->song_edit = 0;
     kr->song_edit_ctx = 0;
+    kr->swap = 0;
 }
 
 void keys_route_start(keys_route* kr) {
@@ -190,6 +191,21 @@ int keys_route_ready_for_song(const keys_route* kr) {
     return kr->l->keys_chip == 1u || (kr->l->keys_mode == LIVE_KEYS_A && !kr->tune) || kr->silent;
 }
 
+void keys_route_swap(keys_route* kr, int on) {
+    kr->swap = on ? 1u : 0u;
+}
+
+static const chip_setup* song_target(const keys_route* kr, chip_setup* swapped) {
+    const sid_chip_profile* p = sid_chip_profile_get(kr->song_want.profile);
+    if (!kr->swap || !p) {
+        return &kr->song_want;
+    }
+    *swapped = kr->song_want;
+    swapped->profile =
+        (uint8_t)sid_chip_default(p->model == SID_MODEL_8580 ? SID_MODEL_6581 : SID_MODEL_8580);
+    return swapped;
+}
+
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {
     if (setup->profile != kr->song_want.profile) {
         kr->song_user = 0;
@@ -265,10 +281,12 @@ static void tell(keys_route* kr) {
 
 void keys_route_tick(keys_route* kr) {
     live* l = kr->l;
+    chip_setup swapped;
+    const chip_setup* song = song_target(kr, &swapped);
     update_under(kr);
     if (kr->silent) {
         if (chip_ctl_follow(&kr->ctl[1], &kr->tune_b_want)) {
-            chip_ctl_follow(&kr->ctl[0], &kr->song_want);
+            chip_ctl_follow(&kr->ctl[0], song);
         }
         tell(kr);
         return;
@@ -287,11 +305,11 @@ void keys_route_tick(keys_route* kr) {
     } else if (!(other == 0u && kr->song)) {
         chip_ctl_follow(&kr->ctl[other], &want);
     } else {
-        chip_ctl_follow(&kr->ctl[0], &kr->song_want);
+        chip_ctl_follow(&kr->ctl[0], song);
     }
     chip_ctl* own = &kr->ctl[keys];
     if (keys_under_song(kr)) {
-        chip_ctl_follow(own, &kr->song_want);
+        chip_ctl_follow(own, song);
     } else if (kr->stale) {
         if (own->has.profile != want.profile) {
             if (!l->preparing && chip_ctl_follow(own, &want)) {

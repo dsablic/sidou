@@ -1307,3 +1307,42 @@ fn a_2sid_tune_silences_the_keys_and_makes_both_chips_fresh() {
     assert!(gates(k.chip(0)).contains(&1), "the keys sound on A again");
     assert_eq!(k.chips.lost_resets, 0);
 }
+
+#[test]
+fn chip_swap_plays_the_song_on_the_other_model_and_release_brings_its_own_setup_back() {
+    for (own, other) in [
+        (SID_CHIP_6581_WORN, SID_MODEL_8580),
+        (SID_CHIP_8580_R5, SID_MODEL_6581),
+    ] {
+        let mut k = Keys::new();
+        k.ticks(20);
+        k.song(true);
+        k.ticks(2);
+        let song = chip_setup {
+            profile: own as u8,
+            controls: [32, 0, 64, 0],
+            gate_reset: 1,
+            expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
+        };
+        unsafe { keys_route_song_wants(&mut *k.kr, &song) };
+        k.ticks(200);
+        assert!(chip_a_is(&k, &song), "profile {own}: chip A has the song's setup");
+        let b = setup(&k, 1);
+        unsafe { keys_route_swap(&mut *k.kr, 1) };
+        k.ticks(200);
+        let mut swapped = song;
+        swapped.profile = unsafe { sid_chip_default(other) } as u8;
+        assert!(chip_a_is(&k, &swapped), "profile {own}: chip A on the other model");
+        let want = k.kr.song_want;
+        assert_eq!(
+            (want.profile, want.controls, want.gate_reset, want.expert),
+            (song.profile, song.controls, song.gate_reset, song.expert),
+            "profile {own}: the song's setup is not written"
+        );
+        assert_eq!(setup(&k, 1), b, "profile {own}: the keys' chip B");
+        unsafe { keys_route_swap(&mut *k.kr, 0) };
+        k.ticks(200);
+        assert!(chip_a_is(&k, &song), "profile {own}: chip A back on the song's setup");
+        assert_eq!(k.chips.lost_resets, 0);
+    }
+}
