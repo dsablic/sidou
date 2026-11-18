@@ -5,18 +5,17 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::dual::{Core1Fate, Misreads};
+use common::dual::{Core1Fate, Misreads, NO_FATE};
 use common::panel::{press, turn, ALGORITHM, HOME, SAVE, SELECT};
 use common::ring::{chip_b_use, note, push, settle, with_b, worst_on_both_chips};
 use common::{
-    open_status, run_past_boot, top_view, Firmware, Machine, SID_WORST_BLOCK_ONE_CHIP,
-    TAP_PER_SAMPLE,
+    boot_with_core1, firmware, open_status, run_past_boot, top_view, Firmware, Machine,
+    CORE1_FAULTS, CORE1_LOOP, SID_WORST_BLOCK_ONE_CHIP, TAP_PER_SAMPLE,
 };
 use fm1_core::Bus;
 use sidou_sys::{ilp32, GRID_BIG_FIRST, GRID_BIG_PIECES, GRID_COLS};
 
-const CPU2_BUILD: &str = "SIDOU_FM1_CPU2_BUILD";
-const CORE1_LOOP: &str = "fm1_cpu1_main";
+const ONE_CORE_BUILD: &str = "SIDOU_FM1_ONE_CORE_BUILD";
 const MAILBOX_REJECTED: u32 = 40;
 const MAILBOX_JOBS: u32 = 48;
 const BAR_BARRED: u32 = 4;
@@ -36,31 +35,21 @@ const SEED: u64 = 0;
 const DEFAULT_SWEEP: &str = "jobs:1e-5:8";
 const SAVE_SONG: u32 = 2;
 
-const NO_FATE: Core1Fate = Core1Fate {
-    flaky: None,
-    misreads_mailbox_after_jobs: None,
-    stalls_after: None,
-    misreads: Misreads::Anywhere,
-    flaky_after_jobs: None,
-    stalls_after_jobs: None,
-    faults_at_fpu: false,
-};
-
 struct Builds {
     one: Firmware,
     two: Firmware,
 }
 
 fn builds(what: &str) -> Option<Builds> {
-    let two = std::env::var_os(CPU2_BUILD).filter(|d| !d.is_empty());
-    let (Some(one), Some(two)) = (common::build_dir(), two) else {
+    let one = std::env::var_os(ONE_CORE_BUILD).filter(|d| !d.is_empty());
+    let (Some(two), Some(one)) = (common::build_dir(), one) else {
         println!(
-            "skipping {what}: set SIDOU_FM1_BUILD to the fm1 build and {CPU2_BUILD} to a build \
-             with -DSIDOU_CPU2=ON (build/fm1-cpu2)"
+            "skipping {what}: set SIDOU_FM1_BUILD to the fm1 build and {ONE_CORE_BUILD} to a \
+             build with -DSIDOU_CPU2=OFF (build/fm1-cpu1)"
         );
         return None;
     };
-    let two = std::path::absolute(PathBuf::from(two)).expect("resolve the two-core build");
+    let one = std::path::absolute(PathBuf::from(one)).expect("resolve the one-core build");
     Some(Builds {
         one: Firmware::load(&one),
         two: Firmware::load(&two),
@@ -92,14 +81,10 @@ fn boot(fw: &Firmware, fate: Core1Fate) -> Machine {
 }
 
 fn boot_after(fw: &Firmware, fate: Core1Fate, bar: &[u8]) -> Machine {
-    let mut m = Machine::boot(&fw.image);
-    if fw.has_symbol(CORE1_LOOP) {
-        m.core1.mailbox_loop = fw.function_range(CORE1_LOOP);
-    }
+    let mut m = boot_with_core1(fw, fate);
     for (i, b) in bar.iter().enumerate() {
         m.soc.write8(fw.symbol("fm1_cpu1_bar") + i as u32, *b);
     }
-    m.core1.fate = fate;
     run_past_boot(&mut m, fw);
     m
 }
@@ -274,13 +259,7 @@ fn every_fallback_to_one_core_sounds_the_same_samples() {
                 ..NO_FATE
             },
         ),
-        (
-            "faults at its first FPU instruction",
-            Core1Fate {
-                faults_at_fpu: true,
-                ..NO_FATE
-            },
-        ),
+        ("faults at its first FPU instruction", CORE1_FAULTS),
     ];
     for (what, fate) in fates {
         let two = heard(&b.two, fate);
@@ -412,10 +391,10 @@ fn the_self_test_keeps_a_misreading_core_1s_render_out_of_the_sound() {
 
 #[test]
 fn a_flash_write_never_runs_while_core_1_has_a_job() {
-    let Some(b) = builds("the two-core flash gate test") else {
+    let Some(fw) = firmware("the two-core flash gate test") else {
         return;
     };
-    let fw = &b.two;
+    let fw = &fw;
     let mut m = boot(fw, NO_FATE);
     cue(&mut m, 0);
     write(&mut m, fw, &worst_on_both_chips());
@@ -592,10 +571,10 @@ fn audio_time_in_the_emulator(m: &Machine, from: usize) -> f64 {
 
 #[test]
 fn the_cores_page_shows_core_1_running_and_core_0s_audio_time_with_chip_b_on_either_core() {
-    let Some(b) = builds("the CORES page test") else {
+    let Some(fw) = firmware("the CORES page test") else {
         return;
     };
-    let fw = &b.two;
+    let fw = &fw;
     let mut m = boot(fw, NO_FATE);
     both_chips_at_their_worst(&mut m, fw);
     let two = open_cores(&mut m, fw);
@@ -660,10 +639,10 @@ fn bar_of(m: &mut Machine, fw: &Firmware) -> Vec<u8> {
 
 #[test]
 fn the_cores_page_says_why_core_1_fell_back() {
-    let Some(b) = builds("the CORES page fallback test") else {
+    let Some(fw) = firmware("the CORES page fallback test") else {
         return;
     };
-    let fw = &b.two;
+    let fw = &fw;
     let fates = [
         (
             "MISREAD",
@@ -680,13 +659,7 @@ fn the_cores_page_says_why_core_1_fell_back() {
                 ..NO_FATE
             },
         ),
-        (
-            "FAULT",
-            Core1Fate {
-                faults_at_fpu: true,
-                ..NO_FATE
-            },
-        ),
+        ("FAULT", CORE1_FAULTS),
     ];
     for (why, fate) in fates {
         let mut m = fell_back(fw, fate);
@@ -717,17 +690,11 @@ fn the_cores_page_says_why_core_1_fell_back() {
 
 #[test]
 fn save_then_save_again_on_the_cores_page_lifts_the_bar_and_restarts_on_two_cores() {
-    let Some(b) = builds("the CORES page restart test") else {
+    let Some(fw) = firmware("the CORES page restart test") else {
         return;
     };
-    let fw = &b.two;
-    let mut fallen = fell_back(
-        fw,
-        Core1Fate {
-            faults_at_fpu: true,
-            ..NO_FATE
-        },
-    );
+    let fw = &fw;
+    let mut fallen = fell_back(fw, CORE1_FAULTS);
     let bar = bar_of(&mut fallen, fw);
     let mut m = boot_after(fw, NO_FATE, &bar);
     assert_eq!(open_cores(&mut m, fw).why, "BARRED");

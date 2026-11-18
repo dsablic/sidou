@@ -152,7 +152,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 Eleven openly licensed tunes for the store, a starter pack, are in [assets/starter](assets/starter),
 and one `sidou-sysex sid --pack` command makes them a single upload
 ([the manual](docs/manual/sid-tunes.md#the-starter-pack)). STATUS shows how much of the CPU the
-6502 takes.
+6502 takes, and on its CORES page the FM-1's second core, which renders chip B and halves the
+audio's load on the first.
 
 ## Try it in your browser
 

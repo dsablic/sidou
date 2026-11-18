@@ -27,6 +27,14 @@ All notable changes are documented here. The format follows
   `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
 
 ### Changed
+- **Chip B renders on the FM-1's second core**: core 0's audio time halved on the device (with
+  SIDOU LOOP and the keys, AVG 31.4 % to 16.6 % of a block, WORST 41.7 % to 29.4 %). A start-up
+  self-test checks core 1 first; a unit whose core 1 fails it, misreads, stops answering or faults
+  plays on one core with the same sound until power-off. STATUS's fourth page, CORES, shows core 1
+  running or why it is off, its jobs, where chip B renders and core 0's audio time; ALGORITHM
+  there moves chip B between the cores to compare, and SAVE, SAVE AGAIN restarts to try two cores
+  again after a fallback. `SIDOU_CPU2` is on by default; `-DSIDOU_CPU2=OFF` builds the one-core
+  image the emulator gate compares against, never a release.
 - **LAYERS' K4 FILT is gone from the panel**: which layers go through the filter is FILTER's K3
   VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
   layer, so a controller mapped to it keeps working.

@@ -229,8 +229,8 @@ static void cores_page(grid* g, const theme* th, views* v) {
     }
 }
 
-static int cores_input(views* v, const screen_event* e) {
-    if (!cores_shown(v) || e->kind != SCREEN_TURN || e->id != PANEL_ENC_ALGORITHM) {
+__attribute__((noinline)) static int cores_chip_b_flip(views* v) {
+    if (!cores_shown(v)) {
         return 0;
     }
     views_cores_report r;
@@ -269,7 +269,7 @@ static int status_changed(screen* s, void* state) {
 static int status_input(screen* s, void* state, const screen_event* e) {
     views* v = state;
 #if defined(SIDOU_CPU2)
-    if (cores_input(v, e)) {
+    if (e->id == PANEL_ENC_ALGORITHM && e->kind == SCREEN_TURN && cores_chip_b_flip(v)) {
         screen_redraw(s);
         return 1;
     }

@@ -25,7 +25,7 @@ pub const OTA_BODY_MAX: usize = 0x5000 - 0x200;
 pub const DEFAULT_PRODUCT: &str = "FM-1_900";
 
 pub const OPTIONS_MARK: &[u8] = b"SIDOU-OPTIONS 1 ";
-pub const DEFAULT_OPTIONS: [(&str, &str); 11] = [
+pub const DEFAULT_OPTIONS: [(&str, &str); 12] = [
     ("SIDOU_ALL_COMBINED_PROFILES", "ON"),
     ("SIDOU_ALL_COMBINED_PROFILES_8580", "ON"),
     ("SIDOU_FLASH_SPIKE", "OFF"),
@@ -36,9 +36,10 @@ pub const DEFAULT_OPTIONS: [(&str, &str); 11] = [
     ("SIDOU_TEST_DEATH", "-"),
     ("SIDOU_TEST_DEATH_MS", "1000"),
     ("SIDOU_BLE", "ON"),
+    ("SIDOU_CPU2", "ON"),
     ("CMAKE_BUILD_TYPE", "Release"),
 ];
-pub const ABSENT_WHEN_OFF: [(&str, &str); 2] = [("SIDOU_BLE_FAKE", "OFF"), ("SIDOU_CPU2", "OFF")];
+pub const ABSENT_WHEN_OFF: [(&str, &str); 1] = [("SIDOU_BLE_FAKE", "OFF")];
 
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";

@@ -44,9 +44,8 @@ if(SIDOU_FLASH_SPIKE)
     set_property(SOURCE flash_spike.c APPEND PROPERTY COMPILE_OPTIONS -fno-data-sections)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
 endif()
-option(SIDOU_CPU2 "Chip B rendered on the second core (felucca-bsp fm1_cpu1.h); never released yet" OFF)
+option(SIDOU_CPU2 "Chip B rendered on the second core (felucca-bsp fm1_cpu1.h)" ON)
 if(SIDOU_CPU2)
-    message(WARNING "SIDOU_CPU2=ON: chip B on the second core, for the device check, not a release")
     target_sources(${t} PRIVATE cpu2.c bsp/chip/fm1_cpu1.S)
     string(SHA1 cpu2_build "SIDOU ${PROJECT_VERSION} ${SIDOU_PRODUCT} SIDOU_CPU2")
     string(SUBSTRING "${cpu2_build}" 0 8 cpu2_build)
@@ -88,7 +87,7 @@ set(sidou_option_defaults
     "SIDOU_ALL_COMBINED_PROFILES=ON" "SIDOU_ALL_COMBINED_PROFILES_8580=ON"
     "SIDOU_FLASH_SPIKE=OFF" "SIDOU_USB_FIX=ON" "SIDOU_MIDI_OUT_NRPN=OFF"
     "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_SYSEX_GAP_MS=250" "SIDOU_TEST_DEATH="
-    "SIDOU_TEST_DEATH_MS=1000" "SIDOU_BLE=ON"
+    "SIDOU_TEST_DEATH_MS=1000" "SIDOU_BLE=ON" "SIDOU_CPU2=ON"
     "SIDOU_PRODUCT=FM-1_900" "CMAKE_BUILD_TYPE=Release")
 set(sidou_options "")
 set(sidou_options_off "")
@@ -119,10 +118,6 @@ endforeach()
 if(SIDOU_BLE_FAKE)
     string(APPEND sidou_options " SIDOU_BLE_FAKE=ON")
     string(APPEND sidou_options_off "\n    SIDOU_BLE_FAKE=ON (default OFF)")
-endif()
-if(SIDOU_CPU2)
-    string(APPEND sidou_options " SIDOU_CPU2=ON")
-    string(APPEND sidou_options_off "\n    SIDOU_CPU2=ON (default OFF)")
 endif()
 if(NOT sidou_options_off STREQUAL "")
     message(WARNING "\n"

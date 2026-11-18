@@ -58,8 +58,25 @@ community's dual-core code was GPL-3.0-only. The research of 2026-11-04
 - **A start-up self-test** closes the gap the spike found (a misread inside the render, which the
   mailbox's check word does not cover): core 1 and core 0 render the same fixed patch for 100
   blocks and any difference retires core 1.
-- emu-gate builds and tests the two-core image beside the default one (`build/fm1-cpu2`, CI's
-  `cpu2` shard and `tests/cpu2.rs`); the "core 0 only" assertion holds for every other image.
+- emu-gate built and tested the two-core image beside the default one (`tests/cpu2.rs` and a CI
+  shard of the default build's gates on it); the "core 0 only" assertion holds for every image
+  without the second core.
 - **Next:** the device check, with the owner's yes for each step; shipping it to players is a
   separate decision (1,888 bytes of flash against Bluetooth connect-out's flash find).
 
+
+## Follow-up (2026-11-18): on by default
+
+- **The device check passed** ([hardware-test §42](../hardware-test.md#42-20-the-second-core-on-the-device)):
+  core 1 has an FPU and renders chip B; with SIDOU LOOP and the keys, core 0's audio time fell from
+  AVG 31.4 %, WORST 41.7 % (chip B on core 0) to AVG 16.6 %, WORST 29.4 % (chip B on core 1); a
+  30-minute soak and SAVE, SAVE AGAIN's restart passed. Whether the watchdog resets core 1 was not
+  run.
+- **The owner's decision: `SIDOU_CPU2` is on in the default build from 2.0.** Every fallback stays
+  (the self-test, one core until power-off with the same sound, the bar, SAVE, SAVE AGAIN on
+  CORES), and STATUS's CORES page is every player's. The option record names `SIDOU_CPU2=ON` in a
+  release; an OFF package fails `sidou-pack --verify`.
+- **`-DSIDOU_CPU2=OFF` stays, as the emulator gate's one-core reference** (`build/fm1-cpu1`),
+  never shipped; every other gate runs on the two-core image, and the two-chip worst case is held
+  to the audio target on that image fallen back to one core too
+  ([design notes](../design-notes.md#second-core-sidou_cpu2)).
