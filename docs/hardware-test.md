@@ -3428,8 +3428,11 @@ Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `
   Pass: as [controls.md](reference/controls.md#punch); a held pad's number readable on its colour.
   *Result:* Passed 2026-11-18 (the owner): the pads work, a held pad reads fine. FX on the playing
   screen opens LAB's FX page, not PUNCH (as designed; the owner looked for PUNCH there first).
-- [ ] **The screens:** LAYERS' K4 card and the level bars; the first DICE roll after power-on says
-  `LAB KEEPS 16 USER SOUNDS` (with no USER sound kept); STATUS, CORES: chip B on core 1.
+- [x] **The screens:** LAYERS' K4 card and the level bars (K1 picks the layer); the first DICE roll
+  after power-on says `LAB KEEPS 16 USER SOUNDS` (with no USER sound kept); STATUS, CORES: chip B
+  on core 1. *Result:* Passed 2026-11-18 (the owner): each layer's K4 level its own, the others
+  kept; CORES `CORE 1 RUNNING`, JOBS climbing. The hint not seen: this unit keeps USER sounds
+  (LAB 01, LAB 02), so the roll rightly says nothing (emu-gate shows it).
 - [ ] **WHOLE A** (once it sounds): POLY chords, CHORD from one key, ARP at a rate and on the
   clock.
 
