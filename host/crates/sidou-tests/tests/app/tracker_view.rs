@@ -806,7 +806,7 @@ fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
     settle(&mut s.ui);
     assert_eq!(row(&s, 0, 1), [GT2_KEYOFF as u8, 2, 0, 0]);
     assert_eq!(
-        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        unsafe { CStr::from_ptr(s.ui.v.popup.want.name.as_ptr()) }.to_str(),
         Ok("INSTRUMENT")
     );
     s.ui.turn(PANEL_ENC_K2, 4);

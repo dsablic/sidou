@@ -18,12 +18,30 @@ Sizes: S is under a day of work, M a few days, L more.
   LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
   instructions a sample per chip, inside every audio budget unchanged
   ([design notes](design-notes.md#a-layers-level-20)).
-- **SIDOU as a DAW plugin**, starting from its design session (the owner, 2026-11-04): a SIDOU
-  edition of fm1-emu's FM-1 plugin (AU, VST3, CLAP) running the real firmware, with a large mirror
-  of the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard and
-  side panels drawn from the firmware's state. The spike ([its plan](plans/2026-11-05-daw-plugin-spike.md),
-  code in `spikes/daw-plugin/`) runs SIDOU's package at 17.6x real time; stable parameters a LAB
-  card, GPL-3.0-or-later. A first release M, the whole edition L.
+## 2.1: live
+
+What the grooveboxes on the FM-1 have for playing live and SIDOU still lacks (the landscape check,
+2026-11-18; the owner agreed):
+
+- **The next pattern queued, starting on the bar:** pick the pattern or order position to come
+  while the song plays; it starts at the bar's end, shown on the song views. Melodee, SLOOP and
+  JIANT have it. S-M.
+- **Copy and paste in STEP:** a lane's steps or a whole pattern, with their locks and ratchets.
+  JIANT has it. S.
+- **A small set of punch effects** (about six: mute, filter slam, stutter, freeze and the like),
+  held on a key while it plays. SLOOP, Melodee and JIANT have theirs. M.
+- **USB host for keyboards:** SETTINGS' USB, COMPUTER or KEYBOARD (every power-on starts as
+  COMPUTER, so installs always work): a class-compliant USB-MIDI keyboard, controller or synth,
+  alone or behind a hub, into the same MIDI queue as USB, TRS and Bluetooth. felucca-bsp's
+  `usb_host.c` (Melodee's, already vendored, off) does the hosting; SIDOU adds the row, the main
+  loop's task, its buffers in NOINIT. The FM-1 does not power the port (a powered hub or a
+  powered OTG adapter); while a host, no computer over USB. Melodee and JIANT have it. About 3-5 KB
+  of flash. S-M.
+- **Sounds from a `.sid` tune into the Library:** the converter's instruments as LAB sounds to
+  keep, edit and send. SID-1's page does the like. Site only. S.
+
+Watched, not planned: C64 speech (SAM, as EVILGENIUS has it; its licence is unclear) and a microSD
+card (felucca-bsp has one on the LCD's SPI; it would need a card fitted).
 
 ## Open from earlier releases
 
@@ -62,8 +80,19 @@ Sizes: S is under a day of work, M a few days, L more.
 - **Faster test CI.** An optional sharded emu-gate workflow on GitHub's x86 runners (the gate's
   JIT works there), to take the emulator stage off the local machine. S-M.
 
+- **48 kHz USB recording** (only if players ask; SIDOU is 44.1 kHz only): the resampler shares
+  TIMER5's tick with the USB poll, so on the FM-1 it loses about 10 % of the frames (felucca-bsp
+  #16's 30-minute test, 2026-11-18). Smaller resampler slices, the poll first, the poll timed by
+  the clock. S-M.
+
 ## Parked
 
+- **SIDOU as a DAW plugin** (parked by the owner, 2026-11-18, until players ask for it): a SIDOU
+  edition of fm1-emu's FM-1 plugin (AU, VST3, CLAP) running the real firmware, with a large mirror
+  of the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard and
+  side panels drawn from the firmware's state. The spike ([its plan](plans/2026-11-05-daw-plugin-spike.md),
+  code in `spikes/daw-plugin/`) runs SIDOU's package at 17.6x real time; stable parameters a LAB
+  card, GPL-3.0-or-later. A first release M, the whole edition L.
 - **The 8580 mixer's grit** (measured, not kept): the spike (its branch `mixer-8580` no longer exists; the measurements are here) puts
   a quadratic on the 8580's output; its second harmonic lands within 0.8 dB of reSIDfp's, but the
   distance to the CSG8580R5 recordings does not move (0.04 dB at most on every tune), for 80 bytes

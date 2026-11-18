@@ -5145,6 +5145,21 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
   cost (1,185 and a pass of 89k over LIVE). CHIP has its own bound (`CHIP_INPUT`, 245).
+- **A popup of another knob replaces the shown one a band a frame** (`popup_draw`'s `swapped`):
+  swapping a whole open popup (252 cells, most of them new when the name and its large text change)
+  sent 211 cells in one frame with nothing else moving (STEP's GROOVE page, K2 then K1; 229 with
+  the view's own cells), over the 200 a frame. A knob with another name or colour now replaces the
+  popup in three bands, the name (rows 0 to 3, at most 112 cells), the value (4 to 6) and the bar
+  with the foot (7 and 8). The bands not yet replaced are drawn again, when the view under the
+  popup composed, in what the popup showed: the source is asked again for the earlier ask
+  (`old_ask`, one byte; a copy of the old face cost 29 bytes of the RAM region, which has 8 over
+  its floor of 5,120), so the old value shown is the old knob's value now. The covered cells
+  claimed to the views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
+  read when the swap ends), so no frame holds two swaps. The cost: for two frames the value is
+  the old knob's under the new name. A turn of the same knob (same name and colour) changes only
+  its value and bar, in one frame as before. The sweep in `popup.rs` and STEP's test turn a second
+  knob at every frame of the first popup's life; SCENE is left out of the sweep, whose own plasma
+  draws between frames in the host's count.
 - `POPUP_GONE_MS`, 2 s: a popup closes a second after its last detent, plus the three frames it
   takes to close, with room. The gates of what a view itself costs when a control changes clear the
   popup's source (`without_popups` in emu-gate): its hundreds of cells would drown the view's.
@@ -7606,10 +7621,17 @@ gain.
   250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
   A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
   row of the first section's first voice carries the funktempo command `E` with that row; the
-  reported BPM is the one that plays, which a test measures from the played frames (the rows after
-  the first: the player starts the song's very first row at the default speed 6, and funktempo
-  takes over from the second, so the first pass's first row is short; the test reads each row's
-  length and pins bpm 60 to 12 then 13). A `swing` is the long speed first and goes on voice 1's
+  reported BPM is the one that plays, which a test measures from the played frames (every row, the
+  first included: GoatTracker's tempo command on row 0 takes effect after that row, so a song that
+  carried only the command played its first row at the default speed 6, short against the song's
+  tempo. The song's last instrument slot (63) now carries the start speed, as GoatTracker's own
+  player reads it (the AD byte of slot 63, with no wave pointer, is the default speed; the
+  packed player and SIDOU's give the same writes, `gt2_match`): the pair's second speed, since row
+  0 takes it and funktempo's first speed then follows on row 1, so the rows run second, first,
+  second ... and row 0 is one of the pair. An even pair has equal rows from row 0; a pair
+  like 7 and 8 starts on the 8. A song whose instruments fill slot 63 is refused, with the
+  tables-full words. The test reads each row's length from the first and pins bpm 60 to 12 then
+  13 after it). A `swing` is the long speed first and goes on voice 1's
   rows as SWING writes it ([Swing](#swing-121): eighths or sixteenths by the song's grid, the
   same `song_swing.c`), after the patterns are written so the grid is the song's. The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by
@@ -7767,6 +7789,43 @@ gain.
   not follow are allowed at most one call in `WRONG_PITCH_AT_MOST_ONE_IN` (2000).
 - With the GoatTracker examples checked out (`SONGS_WITH_GT2_EXAMPLES`, 17 songs) the comparison
   must cover more than 17,000 gate runs, 100,000 calls and 20,000 ties to mean something.
+
+### Sounds from a .sid tune (2.0)
+
+- The converter's instruments are LAB sounds too (the owner, 2026-11-18): after Convert the page
+  lists each instrument with its voice, the notes that use it, a short description and what LAB
+  could not hold, and Listen, Keep, Edit as text, Send to the FM-1 and Copy link work as for any
+  patch. It is site-only: `web/sidsound.js` writes `sidou-patch/1` JSON from the song's
+  instruments and tables, and the patch module (88 KiB) and the tune module (96 KiB) are not
+  touched. No SidStation or MBSID mapping could be reused: those are Rust, from a bank's own
+  fields; this reads GoatTracker's tables.
+- The patch is JSON, not the 112 bytes, so the patch converter does every unit and every range:
+  the envelope's nibbles, the pulse in percent, the note names. The one unit it cannot give is
+  the filter's cutoff in Hz (a measured 8580 curve, a table in `sid_filter`); `Patcher.cutoffHz`
+  writes a default sound with the register value into the cutoff's two bytes and reads the Hz
+  back, so the Hz reads back as that register value. The default's own value is left out of the
+  JSON, and is taken from its neighbours (a step is about 7 Hz, and reading snaps to the nearest).
+- Wave table: a row is a step of one frame; a row with no wave repeats the previous wave; the gate
+  bit is dropped (LAB gates itself). Rows 0 to 95 are semitones from the key, 96 to 127 below it,
+  `$80` holds, and a note above it is fixed: `C#0` to `B7`, as GoatTracker's. Steps that repeat at
+  the end of a table that stops are one (the last step holds), because LAB's table holds its last
+  step as GoatTracker's wave table does. LAB's table has 16 steps; a longer one is cut, its loop
+  kept when it points inside the cut, and the sound says so. An instrument whose table is one
+  wave and no pitch move has no table, only a wave.
+- Pulse: the set row is the pulse width; a sweep is the sweep's runs as one triangle PWM, its
+  depth half the longest run's travel (a run is `time` frames at `speed` units of 4096 a frame, as
+  `gplay.c` adds them), its rate 50 Hz over the runs' frames (twice the run when there is one),
+  its centre half a run past the set width; under half a percent it is not written.
+- Filter: mode, resonance and cutoff from the instrument's first set row and cutoff row. LAB
+  routes a one-oscillator sound's filter to all three voices or none, so a filter on the tune's
+  own voice becomes all three, and the sound says so; the tune's moves of the cutoff are not kept
+  (the converter keeps one setting for each instrument too). An instrument with no mode or no
+  voice has `"voices": []`.
+- Not mapped, because the converter never writes them: table delays and commands, vibrato, and the
+  speed table. Each kept sound stays in the browser (`localStorage`, 16 of them, a bank's most),
+  and All as a bank opens `sidou-bank/1` in the patch section, so one song carries them to the
+  FM-1. A USER sound slot is not written by the page: the FM-1 writes those itself (SAVE in LAB
+  after loading the song).
 
 ### .sid to song (1.21)
 

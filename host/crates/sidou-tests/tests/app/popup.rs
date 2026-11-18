@@ -95,6 +95,13 @@ fn frames_until_whole(ui: &mut Ui) {
     panic!("the popup never opened: {} rows", rows(ui));
 }
 
+fn frames_of_a_swap(ui: &mut Ui) {
+    const SWAP_FRAMES: usize = 3;
+    for _ in 0..SWAP_FRAMES {
+        ui.frame();
+    }
+}
+
 fn from_the_toasts_column(ui: &Ui, row: usize) -> String {
     ui.row(row)[2..].to_string()
 }
@@ -196,7 +203,7 @@ fn every_expert_knob_popup_has_its_name_and_physical_units() {
         );
         let t = unsafe { &*theme_get(u32::from(ui.live().theme)) };
         assert_eq!(
-            ui.v.popup.accent, t.knob[knob],
+            ui.v.popup.want.accent, t.knob[knob],
             "the physical knob's colour"
         );
         ui.popup_gone();
@@ -439,23 +446,23 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
         ("RESO".to_owned(), ui.live().resonance.to_string())
     );
     ui.turn(PANEL_ENC_K3, 2);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     assert_eq!(says(&ui), ("DECAY".to_owned(), "11".to_owned()));
     ui.rig.set_preset(1);
     ui.turn(PANEL_ENC_K3, -2);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     let pc = (u32::from(ui.live().pulse_width) * 99 + 2047) / 4095;
     assert_eq!(says(&ui), ("PULSE".to_owned(), format!("{pc}%")));
     ui.rig.set_preset(2);
     ui.turn(PANEL_ENC_K3, 3);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     assert_eq!(says(&ui), ("RATIO".to_owned(), "+3".to_owned()));
     ui.turn(PANEL_ENC_K4, 2);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     assert_eq!(says(&ui), ("RELEASE".to_owned(), "10".to_owned()));
     ui.rig.set_preset(0);
     ui.turn(PANEL_ENC_PRESETS, 1);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     let p = unsafe { &*live_preset_get(ui.live().preset) };
     let name = unsafe { CStr::from_ptr(p.name) }
         .to_string_lossy()
@@ -468,7 +475,7 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
     unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, 2) };
     ui.down(PANEL_BTN_EDIT);
     ui.turn(PANEL_ENC_K1, 3);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     let mut buf = [0 as std::ffi::c_char; CHIP_VIEW_LABEL as usize];
     unsafe { chip_view_label(0, 2, LIVE_SLOT_AMOUNT, buf.as_mut_ptr()) };
     let label = unsafe { CStr::from_ptr(buf.as_ptr()) }
@@ -483,7 +490,7 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
     ui.up(PANEL_BTN_EDIT);
     ui.popup_gone();
     ui.press(PANEL_BTN_SCL);
-    ui.frame();
+    frames_of_a_swap(&mut ui);
     assert!(!shown(&ui) && ui.toast().is_some());
 }
 
@@ -950,9 +957,9 @@ fn edit_and_a_knob_on_live_open_the_effects_popup() {
             k + 1
         );
         assert_eq!(ui.v.live.hl, 0, "the popup says it: no label lit under it");
-        assert_eq!(ui.v.popup.has_bar, 1);
+        assert_eq!(ui.v.popup.want.has_bar, 1);
         assert_eq!(
-            u32::from(ui.v.popup.bar),
+            u32::from(ui.v.popup.want.bar),
             u32::from(v) * SCREEN_POPUP_BAR_CELLS * 8 / 127,
             "K{}",
             k + 1
@@ -1357,4 +1364,63 @@ fn every_encoder_in_every_view_opens_the_popup_unless_the_view_shows_it_large() 
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+#[test]
+fn a_second_knob_while_the_first_popup_shows_costs_no_frame_more_than_the_budget_over_every_view() {
+    for view in ["LIVE", "STATUS", "MENU", "CHARSET", "CHIP"] {
+        for (first, second) in [
+            (PANEL_ENC_K1, PANEL_ENC_K2),
+            (PANEL_ENC_K2, PANEL_ENC_K1),
+            (PANEL_ENC_K3, PANEL_ENC_ALGORITHM),
+            (PANEL_ENC_ALGORITHM, PANEL_ENC_K3),
+        ] {
+            for gap in 0..8 {
+                let mut ui = Ui::new();
+                ui.settle();
+                open_view(&mut ui, view);
+                ui.frames_sent(80);
+                ui.rig.note_on(57);
+                ui.turn(first, 3);
+                let mut cells = Vec::new();
+                for frame in 0..40 {
+                    if frame == gap {
+                        ui.turn(second, 3);
+                    }
+                    cells.push(ui.frame_sent().cells);
+                }
+                let worst = cells.iter().copied().max().unwrap();
+                assert!(
+                    worst <= POPUP_FRAME_CELLS,
+                    "{view}: knob {second} after {first} and {gap} frames: {cells:?}"
+                );
+                ui.popup_gone();
+            }
+        }
+    }
+}
+
+#[test]
+fn another_knobs_popup_replaces_the_shown_one_a_band_a_frame_and_ends_whole() {
+    const BAND_CELLS: usize = 4 * SCREEN_POPUP_W as usize;
+    let mut ui = status_ui();
+    ui.turn(PANEL_ENC_K2, 3);
+    frames_until_whole(&mut ui);
+    drain(&mut ui.g);
+    let before = says(&ui);
+    ui.turn(PANEL_ENC_K3, 3);
+    let mut worst = 0;
+    for _ in 0..4 {
+        worst = worst.max(ui.frame_sent().cells);
+    }
+    let after = says(&ui);
+    assert_ne!(
+        after.0, before.0,
+        "the new knob's name replaced the old one"
+    );
+    assert!(
+        worst <= BAND_CELLS,
+        "a frame of the swap sent {worst} cells"
+    );
+    assert_eq!(rows(&ui), SCREEN_POPUP_ROWS as usize);
 }
