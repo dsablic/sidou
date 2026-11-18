@@ -297,8 +297,15 @@ fn whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp() {
     m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
     m.run_ms(50);
     let a = voices(&mut m, &fw, 0);
-    assert_eq!(gates(&mut m, &fw, 0), 3, "POLY: a chord on three voices {a:?}");
-    assert!(a[0].1 < a[1].1 && a[1].1 < a[2].1, "at their pitches: {a:?}");
+    assert_eq!(
+        gates(&mut m, &fw, 0),
+        3,
+        "POLY: a chord on three voices {a:?}"
+    );
+    assert!(
+        a[0].1 < a[1].1 && a[1].1 < a[2].1,
+        "at their pitches: {a:?}"
+    );
     assert_eq!(waveforms(&mut m, &fw, 0), [SAW; 3], "one sound, N's");
     assert_eq!(gates(&mut m, &fw, 1), 0, "not the instrument's");
     m.midi(&[0x80, 60, 0, 0x80, 64, 0, 0x80, 67, 0, 0xC0, 1]);
@@ -319,7 +326,11 @@ fn whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp() {
     m.midi(&[0x90, 60, 100]);
     m.run_ms(50);
     let chord = voices(&mut m, &fw, 0);
-    assert_eq!(gates(&mut m, &fw, 0), 3, "CHORD: one key, three voices {chord:?}");
+    assert_eq!(
+        gates(&mut m, &fw, 0),
+        3,
+        "CHORD: one key, three voices {chord:?}"
+    );
     let ratio = |v: usize| chord[v].1 as f64 / chord[0].1 as f64;
     assert!(
         (ratio(1) - 2f64.powf(4.0 / 12.0)).abs() < 0.01 && (ratio(2) - 1.5).abs() < 0.01,
@@ -337,11 +348,18 @@ fn whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp() {
         notes.len() >= 6 && notes[..3] == [notes[3], notes[4], notes[5]],
         "three notes in turn every 3 frames: {notes:?}"
     );
-    assert!(notes[0] < notes[1] && notes[1] < notes[2], "as pressed: {notes:?}");
+    assert!(
+        notes[0] < notes[1] && notes[1] < notes[2],
+        "as pressed: {notes:?}"
+    );
 
     page_row(&mut m, OPTION_ROW, ARP_RATE_ROW, -3);
     m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
-    assert_eq!(voice_1_notes(&mut m, &fw, 200).len(), 1, "CLOCK: no clock, no step");
+    assert_eq!(
+        voice_1_notes(&mut m, &fw, 200).len(),
+        1,
+        "CLOCK: no clock, no step"
+    );
     let mut stepped = Vec::new();
     for k in 0..12 {
         let was = voices(&mut m, &fw, 0)[0].1;
