@@ -3393,6 +3393,44 @@ Set up:
 - [ ] **Back to the default package** (`fm1_install.py sidou.fwsc`). Pass: it finishes, STATUS has
   its three pages again, the songs are kept.
 
+## 43. 2.0: the features on the device
+
+What it decides: whether 2.0's features sound on the unit as fm1-emu says they do: a layer's
+level, aftertouch's vibrato, MULTI's parts, PUNCH's pads, and the screens that go with them. The
+checks that sound can answer are measured: a script sends the notes and controllers over USB MIDI
+and records the FM-1's USB audio (`ffmpeg -f avfoundation -i ":SIDOU FM-1"`, 44.1 kHz), and
+the recording is measured (level by RMS, pitch by zero crossings, parts by their spectra). Every
+step waits for the owner's yes: the install, opening the MIDI ports.
+
+Set up: the 2.0 test package from main c4a5da6a (the default build, two cores; `build/t50`, app
+567,268 B, SHA-256 7a9e409e…), `tools/preflash` PASS. The master at about half.
+
+- [x] **Install** over §42's two-core package with Felucca 1.6.1's installer. Pass: "done: the
+  FM-1 runs FM-1_964". *Result:* Passed 2026-11-18.
+- [x] **A layer's level** (NRPN 7/20 on a held A3, ONE OSC: the whole chord's): 100, 50, 25, 0,
+  100. Pass: −6 dB at 50 %, −12 dB at 25 %, silence at 0, the level back at 100. *Emulator:*
+  emu-gate's LAYERS level tests. *Result:* Passed 2026-11-18: −59.0, −65.0, −71.0 dB, digital
+  silence, −59.0 dB.
+- [x] **Aftertouch adds vibrato by default** (SAW LEAD, program 0, a held A3; channel pressure 127,
+  then 0; the mod wheel at 127 to compare). Pass: the pitch steady without pressure, a vibrato
+  with it, as deep as the wheel's. *Result:* Passed 2026-11-18: ±5 cents held, ±90 cents (p5..p95)
+  under full pressure, ±95 with the wheel. A sound with no vibrato speed has none from either (the
+  first try's sound): as designed, depth needs a speed.
+- [x] **MULTI** (MIDI page: MODE MULTI, CHANNEL 1; CH1..CH3 three different sounds): A3, C♯4, E4
+  on channels 1..3 and A2 on 4, each alone for 1.2 s, then all four held 4 s. Pass: each channel
+  its own note in its own sound, channel 4 chip B's instrument, all four at once with no drop-out.
+  *Result:* Passed 2026-11-18: each note the strongest in its own window (38..41 dB over the
+  floor); three envelopes (steady; swelling 2 dB over a second; a pluck falling 30 dB in 0.3 s),
+  which OMNI's one instrument cannot give; all four together 6 dB louder, every pitch present, no
+  silent runs in the recording.
+- [ ] **PUNCH** (SIDOU LOOP playing, FX): each pad 1..6 alone and two or three at once, let go
+  exactly; STUTTER back on the beat; `PLAY TO PUNCH` stopped; HOME and SEQ. Pass: as
+  [controls.md](reference/controls.md#punch); a held pad's number readable on its colour.
+- [ ] **The screens:** LAYERS' K4 card and the level bars; the first DICE roll after power-on says
+  `LAB KEEPS 16 USER SOUNDS` (with no USER sound kept); STATUS, CORES: chip B on core 1.
+- [ ] **WHOLE A** (once it sounds): POLY chords, CHORD from one key, ARP at a rate and on the
+  clock.
+
 ## Result
 
 | Section | Pass / fail | Notes |
