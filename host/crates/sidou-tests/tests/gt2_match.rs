@@ -1441,3 +1441,28 @@ fn lab_sounds_sent_to_the_song_match() {
     o.optimize_realtime = 0;
     check_every_subtune_exactly("lab sounds, no optimisations", &lab_sounds_song(), &o);
 }
+
+#[test]
+fn a_text_song_plays_as_goattrackers_player_plays_it_from_its_first_row() {
+    const TEXT_SONG: &str = r#"{"format": "sidou-song/1", "bpm": BPM, "swing": "SWING",
+      "sections": {"A": {"rows": 16, "voices": [
+        {"instrument": "bass", "notes": "C2! . C2~ D#2 . . G2 . C2 . . . A#1 . C2 ."},
+        {"instrument": "kit", "notes": "k . h . s . h . k k h . s . h dh"}, null]}},
+      "order": ["A"]}"#;
+    for (bpm, swing) in [
+        (100, "straight"),
+        (150, "straight"),
+        (60, "straight"),
+        (125, "shuffle"),
+    ] {
+        let text = TEXT_SONG
+            .replace("BPM", &bpm.to_string())
+            .replace("SWING", swing);
+        let sng = sidou_patch::json::song_song(&text, SID_MODEL_6581).unwrap();
+        check_every_subtune_exactly(
+            &format!("text song {bpm} {swing}"),
+            &sng,
+            &default_options(),
+        );
+    }
+}

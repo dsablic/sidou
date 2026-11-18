@@ -5103,6 +5103,21 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
   cost (1,185 and a pass of 89k over LIVE). CHIP has its own bound (`CHIP_INPUT`, 245).
+- **A popup of another knob replaces the shown one a band a frame** (`popup_draw`'s `swapped`):
+  swapping a whole open popup (252 cells, most of them new when the name and its large text change)
+  sent 211 cells in one frame with nothing else moving (STEP's GROOVE page, K2 then K1; 229 with
+  the view's own cells), over the 200 a frame. A knob with another name or colour now replaces the
+  popup in three bands, the name (rows 0 to 3, at most 112 cells), the value (4 to 6) and the bar
+  with the foot (7 and 8). The bands not yet replaced are drawn again, when the view under the
+  popup composed, in what the popup showed: the source is asked again for the earlier ask
+  (`old_ask`, one byte; a copy of the old face cost 29 bytes of the RAM region, which has 8 over
+  its floor of 5,120), so the old value shown is the old knob's value now. The covered cells
+  claimed to the views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
+  read when the swap ends), so no frame holds two swaps. The cost: for two frames the value is
+  the old knob's under the new name. A turn of the same knob (same name and colour) changes only
+  its value and bar, in one frame as before. The sweep in `popup.rs` and STEP's test turn a second
+  knob at every frame of the first popup's life; SCENE is left out of the sweep, whose own plasma
+  draws between frames in the host's count.
 - `POPUP_GONE_MS`, 2 s: a popup closes a second after its last detent, plus the three frames it
   takes to close, with room. The gates of what a view itself costs when a control changes clear the
   popup's source (`without_popups` in emu-gate): its hundreds of cells would drown the view's.
@@ -7564,10 +7579,17 @@ gain.
   250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
   A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
   row of the first section's first voice carries the funktempo command `E` with that row; the
-  reported BPM is the one that plays, which a test measures from the played frames (the rows after
-  the first: the player starts the song's very first row at the default speed 6, and funktempo
-  takes over from the second, so the first pass's first row is short; the test reads each row's
-  length and pins bpm 60 to 12 then 13). A `swing` is the long speed first and goes on voice 1's
+  reported BPM is the one that plays, which a test measures from the played frames (every row, the
+  first included: GoatTracker's tempo command on row 0 takes effect after that row, so a song that
+  carried only the command played its first row at the default speed 6, short against the song's
+  tempo. The song's last instrument slot (63) now carries the start speed, as GoatTracker's own
+  player reads it (the AD byte of slot 63, with no wave pointer, is the default speed; the
+  packed player and SIDOU's give the same writes, `gt2_match`): the pair's second speed, since row
+  0 takes it and funktempo's first speed then follows on row 1, so the rows run second, first,
+  second ... and row 0 is one of the pair. An even pair has equal rows from row 0; a pair
+  like 7 and 8 starts on the 8. A song whose instruments fill slot 63 is refused, with the
+  tables-full words. The test reads each row's length from the first and pins bpm 60 to 12 then
+  13 after it). A `swing` is the long speed first and goes on voice 1's
   rows as SWING writes it ([Swing](#swing-121): eighths or sixteenths by the song's grid, the
   same `song_swing.c`), after the patterns are written so the grid is the song's. The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by

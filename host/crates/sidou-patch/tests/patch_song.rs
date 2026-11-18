@@ -324,7 +324,7 @@ fn bpm10(speed_sum: u32) -> u32 {
     unsafe { song_view_bpm10(speed_sum, ONE_CALL_A_FRAME, PAL, ROWS_A_BEAT) }
 }
 
-fn row_lengths_after_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
+fn row_starts(sng: &[u8], rows: u32) -> Vec<u32> {
     let mut song = Song::device();
     song.read(sng, 0).unwrap();
     let mut options = gt2_options::default();
@@ -346,11 +346,46 @@ fn row_lengths_after_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
             last = player.chn[0].pattptr;
             starts.push(frame);
             if starts.len() > rows as usize {
-                return starts.windows(2).map(|w| w[1] - w[0]).collect();
+                return starts;
             }
         }
     }
     panic!("the song did not play {rows} rows");
+}
+
+fn row_lengths_after_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
+    row_starts(sng, rows)
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .collect()
+}
+
+fn row_lengths_from_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
+    let starts = row_starts(sng, rows);
+    let mut lengths = vec![starts[0] + 1];
+    lengths.extend(starts.windows(2).map(|w| w[1] - w[0]));
+    lengths
+}
+
+#[test]
+fn the_first_row_plays_at_the_songs_tempo() {
+    for bpm in [60, 100, 125, 150, 200] {
+        let made = json::check_song(
+            &with(GROOVE, r#""bpm": 125"#, &format!(r#""bpm": {bpm}"#)),
+            SID_MODEL_6581,
+        )
+        .unwrap();
+        let lengths = row_lengths_from_the_first(&made.sng, GROOVE_ROWS);
+        assert_eq!(lengths[..4], lengths[2..6], "{bpm}: {lengths:?}");
+        assert_eq!(
+            2 * lengths[..2].iter().sum::<u32>(),
+            lengths[..4].iter().sum::<u32>(),
+            "{bpm}"
+        );
+        if made.bpm_played10 == bpm10(2 * lengths[0] + 2 * lengths[0]) {
+            assert_eq!(lengths[0], lengths[1], "{bpm}");
+        }
+    }
 }
 
 #[test]

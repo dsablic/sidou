@@ -64,6 +64,14 @@ typedef int (*screen_popup_fn)(void* ctx, uint32_t ask, char* name, char* value,
                                uint32_t* max, uint32_t* accent);
 
 typedef struct {
+    uint8_t bar;
+    uint8_t has_bar;
+    uint8_t accent;
+    char name[SCREEN_POPUP_TEXT];
+    char value[SCREEN_POPUP_TEXT];
+} screen_popup_face;
+
+typedef struct {
     screen_popup_fn source;
     void* source_ctx;
     screen_watch_fn watch;
@@ -73,12 +81,12 @@ typedef struct {
     uint8_t next;
     uint8_t alive;
     uint8_t fresh;
-    uint8_t bar;
-    uint8_t has_bar;
-    uint8_t accent;
+    uint8_t swapped;
+    uint8_t swapped_before;
     const uint8_t* theme_id;
-    char name[SCREEN_POPUP_TEXT];
-    char value[SCREEN_POPUP_TEXT];
+    uint8_t on_screen_ask;
+    uint8_t old_ask;
+    screen_popup_face want;
 } screen_popup_state;
 
 typedef struct {
