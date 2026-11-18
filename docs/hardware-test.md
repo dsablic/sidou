@@ -3467,29 +3467,29 @@ and `LICENSES/GPL-3.0-only.txt`, and the videos from `build/videos` as `video-ID
 `video-` prefix is what `pages.yml` copies into the site (1.20.0's and 1.21.0's assets went up
 without it, so the videos page still plays 1.10.0's).
 
-- [ ] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-2.0.0.fwsc`).
+- [x] **Install over the test build** with Felucca's installer (`fm1_install.py sidou-2.0.0.fwsc`).
   Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU boots; SONG, LOAD lists the songs it
   had; SETTINGS still says KEYBOARD and the microKEY Air's name. *Emulator:* `package.rs`.
-  *Result:*
-- [ ] **The version:** ABOUT and STATUS. Pass: both say 2.0.0. *Result:*
-- [ ] **Chip B on core 1:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
+  *Result:* Passed 2026-11-18: "done: the FM-1 runs FM-1_964"; the songs and the keyboard kept (the owner).
+- [x] **The version:** ABOUT and STATUS. Pass: both say 2.0.0. *Result:* Passed 2026-11-18: 2.0.0 (the owner).
+- [x] **Chip B on core 1:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
   RUNNING`, `WHY --`, `JOBS` 100 or more. SONG, LOAD SIDOU LOOP, PLAY, a chord held on the keys
   (chip B), back to CORES: `CHIP B CORE 1`, `JOBS` rising, `AVG` near §42's 16.6 %; no click or
   drop-out. *Emulator:*
   `cpu2.rs::the_cores_page_shows_core_1_running_and_core_0s_audio_time_with_chip_b_on_either_core`,
-  `cpu2.rs::chip_b_on_core_1_sounds_sample_for_sample_as_one_core`. *Result:*
-- [ ] **PUNCH over a playing song:** SIDOU LOOP playing, SEQ to STEP, FX. Pass: the PUNCH page;
+  `cpu2.rs::chip_b_on_core_1_sounds_sample_for_sample_as_one_core`. *Result:* Passed 2026-11-18 on the test package of the same code (main 1aafbba6; the release differs by its version alone), §43 and the owner: `CORE 1 RUNNING`, JOBS rising.
+- [x] **PUNCH over a playing song:** SIDOU LOOP playing, SEQ to STEP, FX. Pass: the PUNCH page;
   each of the first six keys held alone is heard (MUTE, FILTER SLAM, PITCH DIVE, STUTTER, ECHO
   THROW with its echoes ringing on, CHIP SWAP) and let go the song is as before; STUTTER let go
   lands back on the beat; two pads at once both heard; stopped, `PLAY TO PUNCH`; HOME back to
   STEP with the song playing. *Emulator:*
   `punch.rs::each_pad_reaches_chip_a_or_the_fx_slot_while_held_and_lets_go_at_release`,
-  `punch.rs::stutter_loops_a_beat_and_the_song_comes_back_where_it_would_have_been`. *Result:*
-- [ ] **A layer's level:** LIVE, ENV, SELECT to LAYERS, ALGORITHM to TWO OSC; a note held, K1 to
+  `punch.rs::stutter_loops_a_beat_and_the_song_comes_back_where_it_would_have_been`. *Result:* Passed 2026-11-18 on the test package of the same code (main 1aafbba6; the release differs by its version alone), §43 (the owner).
+- [x] **A layer's level:** LIVE, ENV, SELECT to LAYERS, ALGORITHM to TWO OSC; a note held, K1 to
   L2, K4 down to 0 and back to 100. Pass: K4's card large with `LEVEL`, the page's bar and number
   for L2 following it, the second oscillator fading out and back in while L1 stays. *Emulator:*
-  `lab.rs::a_layers_level_on_k4_reaches_its_voice_on_the_device`. *Result:*
-- [ ] **MULTI and WHOLE A from a DAW** (the owner's yes before the MIDI ports are opened): the
+  `lab.rs::a_layers_level_on_k4_reaches_its_voice_on_the_device`. *Result:* Passed 2026-11-18 on the test package of the same code (main 1aafbba6; the release differs by its version alone), §43: measured −6.0 dB at 50 %, silence at 0; the card and bars (the owner).
+- [x] **MULTI and WHOLE A from a DAW** (the owner's yes before the MIDI ports are opened): the
   MIDI page, MODE MULTI, CHANNEL 1; CH1..CH3 three different sounds. Notes on channels 1, 2, 3 and
   4, then all four held. Pass: each channel its own note in its own sound, channel 4 chip B's
   instrument, all four together with no drop-out. Then MODE WHOLE A: a three-note chord on
@@ -3497,18 +3497,17 @@ without it, so the videos page still plays 1.10.0's).
   stepped on one voice. MODE back to OMNI. *Emulator:*
   `midi_modes.rs::multitimbral_plays_three_parts_on_chip_a_and_the_instrument_on_chip_b`,
   `midi_modes.rs::whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp`.
-  *Result:*
+  *Result:* Passed 2026-11-18 on the test package of the same code (main 1aafbba6; the release differs by its version alone), §43, measured over USB: each part its own note and sound, POLY, CHORD, ARP at 3 FR and on the clock.
 - [ ] **A `.sid` tune's sounds:** the Library page, *A .sid tune: convert it to a song*, drop
   `neon-highway.sid`, Convert; under the tune's sounds, Listen to one, then **Send to the FM-1…**
   (the owner's yes before sending). Pass: the page lists the instruments as LAB sounds with their
   voice and notes; the FM-1 lists the one-instrument song, its keys play the sound, and ENV on
-  INSTR pulls it into LAB. *Emulator:* `web/sidsound.test.mjs`. *Result:*
-- [ ] **The keyboard still reconnects:** with the microKEY Air on, a few seconds after a power
+  INSTR pulls it into LAB. *Emulator:* `web/sidsound.test.mjs`. *Result:* Not run on the device (2026-11-18): the site feature is proven by `web/sidsound.test.mjs`; the send is 1.21's, shown in §41.
+- [x] **The keyboard still reconnects:** with the microKEY Air on, a few seconds after a power
   cycle. Pass: the toast `KEYBOARD microKEY Air`, no pairing asked again (no `PASSKEY`), its notes
   play. *Emulator:*
   `ble_keyboard.rs::the_kept_keyboard_is_looked_for_and_connected_after_a_power_cycle`.
-  *Result:*
-
+  *Result:* Passed 2026-11-18 (the owner).
 ## Result
 
 | Section | Pass / fail | Notes |
