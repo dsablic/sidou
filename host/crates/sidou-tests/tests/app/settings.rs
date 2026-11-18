@@ -71,7 +71,7 @@ fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
     rec[0] = 4;
     assert_eq!(rec.len(), 124);
     assert_eq!(rec[0], 4);
-    assert_eq!(&rec[1..108], &with_wheel_on_vibrato(v3)[1..]);
+    assert_eq!(&rec[1..108], &with_defaults_on_vibrato(v3)[1..]);
     assert_eq!(&rec[108..124], b"NIGHT DRIVE\0\0\0\0\0");
     let path = fixture_path().with_file_name("settings-v4.bin");
     if std::env::var_os("SIDOU_SETTINGS_V4_FIXTURE_UPDATE").is_some() {
@@ -79,7 +79,7 @@ fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
         std::fs::write(&path, &rec).unwrap();
     }
     assert_eq!(
-        with_wheel_on_vibrato(&std::fs::read(path).expect("schema 4 fixture")),
+        with_defaults_on_vibrato(&std::fs::read(path).expect("schema 4 fixture")),
         rec
     );
     let mut b = Set::blank();
@@ -129,7 +129,7 @@ fn every_schema_migrates_from_nondefaults_without_changing_its_prefix() {
         assert_eq!(unsafe { CStr::from_ptr(s.set.last_song.as_ptr()) }, song);
         assert_eq!(
             &s.gather()[1..len],
-            &with_wheel_on_vibrato(&rec)[1..],
+            &with_defaults_on_vibrato(&rec)[1..],
             "unchanged schema prefix"
         );
         s.rig.tick();
@@ -223,14 +223,32 @@ unsafe extern "C" fn force(on: i32) {
     });
 }
 
-const WHEEL_AT: usize = 6 + LIVE_PARAM_MOD_TARGET as usize + 2;
+const fn param_at(param: u32) -> usize {
+    6 + param as usize + 2
+}
 
-fn with_wheel_on_vibrato(old: &[u8]) -> Vec<u8> {
+const VIBRATO_DEFAULTS: [(u32, u32, u32, u32); 2] = [
+    (
+        LIVE_PARAM_MOD_TARGET,
+        SETTINGS_VERSION_WHEEL_VIBRATO,
+        LIVE_MOD_PULSE_WIDTH,
+        LIVE_MOD_VIBRATO,
+    ),
+    (
+        LIVE_PARAM_PRESSURE_TARGET,
+        SETTINGS_VERSION_PRESSURE_VIBRATO,
+        LIVE_PRESSURE_OFF,
+        LIVE_PRESSURE_VIBRATO,
+    ),
+];
+
+fn with_defaults_on_vibrato(old: &[u8]) -> Vec<u8> {
     let mut rec = old.to_vec();
-    if u32::from(rec[0]) < SETTINGS_VERSION_WHEEL_VIBRATO
-        && rec[WHEEL_AT] == LIVE_MOD_PULSE_WIDTH as u8
-    {
-        rec[WHEEL_AT] = LIVE_MOD_VIBRATO as u8;
+    for (param, version, was, now) in VIBRATO_DEFAULTS {
+        let at = param_at(param);
+        if u32::from(rec[0]) < version && rec[at] == was as u8 {
+            rec[at] = now as u8;
+        }
     }
     rec
 }
@@ -405,7 +423,7 @@ fn schema_four_last_song_migrates_without_becoming_expert_values() {
     );
     let migrated = s.gather();
     assert_eq!(migrated[0], SETTINGS_VERSION as u8);
-    assert_eq!(&migrated[1..124], &with_wheel_on_vibrato(&rec)[1..]);
+    assert_eq!(&migrated[1..124], &with_defaults_on_vibrato(&rec)[1..]);
     assert!(s
         .rig
         .live
@@ -627,7 +645,7 @@ fn the_v5_fixture_preserves_the_v4_prefix_and_raw_expert_values() {
         1
     );
     assert_eq!(&s.rig.live.expert[..3], &[SID_EXPERT_DEFAULT as u8, 0, 127]);
-    let mut v9 = with_wheel_on_vibrato(&rec);
+    let mut v9 = with_defaults_on_vibrato(&rec);
     v9[0] = SETTINGS_VERSION as u8;
     v9.push(0);
     v9.push(SETTINGS_SID_AUTO as u8);
@@ -654,7 +672,7 @@ fn schema_6_adds_spread_and_a_schema_5_or_unknown_spread_loads_as_mono() {
         1
     );
     assert_eq!(s.rig.live.spread, 70);
-    let mut v9 = with_wheel_on_vibrato(&v6);
+    let mut v9 = with_defaults_on_vibrato(&v6);
     v9[0] = SETTINGS_VERSION as u8;
     v9.push(SETTINGS_SID_AUTO as u8);
     v9.extend(schema_9_tail_with_nothing_learned());
@@ -697,7 +715,7 @@ fn schema_7_adds_sid_model_and_a_schema_6_or_unknown_model_loads_as_auto() {
         1
     );
     assert_eq!(u32::from(s.set.sid_model), SETTINGS_SID_KEYS);
-    let mut v9 = with_wheel_on_vibrato(&v7);
+    let mut v9 = with_defaults_on_vibrato(&v7);
     v9[0] = SETTINGS_VERSION as u8;
     v9.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), v9, "saved as schema 9");
@@ -741,7 +759,7 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
             "a v7 record clears {p}'s binding"
         );
     }
-    let mut want = with_wheel_on_vibrato(&v7);
+    let mut want = with_defaults_on_vibrato(&v7);
     want[0] = SETTINGS_VERSION as u8;
     want.extend(schema_9_tail_with_nothing_learned());
     assert_eq!(s.gather(), want);
@@ -752,7 +770,7 @@ fn a_v7_or_v8_record_loads_into_schema_9() {
     for (p, cc) in tail.into_iter().zip([44u8, 45, 46]) {
         assert_eq!(unsafe { midi_learn_cc_of(&*s.ml, p) }, cc);
     }
-    let mut v9 = with_wheel_on_vibrato(&v8);
+    let mut v9 = with_defaults_on_vibrato(&v8);
     v9[0] = SETTINGS_VERSION as u8;
     v9[v7.len()] = SETTINGS_PARAMS_V9 as u8;
     v9.resize(SETTINGS_BYTES as usize, MIDI_MAP_NO_CC as u8);
@@ -844,28 +862,32 @@ fn every_persisted_value_round_trips_and_the_volume_does_not() {
 }
 
 #[test]
-fn the_wheel_target_survives_a_power_cycle_and_an_older_records_pulse_becomes_vibrato() {
-    let mut blank = Set::blank();
-    assert_eq!(blank.param(LIVE_PARAM_MOD_TARGET), LIVE_MOD_VIBRATO);
-    for target in [LIVE_MOD_PULSE_WIDTH, LIVE_MOD_CUTOFF, LIVE_MOD_VIBRATO] {
-        let mut a = Set::blank();
-        a.set_param(LIVE_PARAM_MOD_TARGET, target);
-        let rec = a.gather();
-        assert_eq!(rec[0], SETTINGS_VERSION as u8);
-        let mut b = Set::blank();
-        b.set_param(LIVE_PARAM_MOD_TARGET, (target + 1) % 3);
-        unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) };
-        assert_eq!(b.param(LIVE_PARAM_MOD_TARGET), target);
-    }
-    for (stored, want) in [
-        (LIVE_MOD_PULSE_WIDTH, LIVE_MOD_VIBRATO),
-        (LIVE_MOD_CUTOFF, LIVE_MOD_CUTOFF),
-    ] {
-        let mut old = blank.gather();
-        old[0] = SETTINGS_VERSION as u8 - 1;
-        old[WHEEL_AT] = stored as u8;
-        unsafe { settings_apply(&mut *blank.set, old.as_ptr(), old.len() as u32) };
-        assert_eq!(blank.param(LIVE_PARAM_MOD_TARGET), want, "stored {stored}");
+fn the_wheel_and_aftertouch_targets_survive_a_power_cycle_and_an_older_records_default_becomes_vibrato(
+) {
+    let cases = [
+        (LIVE_PARAM_MOD_TARGET, LIVE_MOD_CUTOFF, 3u32),
+        (LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_CUTOFF, 4),
+    ];
+    for ((param, version, was, now), (_, deliberate, choices)) in VIBRATO_DEFAULTS.into_iter().zip(cases) {
+        let mut blank = Set::blank();
+        assert_eq!(blank.param(param), now, "param {param}'s default");
+        for target in 0..choices {
+            let mut a = Set::blank();
+            a.set_param(param, target);
+            let rec = a.gather();
+            assert_eq!(rec[0], SETTINGS_VERSION as u8);
+            let mut b = Set::blank();
+            b.set_param(param, (target + 1) % choices);
+            unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) };
+            assert_eq!(b.param(param), target, "param {param}");
+        }
+        for (stored, want) in [(was, now), (deliberate, deliberate)] {
+            let mut old = blank.gather();
+            old[0] = version as u8 - 1;
+            old[param_at(param)] = stored as u8;
+            unsafe { settings_apply(&mut *blank.set, old.as_ptr(), old.len() as u32) };
+            assert_eq!(blank.param(param), want, "param {param} stored {stored}");
+        }
     }
 }
 
@@ -1338,7 +1360,7 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
         1
     );
     assert_eq!(*s.rows, 1);
-    let mut again = with_wheel_on_vibrato(&fixture);
+    let mut again = with_defaults_on_vibrato(&fixture);
     again[0] = SETTINGS_VERSION as u8;
     again.push(THEME_HIGH_CONTRAST as u8);
     again.extend_from_slice(&[0; 16]);
@@ -1390,7 +1412,7 @@ fn a_schema_3_record_loads_the_c64_theme_and_keeps_the_v2_prefix() {
     let gathered = s.gather();
     assert_eq!(
         &gathered[1..108],
-        &with_wheel_on_vibrato(&fixture)[1..],
+        &with_defaults_on_vibrato(&fixture)[1..],
         "schema 3's prefix survives"
     );
     assert!(gathered[108..124].iter().all(|&b| b == 0));

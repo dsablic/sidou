@@ -1223,8 +1223,8 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   0..4095) or to the cutoff (it opens the filter
   above the cutoff that is set, 8 steps per value). A new target starts the wheel at 0.
 - **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
-  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
-  (the default), the vibrato depth (it adds), the pulse width (it raises the voice's, 16
+  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off,
+  the vibrato depth (it adds; the default, General MIDI's meaning), the pulse width (it raises the voice's, 16
   steps per value) or the cutoff (it opens the filter 8 steps per value of the most
   pressed voice: the SID has one filter).
 - **Velocity:** the SID has no amplifier per voice, so velocity sets one of three things,

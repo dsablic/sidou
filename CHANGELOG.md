@@ -18,6 +18,10 @@ All notable changes are documented here. The format follows
   `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
 
 ### Changed
+- **Aftertouch adds vibrato by default**, as the mod wheel does since 1.20: pressing a key
+  harder shakes the note on every sound. NRPN 6/3 still picks OFF, PULSE or CUTOFF; it is kept
+  with the settings (record version 11: an older record's OFF reads as VIBRATO, any other choice
+  is kept). The factory sounds and a patch without `aftertouch` use VIBRATO.
 - **LAYERS' K4 FILT is gone from the panel**: which layers go through the filter is FILTER's K3
   VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
   layer, so a controller mapped to it keeps working.

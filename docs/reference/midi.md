@@ -145,8 +145,8 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   0..4095) or to the cutoff (it opens the filter
   above the cutoff that is set, 8 steps per value). A new target starts the wheel at 0.
 - **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
-  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
-  (the default), the vibrato depth (it adds), the pulse width (it raises the voice's, 16
+  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off,
+  the vibrato depth (it adds; the default, General MIDI's meaning), the pulse width (it raises the voice's, 16
   steps per value) or the cutoff (it opens the filter 8 steps per value of the most
   pressed voice: the SID has one filter).
 - **Velocity:** the SID has no amplifier per voice, so velocity sets one of three things,
@@ -451,7 +451,7 @@ In NRPN order.
 | Expression | Bend range | - | 6/0 (768) | 0..24 | steps | 2 | semitones each way; also RPN 0 (CC 101/100 = 0/0, then CC 6 the semitones) |
 | Expression | Velocity target | - | 6/1 (769) | 0..3 | steps | 0 | 0 off (full level), 1 sustain level, 2 cutoff (lower), 3 pulse width (narrower) |
 | Expression | Mod wheel target | - | 6/2 (770) | 0..2 | steps | 1 | 0 pulse width (CC 1 sets it), 1 vibrato depth (adds; the default), 2 cutoff (opens) |
-| Expression | Aftertouch target | - | 6/3 (771) | 0..3 | steps | 0 | 0 off, 1 vibrato depth (adds), 2 pulse width (raises), 3 cutoff (opens) |
+| Expression | Aftertouch target | - | 6/3 (771) | 0..3 | steps | 1 | 0 off, 1 vibrato depth (adds; the default), 2 pulse width (raises), 3 cutoff (opens) |
 | Expression | Vibrato rate | 76 | 6/4 (772) | 0..127 | walk | 60 | 0..12.7 Hz in 0.1 Hz steps |
 | Expression | Vibrato depth | 77 | 6/5 (773) | 0..127 | walk | 0 | 0 off .. 127 +-99 cents, a triangle |
 | Expression | Vibrato delay | 78 | 6/6 (774) | 0..127 | walk | 0 | 0..1.27 s after each note-on, in 10 ms |

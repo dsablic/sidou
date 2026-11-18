@@ -18,7 +18,7 @@ __attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t fi
 
 #define EXPRESSION_DEFAULTS                                                                        \
     .bend_range = LIVE_BEND_RANGE_DEFAULT, .velocity_target = LIVE_VELOCITY_OFF,                   \
-    .mod_target = LIVE_MOD_VIBRATO, .pressure_target = LIVE_PRESSURE_OFF,                      \
+    .mod_target = LIVE_MOD_VIBRATO, .pressure_target = LIVE_PRESSURE_VIBRATO,                     \
     .vibrato_rate = LIVE_VIBRATO_RATE_DEFAULT, .vibrato_depth = 0, .vibrato_delay = 0
 
 static const live_preset presets[LIVE_PRESET_SLOTS] = {

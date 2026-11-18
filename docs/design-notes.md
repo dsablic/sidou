@@ -5681,6 +5681,17 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   set the raw width. The pulse width's CC 1 on MIDI out still scales 0..4095, so a loop-back
   lands inside the audible range, not on the same number.
 
+### Aftertouch's default
+
+- Aftertouch (NRPN 6/3) was off by default, so a keyboard's pressure did nothing on the factory
+  sounds. Its default is the vibrato depth, as the wheel's (above): the two add, and General
+  MIDI gives both that meaning. The enum values stay (off 0, vibrato 1, pulse 2, cutoff 3).
+- Record version 11 has version 10's layout; an older record's stored OFF reads as VIBRATO, the
+  wheel's rule (the old default and a deliberate OFF are the same byte), and a stored PULSE or
+  CUTOFF is kept. A sound or patch that names a target keeps it; one that names none
+  (`patch_json_defaults`, the factory sixteen, the presets) gets VIBRATO. `DICE_HASH` changed
+  for that byte alone.
+
 ### Tests: Live Link
 
 - Live Link's tests run on USB frames (`usb_frames`), so their panel presses are timed in
