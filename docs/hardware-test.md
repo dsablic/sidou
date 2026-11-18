@@ -3332,11 +3332,11 @@ Set up:
 - **A song** with a steady part on chip A (SIDOU LOOP), the keys on chip B (KEYS AUTO: a playing
   song puts the keys on chip B). Headphones on the line out.
 
-- [ ] **Install the two-core package** over the current build with Felucca's installer
+- [x] **Install the two-core package** over the current build with Felucca's installer
   (`fm1_install.py sidou-cpu2.fwsc`). Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU
   boots as usual (the self-test adds about 25 ms); SONG, LOAD lists the songs it had.
-  *Emulator:* `package.rs`. *Device-only:* the install of a two-core image.
-- [ ] **Core 1 after the boot:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
+  *Emulator:* `package.rs`. *Device-only:* the install of a two-core image. *Result:* Passed 2026-11-18 on the two-core test package from main c7339b18 (`-DSIDOU_CPU2=ON`, FM-1_964, app 559,796 B, SHA-256 53942813…26feaac53), over the 48 kHz test build of §16's check: "done: the FM-1 runs FM-1_964".
+- [x] **Core 1 after the boot:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
   RUNNING`, `WHY --`, `JOBS` at 100 or more; write down `C1_CON AT BOOT` (the cold boot's value).
   If it says OFF, record `WHY` and the small print, photograph the page, and stop here (go to the
   last item): `FAULT` with `DBG` bit 10 at the boot means core 1 has no FPU (its first FPU
@@ -3344,14 +3344,14 @@ Set up:
   differently from core 0 (an FPU that computes wrongly, or misreads); `MISREAD`, `LATE` or
   `SILENT` are core 1 failing on this unit. *Emulator:*
   `cpu2.rs::the_cores_page_says_why_core_1_fell_back` (each reason from fm1-emu's injected
-  faults). *Device-only:* (1) the FPU on core 1.
-- [ ] **The sound, 10 minutes:** SONG, LOAD SIDOU LOOP, PLAY; play the keys (chip B) throughout:
+  faults). *Device-only:* (1) the FPU on core 1. *Result:* Passed 2026-11-18: `CORE 1 RUNNING`, JOBS 100 (the self-test's blocks), so core 1 runs SIDOU's float render: it has an FPU. Idle, CHIP B read CORE 0 and JOBS stayed at 100 (chip B is handed over only while it renders).
+- [x] **The sound, 10 minutes:** SONG, LOAD SIDOU LOOP, PLAY; play the keys (chip B) throughout:
   chords, runs, held notes; then STATUS, CORES. Pass: no click, no drop-out, no change in the sound
   against the default build (as heard in §41), `CORE 1 RUNNING` at the end, `JOBS` rising by
   about 345 a second while the keys sound. *Emulator:*
   `cpu2.rs::chip_b_on_core_1_sounds_sample_for_sample_as_one_core`. *Device-only:* two cores
-  rendering from the SRAM at once, by ear.
-- [ ] **The hand-over's gain:** still playing, a chord held on the keys, on CORES: write down
+  rendering from the SRAM at once, by ear. *Result:* Passed 2026-11-18 (with the soak below): SIDOU LOOP on chip A, the keys on chip B, CHIP B `CORE 1`, JOBS climbing about 300 a second, no click or dropout heard.
+- [x] **The hand-over's gain:** still playing, a chord held on the keys, on CORES: write down
   `AVG` and `WORST` (`CHIP B CORE 1`), turn ALGORITHM once (`CHIP B CORE 0`: chip B rendered on
   core 0, as the default build renders it), wait 10 s with the same chord, write down `AVG` and
   `WORST`, then ALGORITHM again (`CORE 1`, `JOBS` rising again). Repeat with two chords. Pass: the
@@ -3360,22 +3360,22 @@ Set up:
   hand-over's own cost. *Emulator:*
   `cpu2.rs::the_cores_page_shows_core_1_running_and_core_0s_audio_time_with_chip_b_on_either_core`.
   *Device-only:* (3) the hand-over's real cost and core 0's real worst block (caches, `csync`,
-  the shared SRAM).
-- [ ] **The misread soak, 30 minutes:** the song looping, the keys on chip B sounding the whole
+  the shared SRAM). *Result:* Passed 2026-11-18, SIDOU LOOP with the keys: core 0's audio time with chip B on core 1 AVG 16.6 %, WORST 29.4 %; with chip B on core 0 AVG 31.4 %, WORST 41.7 %: the average 47 % lower, the worst 30 % lower. The device's figures are about twice fm1-emu's (7.5 % and 14.3 %): the emulator counts instructions and does not model the cache or flash waits.
+- [x] **The misread soak, 30 minutes:** the song looping, the keys on chip B sounding the whole
   time (held chords, or ARP on a held chord), the FM-1 left on STATUS's CORES page. Pass: after
   30 minutes `CORE 1 RUNNING` and `JOBS` near 345 a second of chip B's sound; no click heard. If
   it went OFF, record `WHY`, `JOBS` and the time: `MISREAD` means this unit's core 1 misreads
   under SIDOU's load (core 0 took chip B over with one core's samples). *Emulator:*
   `cpu2.rs::every_fallback_to_one_core_sounds_the_same_samples`,
   `cpu2.rs::the_self_test_keeps_a_misreading_core_1s_render_out_of_the_sound`. *Device-only:* (2)
-  whether this unit's core 1 misreads, and how often.
-- [ ] **A restart, and the bar lifted:** on CORES, SAVE: the page says `SAVE AGAIN`; HOME: back
+  whether this unit's core 1 misreads, and how often. *Result:* Passed 2026-11-18 (the owner): still `RUNNING`, JOBS climbing, nothing heard wrong.
+- [x] **A restart, and the bar lifted:** on CORES, SAVE: the page says `SAVE AGAIN`; HOME: back
   to the menu, nothing restarts. STATUS, CORES again, SAVE, SAVE AGAIN. Pass: the FM-1 restarts
   (SIDOU's own P33 reset, the path its fault handler takes; core 1 is held before it) and CORES
   says `CORE 1 RUNNING` again, `JOBS` from 100; write down `C1_CON AT BOOT`. If an earlier item
   fell back, this boot first said `BARRED` (one core until power-off); after SAVE, SAVE AGAIN it
   tries two cores again: record whether it runs or falls back the same way again. *Emulator:*
-  `cpu2.rs::save_then_save_again_on_the_cores_page_lifts_the_bar_and_restarts_on_two_cores`.
+  `cpu2.rs::save_then_save_again_on_the_cores_page_lifts_the_bar_and_restarts_on_two_cores`. *Result:* Passed 2026-11-18: SAVE, SAVE AGAIN restarted the FM-1, and CORES read RUNNING again.
 - [ ] **Optional: a watchdog reset** (only if §10's recovery from UBOOT has been shown on this
   unit, and with the owner's yes for this item alone). The only way SIDOU lets the watchdog fire is
   §10's checklist build that hangs: the two-core package again with `-DSIDOU_TEST_DEATH=hang`
@@ -3389,7 +3389,7 @@ Set up:
   still running when SIDOU started (SIDOU holds it first thing, so it did no harm). If OCT- was
   still held at the second boot and the unit is in UBOOT, recover with §0's tool. *Emulator:*
   `bootguard.rs::a_hang_resets_through_the_watchdog_and_the_third_boot_enters_uboot` (fm1-emu drops
-  core 1 at every reset, so it cannot tell). *Device-only:* (4) whether the watchdog resets core 1.
+  core 1 at every reset, so it cannot tell). *Device-only:* (4) whether the watchdog resets core 1. *Result:* Not run (2026-11-18, skipped by choice: it needs §10's hang build and recovery).
 - [ ] **Back to the default package** (`fm1_install.py sidou.fwsc`). Pass: it finishes, STATUS has
   its three pages again, the songs are kept.
 
