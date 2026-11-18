@@ -29,6 +29,13 @@ What the grooveboxes on the FM-1 have for playing live and SIDOU still lacks (th
   JIANT has it. S.
 - **A small set of punch effects** (about six: mute, filter slam, stutter, freeze and the like),
   held on a key while it plays. SLOOP, Melodee and JIANT have theirs. M.
+- **USB host for keyboards:** SETTINGS' USB, COMPUTER or KEYBOARD (every power-on starts as
+  COMPUTER, so installs always work): a class-compliant USB-MIDI keyboard, controller or synth,
+  alone or behind a hub, into the same MIDI queue as USB, TRS and Bluetooth. felucca-bsp's
+  `usb_host.c` (Melodee's, already vendored, off) does the hosting; SIDOU adds the row, the main
+  loop's task, its buffers in NOINIT. The FM-1 does not power the port (a powered hub or a
+  powered OTG adapter); while a host, no computer over USB. Melodee and JIANT have it. About 3-5 KB
+  of flash. S-M.
 - **Sounds from a `.sid` tune into the Library:** the converter's instruments as LAB sounds to
   keep, edit and send. SID-1's page does the like. Site only. S.
 
