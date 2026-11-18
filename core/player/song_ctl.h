@@ -40,7 +40,7 @@ typedef struct {
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
     SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_ALIGN,
-    SONG_CMD_DRAFT, SONG_CMD_HELD, SONG_CMD_FUNKTEMPO, SONG_CMD_PUNCH
+    SONG_CMD_DRAFT, SONG_CMD_HELD, SONG_CMD_FUNKTEMPO
 };
 
 #define SONG_PUNCH_MUTE (1u << 0)
@@ -50,6 +50,7 @@ enum {
 #define SONG_PUNCH_PADS (SONG_PUNCH_MUTE | SONG_PUNCH_SLAM | SONG_PUNCH_DIVE | SONG_PUNCH_STUTTER)
 #define SONG_PUNCH_DIVE_SAMPLES 22059u
 #define SONG_PUNCH_DIVE_STEPS 32u
+#define SONG_PUNCH_BEAT_MAX 0xffffu
 enum { SONG_STUTTER_OFF, SONG_STUTTER_HOLD, SONG_STUTTER_LEAVING };
 
 #define SONG_HELD_LOCKS (SONG_LOCK_PULSE + 1u)
@@ -130,7 +131,7 @@ typedef struct song_ctl {
     uint8_t song_gate;
     song_event ev[SONG_EVENT_RING];
     gt2_player player;
-    uint8_t shadow[GT2_SID_REGS];
+    _Alignas(4) uint8_t shadow[GT2_SID_REGS];
     uint8_t mute;
     uint8_t taken;
     uint8_t armed, armed_now;
@@ -155,7 +156,9 @@ typedef struct song_ctl {
     uint32_t blocks;
     uint32_t play_block;
     uint32_t edits_block_max;
+#ifdef SIDOU_REG_RING_RACE_HOOK
     uint32_t edit_cells, edit_swaps;
+#endif
     gt2_shape* shapes[2];
     song_work* w;
     song_chip_hooks hooks;
@@ -172,7 +175,7 @@ typedef struct song_ctl {
     uint32_t ff_seq, ff_calls, ff_target;
     uint32_t quiet;
     uint32_t slices;
-    uint32_t handovers, narrowed, handed_back;
+    uint32_t handovers, handed_back;
     int16_t error;
     uint8_t state;
     uint8_t active;
@@ -236,10 +239,9 @@ typedef struct song_ctl {
     uint8_t prev_ctrl[GT2_PLAY_CHANNELS];
     uint8_t punch;
     uint8_t stutter;
+    uint16_t stutter_len;
     uint32_t dive_at;
-    uint32_t stutter_len;
     volatile uint32_t stutter_from;
-    uint32_t stutter_seq;
 } song_ctl;
 
 void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,

@@ -21,6 +21,8 @@
 #define FF_SEEK 1u
 #define FF_RESUME 2u
 #define ALL_VOICES 7u
+#define REG_WORDS ((GT2_SID_REGS + 3u) / 4u)
+#define PUNCH_CMD 1u
 #define SLAM_RESONANCE 0xf0u
 #define SLAM_LOW_PASS 0x10u
 #define FILTER_MODES 0x70u
@@ -126,7 +128,7 @@ __attribute__((noinline)) static void song_punch(song_ctl* sc, uint32_t pads, gt
     if (on & SONG_PUNCH_STUTTER) {
         copy_player(keep, &sc->player);
         sc->stutter_from = sc->calls;
-        sc->stutter_len = beat;
+        sc->stutter_len = (uint16_t)beat;
         sc->armed = 1u;
         sc->armed_now = 0u;
         sc->armed_state = keep;
@@ -136,6 +138,8 @@ __attribute__((noinline)) static void song_punch(song_ctl* sc, uint32_t pads, gt
         sc->stutter_len = 0u;
         sc->armed = 0u;
     }
+    if (on & SONG_PUNCH_MUTE)
+        sc->digi_at = 0u;
     sc->punch = (uint8_t)pads;
     sid_set_mute(sc->chip, (uint8_t)(pads & SONG_PUNCH_MUTE ? ALL_VOICES : 0u));
 }
@@ -202,7 +206,10 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->isr_playing = 1u;
         break;
     case SONG_CMD_MUTE:
-        song_voices(sc, c->a, sc->taken);
+        if (c->c)
+            SIDOU_FAR(song_punch)(sc, c->b, (gt2_player*)c->u.p.ptr, c->u.p.x);
+        else
+            song_voices(sc, c->a, sc->taken);
         break;
     case SONG_CMD_SHAPE:
         if (c->a)
@@ -259,9 +266,6 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         break;
     case SONG_CMD_HELD:
         song_held(sc, c);
-        break;
-    case SONG_CMD_PUNCH:
-        SIDOU_FAR(song_punch)(sc, c->a, (gt2_player*)c->u.p.ptr, c->u.p.x);
         break;
     case SONG_CMD_PERIOD:
         sc->period.q = c->u.p.x;
@@ -476,11 +480,12 @@ static void song_lock_apply(song_ctl* sc) {
     if (!(sc->lock_n[0] | sc->lock_n[1] | sc->lock_n[2] | sc->lock_regs | sc->slide_now |
           sc->gliding | punch))
         return;
-    uint8_t r[GT2_SID_REGS];
+    _Alignas(4) uint8_t r[REG_WORDS * 4u];
     uint32_t mask = 0u;
     uint8_t drop = (uint8_t)(sc->mute | sc->taken);
-    for (uint32_t g = 0u; g < GT2_SID_REGS; g++)
-        r[g] = sc->shadow[g];
+    const uint32_t* from = (const uint32_t*)(const void*)sc->shadow;
+    for (uint32_t w = 0u; w < REG_WORDS; w++)
+        ((uint32_t*)(void*)r)[w] = from[w];
     for (uint32_t ch = 0u; (sc->slide_now | sc->gliding) && ch < GT2_PLAY_CHANNELS; ch++) {
         if (!((drop >> ch) & 1u)) {
             mask |= slide(sc, r, ch);
@@ -583,7 +588,8 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
     sc->samples += n;
     if (at < n) {
         const gt2_event* e = sc->player.ev;
-        for (uint32_t ok = sc->digi_ok; ok != 0u; ok >>= 1, e++) {
+        uint32_t ok = sc->punch & SONG_PUNCH_MUTE ? 0u : sc->digi_ok;
+        for (; ok != 0u; ok >>= 1, e++) {
             uint32_t kind = sc->digi_of[e->instr];
             if ((ok & 1u) && (e->flags & GT2_EV_NOTE) && kind) {
                 sc->digi_at = sc->digi_from[kind - 1u];
@@ -598,8 +604,6 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
         return;
     const uint32_t end = sc->digi_end;
     int32_t level = sc->digi_level;
-    const int32_t keep = sc->punch & SONG_PUNCH_MUTE ? 0 : -1;
-    int32_t heard = level & keep;
     int16_t* const last = out + n;
     int16_t* next = out + sc->digi_left;
     do {
@@ -611,11 +615,10 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
             }
             uint32_t two = SONG_DIGI_DATA[i >> 1];
             level = ((int32_t)((two >> ((i & 1u) << 2)) & 15u) - 8) * SONG_DIGI_LEVEL;
-            heard = level & keep;
             i++;
             next = out + SONG_DIGI_SPAN;
         }
-        int32_t x = *out + heard;
+        int32_t x = *out + level;
         x = x < -32768 ? -32768 : x;
         *out = (int16_t)(x > 32767 ? 32767 : x);
     } while (++out < last);
@@ -1125,13 +1128,15 @@ static int stutter_may_start(const song_ctl* sc, uint32_t beat_calls) {
 int song_ctl_punch(song_ctl* sc, uint32_t pads, uint32_t beat_calls) {
     if (room(sc) < 1u)
         return 0;
+    beat_calls = beat_calls < SONG_PUNCH_BEAT_MAX ? beat_calls : SONG_PUNCH_BEAT_MAX;
     pads = sc->state == SONG_PLAYING ? pads & SONG_PUNCH_PADS : 0u;
     uint32_t holding = sc->stutter == SONG_STUTTER_HOLD;
     if ((pads & SONG_PUNCH_STUTTER) && !holding && !stutter_may_start(sc, beat_calls))
         pads &= ~SONG_PUNCH_STUTTER;
     song_cmd c;
-    cmd_init(&c, SONG_CMD_PUNCH);
-    c.a = (uint8_t)pads;
+    cmd_init(&c, SONG_CMD_MUTE);
+    c.b = (uint8_t)pads;
+    c.c = PUNCH_CMD;
     c.u.p.ptr = &sc->w->ff;
     c.u.p.x = beat_calls;
     uint32_t seq = push(sc, &c);
@@ -1142,7 +1147,7 @@ int song_ctl_punch(song_ctl* sc, uint32_t pads, uint32_t beat_calls) {
         sc->ff_now = FF_RESUME;
     } else if (!(pads & SONG_PUNCH_STUTTER) && holding) {
         sc->stutter = SONG_STUTTER_LEAVING;
-        sc->stutter_seq = seq;
+        sc->ff_seq = seq;
     }
     return 1;
 }
@@ -1424,10 +1429,6 @@ static void poll_applied(song_ctl* sc, int may_ring) {
             sc->want_handover = (uint8_t)(sc->ff_now != FF_RESUME);
         }
     }
-    if (sc->stutter == SONG_STUTTER_LEAVING && (int32_t)(a - sc->stutter_seq) >= 0) {
-        sc->ff_calls = sc->stutter_from;
-        sc->stutter = SONG_STUTTER_OFF;
-    }
     if (sc->handback && may_ring && (int32_t)(a - sc->stop_seq) >= 0) {
         sc->handback = 0u;
         sc->chip_held = 0u;
@@ -1443,6 +1444,10 @@ static void poll_applied(song_ctl* sc, int may_ring) {
 
 static void poll_ff(song_ctl* sc) {
     song_work* w = sc->w;
+    if (sc->stutter == SONG_STUTTER_LEAVING && (int32_t)(sc->applied - sc->ff_seq) >= 0) {
+        sc->ff_calls = sc->stutter_from;
+        sc->stutter = SONG_STUTTER_OFF;
+    }
     if (sc->ff_sent || sc->ff_stop || sc->handback || sc->stutter)
         return;
     uint32_t target = sc->ff_now == FF_SEEK ? sc->ff_target : sc->calls + SONG_HANDOVER_LEAD;
@@ -1581,7 +1586,6 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
             return;
         }
         push_shape(sc);
-        sc->narrowed++;
     } else {
         start_ff(sc, 0u, 0u);
     }

@@ -69,7 +69,7 @@ static bootguard boot_guard __attribute__((section(".noinit")));
 static volatile uint32_t uptime_ms;
 static live instrument;
 static keys_route keys_router;
-static punch_echo echo_throw;
+static punch_echo echo_throw __attribute__((section(".noinit.punch")));
 static ui_sound ui_sounds;
 static panel front;
 static song_io songs;
@@ -2152,7 +2152,9 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         song_pass();
     }
     if (tick_due) {
-        punch_echo_tick(&echo_throw, now);
+        if (echo_throw.state) {
+            punch_echo_tick(&echo_throw, now);
+        }
         keys_route_tick(&keys_router);
         audio_chip_b_use(AUDIO_B_UI, ui_sound_busy(&ui_sounds));
         midi_send();

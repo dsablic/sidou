@@ -21,6 +21,12 @@ extern "C" {
 #define PUNCH_VIEW_HINT_ROW 25u
 #define PUNCH_VIEW_BACK_ROW 28u
 
+#ifdef __PI32V2__
+#define PUNCH_VIEW_STATE __attribute__((section(".noinit.punch")))
+#else
+#define PUNCH_VIEW_STATE _Thread_local
+#endif
+
 typedef struct {
     song_view* sv;
     uint8_t held;
@@ -34,6 +40,7 @@ typedef struct {
 } punch_view;
 
 extern const view punch_view_view;
+extern PUNCH_VIEW_STATE punch_view punch_view_state;
 
 void punch_view_init(punch_view* pv, song_view* sv);
 void punch_view_keys(punch_view* pv, uint32_t down);

@@ -19,7 +19,7 @@ All notable changes are documented here. The format follows
   go and nothing is written into the song; the other keys are inert (`KEYS ARE PADS`), and with
   the song stopped the pads wait (`PLAY TO PUNCH`). HOME goes back, the song playing on; its help
   card is PUNCH. STUTTER needs no audio buffer (the player repeats the beat's frames and is
-  fast-forwarded back), and every pad held keeps the player's worst block at 45.2 instructions a
+  fast-forwarded back), and every pad held keeps the player's worst block at 44.1 instructions a
   sample (budget 60).
 - **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
   (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a

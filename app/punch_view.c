@@ -6,6 +6,8 @@
 
 #include "theme.h"
 
+PUNCH_VIEW_STATE punch_view punch_view_state;
+
 #define BIG 2u
 #define PAD_COL 2u
 

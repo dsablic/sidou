@@ -196,8 +196,11 @@ void keys_route_swap(keys_route* kr, int on) {
 }
 
 static const chip_setup* song_target(const keys_route* kr, chip_setup* swapped) {
+    if (!kr->swap) {
+        return &kr->song_want;
+    }
     const sid_chip_profile* p = sid_chip_profile_get(kr->song_want.profile);
-    if (!kr->swap || !p) {
+    if (!p) {
         return &kr->song_want;
     }
     *swapped = kr->song_want;

@@ -39,13 +39,13 @@ typedef struct {
     chip_setup tune_b_want;
     uint8_t song_seen;
     uint8_t song_user;
+    uint8_t swap;
     void (*moved)(void* ctx, uint32_t chip);
     void* moved_ctx;
     void (*taking)(void* ctx, uint32_t voices);
     void* taking_ctx;
     int (*song_edit)(void* ctx, const chip_setup* setup, uint32_t edit_mask);
     void* song_edit_ctx;
-    uint8_t swap;
 } keys_route;
 
 void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn prepare,
