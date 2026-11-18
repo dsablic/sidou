@@ -17,6 +17,24 @@ Sizes: S is under a day of work, M a few days, L more.
   LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
   instructions a sample per chip, inside every audio budget unchanged
   ([design notes](design-notes.md#a-layers-level-20)).
+## 2.1: live
+
+What the grooveboxes on the FM-1 have for playing live and SIDOU still lacks (the landscape check,
+2026-11-18; the owner agreed):
+
+- **The next pattern queued, starting on the bar:** pick the pattern or order position to come
+  while the song plays; it starts at the bar's end, shown on the song views. Melodee, SLOOP and
+  JIANT have it. S-M.
+- **Copy and paste in STEP:** a lane's steps or a whole pattern, with their locks and ratchets.
+  JIANT has it. S.
+- **A small set of punch effects** (about six: mute, filter slam, stutter, freeze and the like),
+  held on a key while it plays. SLOOP, Melodee and JIANT have theirs. M.
+- **Sounds from a `.sid` tune into the Library:** the converter's instruments as LAB sounds to
+  keep, edit and send. SID-1's page does the like. Site only. S.
+
+Watched, not planned: C64 speech (SAM, as EVILGENIUS has it; its licence is unclear) and a microSD
+card (felucca-bsp has one on the LCD's SPI; it would need a card fitted).
+
 ## Open from earlier releases
 
 - **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341. The update loader stays
