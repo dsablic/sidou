@@ -24,6 +24,10 @@ All notable changes are documented here. The format follows
 - EDIT + ARP on LAYERS leaves the layers' levels as they are.
 
 ### Fixed
+- **A second knob while a popup shows no longer sends a frame over 200 cells**: another knob's
+  popup replaces the open one in three bands (name, value, bar), a frame each, instead of redrawing
+  all of it at once (211 cells on STEP's GROOVE page with K2 then K1). The new name shows a frame
+  before its value.
 - **A text song's first row plays at its tempo**: a `sidou-song/1` at a tempo other than 125.3
   BPM played its first row at speed 6 and the song's speeds only from the second row. The song's
   start speed (instrument slot 63's AD, as GoatTracker reads it) now carries the tempo, so row 0

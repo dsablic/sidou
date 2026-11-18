@@ -1857,3 +1857,30 @@ fn a_sidou_step_pattern_is_the_lane_steps_keys_make() {
         .collect();
     assert_eq!(made_locks, locks(&s));
 }
+
+#[test]
+fn a_second_knob_in_the_popups_life_keeps_every_frame_within_200_cells() {
+    const FRAME_CELLS: usize = 200;
+    let groove_page = |s: &mut Song| groove(s);
+    let held_step = |s: &mut Song| hold(s, 0);
+    let scenarios: [(&str, &dyn Fn(&mut Song), [u32; 2]); 2] = [
+        ("groove", &groove_page, [PANEL_ENC_K2, PANEL_ENC_K1]),
+        ("held step", &held_step, [PANEL_ENC_K4, PANEL_ENC_K2]),
+    ];
+    for (name, set_up, [first, second]) in scenarios {
+        for gap in 0..8 {
+            let mut s = step();
+            set_up(&mut s);
+            let mut cells = Vec::new();
+            s.ui.turn(first, 1);
+            for frame in 0..40 {
+                if frame == gap {
+                    s.ui.turn(second, 1);
+                }
+                cells.push(s.ui.frame_sent().cells);
+            }
+            let worst = cells.iter().copied().max().unwrap();
+            assert!(worst <= FRAME_CELLS, "{name}, second knob after {gap} frames: {cells:?}");
+        }
+    }
+}

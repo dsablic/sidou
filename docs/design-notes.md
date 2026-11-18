@@ -5103,6 +5103,19 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
   cost (1,185 and a pass of 89k over LIVE). CHIP has its own bound (`CHIP_INPUT`, 245).
+- **A popup of another knob replaces the shown one a band a frame** (`popup_draw`'s `swapped`):
+  swapping a whole open popup (252 cells, most of them new when the name and its large text change)
+  sent 211 cells in one frame with nothing else moving (STEP's GROOVE page, K2 then K1; 229 with
+  the view's own cells), over the 200 a frame. A knob with another name or colour now replaces the
+  popup in three bands, the name (rows 0 to 3, at most 112 cells), the value (4 to 6) and the bar
+  with the foot (7 and 8), the bands not yet replaced drawn again in what the popup showed
+  (`shown`, against the view under a popup that composed), and the covered cells claimed to the
+  views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
+  read when the swap ends), so no frame holds two swaps. The cost: for two frames the value is
+  the old knob's under the new name. A turn of the same knob (same name and colour) changes only
+  its value and bar, in one frame as before. The sweep in `popup.rs` and STEP's test turn a second
+  knob at every frame of the first popup's life; SCENE is left out of the sweep, whose own plasma
+  draws between frames in the host's count.
 - `POPUP_GONE_MS`, 2 s: a popup closes a second after its last detent, plus the three frames it
   takes to close, with room. The gates of what a view itself costs when a control changes clear the
   popup's source (`without_popups` in emu-gate): its hundreds of cells would drown the view's.
