@@ -772,6 +772,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   number move, and `midi_sysex_service` drops a USB frame while it is). A plugged host sends a
   frame every millisecond, so `usb.rs`'s `keep_sounds` keeps its frames going through the settle;
   a host that sleeps and wakes waits out USB's 10 ms resume recovery before it sends.
+- **STATUS's input stays within the popup's 256 instructions** with the CORES page in every image:
+  `status_input` tests the event for ALGORITHM before anything else and the flip
+  (`cores_chip_b_flip`, which reads the report on the stack) is kept out of line, so a knob over
+  STATUS costs 255 (the OFF build 249; inlined, the report's frame made it 260). The RED MOON
+  RITE song frame and the scopes' goldens moved by a frame's phase with the main loop's new time.
 - **Sizes at the switch:** the default image 559,796 bytes (19,720 under the 579,516 ceiling;
   +3,888 against the OFF image), RAMTEXT 45,728 of 49,152 (+704), the RAM region 5,128 bytes free
   (the floor is 5,120), NOINIT 11,384 of 15,696 bytes. The two-chip worst block with every slot's
