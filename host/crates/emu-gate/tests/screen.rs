@@ -325,18 +325,15 @@ fn the_status_pages_match_their_goldens_and_select_goes_round_them_either_way() 
         &[STATUS_VERSION_CELLS],
     );
     turn_page(&mut m, 1);
-    let first = indexed(&m.soc.lcd.fb);
+    turn_page(&mut m, 1);
+    compare_golden(&build, "status", &m.soc.lcd.fb, &[STATUS_VERSION_CELLS]);
+    turn_page(&mut m, -1);
     turn_page(&mut m, -1);
     compare_golden(
         &build,
         "status-effects",
         &m.soc.lcd.fb,
         &[STATUS_VERSION_CELLS],
-    );
-    turn_page(&mut m, 1);
-    assert!(
-        indexed(&m.soc.lcd.fb) == first,
-        "SELECT round the three pages does not come back to the first"
     );
 }
 

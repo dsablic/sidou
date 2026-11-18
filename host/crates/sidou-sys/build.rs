@@ -304,6 +304,7 @@ fn main() {
         .clang_arg("-std=c11")
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
+        .clang_arg("-DSIDOU_CPU2")
         .allowlist_type(concat!(
             "sid|sid_osc|sid_env|sid_shadow|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",

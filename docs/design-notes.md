@@ -817,8 +817,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   noise and the filter) for 100 blocks while core 0 renders its twin, compared block by block. A
   difference retires core 1 (`gave_up` 0x10, barred until power-off); a refused or late job retires
   it as the hand-over does. The two chips borrow the effect pool (128 KB, before `audio_init`; two
-  chips are 70 KB) and leave it zeroed. About 25 ms of boot (6.1 M instructions on core 0) and
-  about 370 bytes of flash. It closes the spike's gap: a misread inside the render, which the
+  chips are 70 KB) and leave it zeroed. About 25 ms (6.1 M instructions on core 0) and about 370
+  bytes of flash. It runs inside the LCD's 150 ms reset wait (`while_lcd_resets`, beside the
+  noise tables and the song's load), not before `sidou_main`: there it pushed the audio's start
+  from 397 to 422 ms after power-on in fm1-emu, past `boot.rs`'s 400 ms; in the wait the boot
+  keeps its time (396 ms) and the interrupts are still off. It closes the spike's gap: a misread inside the render, which the
   mailbox's check word cannot see. Measured in fm1-emu (`SIDOU_CPU2_SWEEP`, 40 units each): misreads only in core 1's
   render at 1e-5 a load reached the sound unseen on 18 units without the self-test, damaged it on
   20 more before the timeout retired them, and left 2 clean; with it all 40 were retired at power-on

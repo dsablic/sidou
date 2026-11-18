@@ -2289,7 +2289,7 @@ fn keep_sounds(m: &mut Machine, fw: &Firmware, count: usize) {
         press(m, SAVE);
         kept(m, SECOND_SLOT);
     }
-    m.run_ms(common::SETTLE_MS);
+    m.usb_frames(common::SETTLE_MS);
 }
 
 fn user_sounds_file(m: &Machine) -> Option<Vec<u8>> {
