@@ -776,7 +776,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   `status_input` tests the event for ALGORITHM before anything else and the flip
   (`cores_chip_b_flip`, which reads the report on the stack) is kept out of line, so a knob over
   STATUS costs 255 (the OFF build 249; inlined, the report's frame made it 260). The RED MOON
-  RITE song frame and the scopes' goldens moved by a frame's phase with the main loop's new time.
+  RITE song frame, the fire's and the scopes' goldens moved by a frame's phase with the main loop's
+  new time.
 - **Sizes at the switch:** the default image 559,796 bytes (19,720 under the 579,516 ceiling;
   +3,888 against the OFF image), RAMTEXT 45,728 of 49,152 (+704), the RAM region 5,128 bytes free
   (the floor is 5,120), NOINIT 11,384 of 15,696 bytes. The two-chip worst block with every slot's
