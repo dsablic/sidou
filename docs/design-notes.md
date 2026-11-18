@@ -5418,9 +5418,12 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - Not a second `live`: one is 1,232 bytes (five slots of edits, the USER edit, the base sound)
   and the RAM region kept 5,268 bytes over its 5,120 floor. A part keeps only what one voice
   plays: the sound's first layer decoded (76 bytes, the 35-byte table included) and its state
-  (24 bytes); `multi` is 348 bytes, in POOL (5,456 free after it; the RAM region keeps 5,220,
-  52 bytes less, for the route's per-channel range flag and velocity, the page's labels and the
-  hint).
+  (24 bytes); `multi` is 348 bytes, in POOL. The RAM region has almost no room on the two-core
+  build (8 bytes over its 5,120 floor), so the route (`routing`, 216 bytes, main-loop only and
+  initialised by `midi_route_init` over POOL's boot-time zeroing) moved to POOL too, which more
+  than pays for what MULTI adds there (the route's per-channel range flag and velocity, the
+  page's labels, the hint: 52 bytes). Measured: the RAM region 5,444 free (5,272 before), 5,300
+  on the two-core build; POOL 5,248 (5,808 before), both over 5,120.
 - Shared with `live.c`, not copied: the vibrato's triangle, the PWM swing, velocity on the
   sustain and the pulse, the wheel's pulse width, the table's next step and pitch are `static
   inline` in `live.h`, so `live.c`'s code is unchanged in shape and `multi.c` calls the same
@@ -5457,7 +5460,7 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   tick recomputes three frequencies and pulse widths and writes what changed. A dense stream on
   four channels with program changes to USER sounds (each a store read) kept the busiest pass
   under 27,000 instructions of the 120,000 allowance (emu-gate `midi_modes`). The image grew 3,904
-  bytes (555,892 to 559,796, 19,720 under the ceiling) with this branch's other changes;
+  bytes (555,892 to 559,828, 19,688 under the ceiling) with this branch's other changes;
   RAMTEXT did not change (45,024).
 - The MIDI page in MULTI swaps OPTION, CHORD 2, CHORD 3 and ARP RATE (WHOLE A's) for four rows
   named by channel (`CH1`..`CH16`, labels written into a static buffer from CHANNEL): three

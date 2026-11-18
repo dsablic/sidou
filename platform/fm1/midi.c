@@ -40,7 +40,7 @@ _Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
 static midi_ring in_ring __attribute__((section(".noinit.midi_in")));
 static midi_rx rx;
 static midi_learn learned __attribute__((used, section(".pool")));
-static midi_route routing __attribute__((used));
+static midi_route routing __attribute__((used, section(".pool")));
 static multi parts __attribute__((used, section(".pool")));
 static midi_sync syncing __attribute__((used));
 static midi_out midi_tx __attribute__((used));
