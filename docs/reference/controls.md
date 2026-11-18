@@ -711,8 +711,8 @@ once, and stopping the song (or leaving PUNCH) lets every pad go. A STUTTER pres
 song is busy elsewhere (a seek, a widening of its tables) does not loop; release as usual.
 
 The page: **PUNCH** at 2×, `HOLD 1-6, SEVERAL AT ONCE`, then the six pads at 2×, each its key's
-number and its name: a held pad reversed (black on yellow), the others white with the number
-yellow, all grey while the song is stopped; `KEYS ARE PADS` (or `PLAY TO PUNCH` in red) and
+number and its name: a held pad reversed (on the theme's highlight colour), the others in the
+value colour with the number highlighted, all grey while the song is stopped; `KEYS ARE PADS` (or `PLAY TO PUNCH` in red) and
 `HOME BACK` at the foot. The six pad keys glow dim while the song plays and a held one is lit.
 A change of the pads draws within the frame's 200 cells (the pads catch up over a second frame
 when all six change at once). The goldens are `tests/golden/lcd/punch.png`, `punch-held.png`
