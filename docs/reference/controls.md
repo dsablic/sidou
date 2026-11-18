@@ -1627,9 +1627,7 @@ The loaded song restores its MIDI mode/options and rows per beat. A file without
 a MIDI chunk retains the current MIDI setup; CLOCK and CLOCK OUT remain global.
 Recall is limited to programs 0..127 and does not queue behind an active file
 operation. A new program can replace a pending directory lookup before loading
-starts. The current device build retains the inherited MIDI limitation: MULTI
-and WHOLE A jam-channel notes, bends and filter changes are not connected to the
-song player; restoring their setup does not add that connection.
+starts.
 
 ABOUT plays its original tune only when the loaded song is stopped and clean.
 Closing ABOUT restores that song, stopped, and the song views as they were (their
@@ -1766,9 +1764,10 @@ releases what MIDI was playing. The page's setup stays in RAM and is not include
 settings, except WHEEL, which is kept with them; a song carries its own mode in its `MIDI` chunk.
 
 MIDI follows STATUS in the large main menu. The options page shows six rows at 2×, like the
-main menu; its title bar says which of the eleven items is selected, and it scrolls to CLOCK and
-CLOCK OUT. In MULTI the four CH rows take the places of OPTION, CHORD 2, CHORD 3 and ARP RATE
-(WHOLE A's), so the page shows which channel plays which sound. It opens in a cut, the title bar and the help first and then its lines two a frame
+main menu; its title bar says which of the eleven items is selected (twelve in WHOLE A), and it
+scrolls to CLOCK and CLOCK OUT. In MULTI the four CH rows take the places of OPTION, CHORD 2,
+CHORD 3 and ARP RATE (WHOLE A's), so the page shows which channel plays which sound; in WHOLE A
+one CH row, N's sound, follows CHANNEL. It opens in a cut, the title bar and the help first and then its lines two a frame
 (four frames, 0.16 s: a frame of it stays within the page's `ui_poll` bound). Turning ALGORITHM
 names the selected item
 and its value in the large value popup; closing it restores the page underneath.
@@ -1777,7 +1776,7 @@ and its value in the large value popup; closing it restores the page underneath.
 |---|---|---|
 | MODE | LIVE, MULTI, WHOLE A, WHOLE B, OMNI (at power-on) | which channel plays what |
 | CHANNEL | 1..16 (1) | N, the first channel: the instrument's in LIVE and WHOLE B, chip A's voice 1 in MULTI, chip A's in WHOLE A; N + 3 plays the instrument on chip B in MULTI and WHOLE A |
-| CH*n* (MULTI only) | a sound | four rows named by their channel (`CH1` to `CH4` with CHANNEL at 1): N, N + 1 and N + 2 show their part's sound and step it through the presets, the instrument's sound (a copy) and the kept USER sounds, as a program change does; N + 3 shows the instrument's sound and steps it as PRESETS does. The popup names the channel and the whole sound name |
+| CH*n* (MULTI, WHOLE A) | a sound | MULTI: four rows named by their channel (`CH1` to `CH4` with CHANNEL at 1): N, N + 1 and N + 2 show their part's sound and step it through the presets, the instrument's sound (a copy) and the kept USER sounds, as a program change does; N + 3 shows the instrument's sound and steps it as PRESETS does. WHOLE A: N's row alone, the sound of chip A's three voices, stepped the same way. The popup names the channel and the whole sound name |
 | OPTION | POLY (default), CHORD, ARP | WHOLE A's: three-voice polyphony, the stored chord, the arpeggio on voice 1 |
 | LEGATO | OFF (default), ON | MULTI and CHORD: the next note while one is held changes the pitch with no new attack |
 | CHORD 2, CHORD 3 | +0..+24 (+4, +7) | the stored chord: semitones above the note on voices 2 and 3 |
@@ -1789,8 +1788,8 @@ and its value in the large value popup; closing it restores the page underneath.
 
 In MULTI and both WHOLE modes chip A belongs to MIDI, song or not, so the keys play
 chip B as they do [while a song plays](#which-chip-the-keys-play). MULTI's three parts sound on
-chip A ([midi.md](midi.md), Modes; [SIDOU from a DAW](../manual/daw.md)); WHOLE A's channel is
-routed but sounds nothing yet.
+chip A, and WHOLE A's channel plays one sound on its three voices ([midi.md](midi.md), Modes;
+[SIDOU from a DAW](../manual/daw.md)).
 
 ## MIDI learn
 

@@ -483,12 +483,7 @@ fn midi_notes_arpeggiate_and_the_clock_steps_a_clock_rate() {
         let mut route = Box::<midi_route>::default();
         if routed {
             unsafe {
-                midi_route_init(
-                    &mut *route,
-                    &mut *m.rig.live,
-                    std::ptr::null_mut(),
-                    std::ptr::null(),
-                );
+                midi_route_init(&mut *route, &mut *m.rig.live, std::ptr::null_mut());
                 midi_rx_route(&mut *m.rx, &mut *route);
             }
         }

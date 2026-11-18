@@ -40,63 +40,67 @@ static void put_voice(multi* m, uint32_t v, uint32_t reg, uint8_t value) {
     }
 }
 
-static int table_on(const multi_part* p) {
-    return (p->s.table[0] & LAB_TABLE_ON) && (p->s.table[0] & LAB_TABLE_COUNT_MASK);
+static const multi_sound* sound_of(const multi* m, uint32_t v) {
+    return &m->p[m->whole ? 0u : v].s;
 }
 
-static uint8_t part_control(const multi_part* p) {
-    uint8_t c = table_on(p) ? live_table_step(p->s.table, p->table_pos)[0] : p->s.control;
+static int table_on(const multi_sound* s) {
+    return (s->table[0] & LAB_TABLE_ON) && (s->table[0] & LAB_TABLE_COUNT_MASK);
+}
+
+static uint8_t part_control(const multi_sound* s, const multi_part* p) {
+    uint8_t c = table_on(s) ? live_table_step(s->table, p->table_pos)[0] : s->control;
     return (uint8_t)((c & ~(CTRL_GATE | CTRL_NEIGHBOURS)) | (p->gate ? CTRL_GATE : 0u));
 }
 
-static uint32_t vibrato_depth(const multi_part* p) {
-    uint32_t d = p->s.vibrato_depth;
-    if (p->s.mod_target == LIVE_MOD_VIBRATO) {
+static uint32_t vibrato_depth(const multi_sound* s, const multi_part* p) {
+    uint32_t d = s->vibrato_depth;
+    if (s->mod_target == LIVE_MOD_VIBRATO) {
         d += p->wheel;
     }
-    if (p->s.pressure_target == LIVE_PRESSURE_VIBRATO) {
+    if (s->pressure_target == LIVE_PRESSURE_VIBRATO) {
         d += p->pressure;
     }
     return at_most(d, LIVE_EXPRESSION_MAX);
 }
 
-static uint16_t part_freq(const multi_part* p) {
+static uint16_t part_freq(const multi_sound* s, const multi_part* p) {
     if (p->note == MULTI_NO_NOTE) {
         return 0;
     }
     uint8_t note = p->note;
-    int32_t off = p->bend + p->s.tune;
-    if (table_on(p)) {
-        off += live_table_pitch(live_table_step(p->s.table, p->table_pos)[1], &note);
+    int32_t off = p->bend + s->tune;
+    if (table_on(s)) {
+        off += live_table_pitch(live_table_step(s->table, p->table_pos)[1], &note);
     }
-    uint32_t depth = vibrato_depth(p);
+    uint32_t depth = vibrato_depth(s, p);
     if (depth && !p->vibrato_wait) {
         off += live_vibrato_swing(p->vibrato_phase, depth);
     }
     return live_freq_at(note, off);
 }
 
-static uint16_t part_pw(const multi_part* p) {
-    int32_t pw = live_pwm_swing(p->pulse_width, p->s.pwm_depth, p->lfo_phase);
-    if (p->s.pressure_target == LIVE_PRESSURE_PULSE_WIDTH) {
+static uint16_t part_pw(const multi_sound* s, const multi_part* p) {
+    int32_t pw = live_pwm_swing(p->pulse_width, s->pwm_depth, p->lfo_phase);
+    if (s->pressure_target == LIVE_PRESSURE_PULSE_WIDTH) {
         pw = (int32_t)at_most((uint32_t)pw + p->pressure * (uint32_t)LIVE_PW_PER_VALUE,
                               LIVE_PULSE_WIDTH_MAX);
     }
-    if (p->s.velocity_target == LIVE_VELOCITY_PULSE_WIDTH) {
+    if (s->velocity_target == LIVE_VELOCITY_PULSE_WIDTH) {
         pw = live_velocity_pulse(pw, p->velocity);
     }
     return (uint16_t)pw;
 }
 
-static uint8_t part_sr(const multi_part* p) {
-    return p->s.velocity_target == LIVE_VELOCITY_SUSTAIN
-               ? live_velocity_sustain(p->s.sustain_release, p->velocity)
-               : p->s.sustain_release;
+static uint8_t part_sr(const multi_sound* s, const multi_part* p) {
+    return s->velocity_target == LIVE_VELOCITY_SUSTAIN
+               ? live_velocity_sustain(s->sustain_release, p->velocity)
+               : s->sustain_release;
 }
 
 static void write_freq(multi* m, uint32_t v) {
     multi_part* p = &m->p[v];
-    uint16_t f = part_freq(p);
+    uint16_t f = part_freq(sound_of(m, v), p);
     p->freq_out = f;
     put_voice(m, v, 0, (uint8_t)f);
     put_voice(m, v, 1, (uint8_t)(f >> 8));
@@ -104,19 +108,20 @@ static void write_freq(multi* m, uint32_t v) {
 
 static void write_pw(multi* m, uint32_t v) {
     multi_part* p = &m->p[v];
-    uint16_t pw = part_pw(p);
+    uint16_t pw = part_pw(sound_of(m, v), p);
     p->pw_out = pw;
     put_voice(m, v, 2, (uint8_t)pw);
     put_voice(m, v, 3, (uint8_t)(pw >> 8));
 }
 
 static void write_voice(multi* m, uint32_t v) {
-    multi_part* p = &m->p[v];
-    put_voice(m, v, 5, p->s.attack_decay);
-    put_voice(m, v, 6, part_sr(p));
+    const multi_sound* s = sound_of(m, v);
+    const multi_part* p = &m->p[v];
+    put_voice(m, v, 5, s->attack_decay);
+    put_voice(m, v, 6, part_sr(s, p));
     write_pw(m, v);
     write_freq(m, v);
-    put_voice(m, v, 4, part_control(p));
+    put_voice(m, v, 4, part_control(s, p));
 }
 
 static uint16_t filter_cutoff(const multi* m) {
@@ -147,7 +152,7 @@ static void write_filter(multi* m) {
     uint8_t mode = (uint8_t)(m->p[0].s.filter_mode & FILTER_TYPE);
     uint8_t routed = 0;
     for (uint32_t v = 0; mode && v < MULTI_PARTS; v++) {
-        routed = (uint8_t)(routed | m->p[v].s.routed << v);
+        routed = (uint8_t)(routed | sound_of(m, v)->routed << v);
     }
     uint8_t res = (m->locks & MULTI_LOCK_RESONANCE) ? m->resonance_cc : m->p[0].s.resonance;
     if (res != m->resonance_out || routed != m->routed_out) {
@@ -168,12 +173,16 @@ static void unsent(multi* m) {
     m->mode_out = 0xffu;
 }
 
-void multi_fresh(multi* m) {
-    unsent(m);
+static void write_all(multi* m) {
     for (uint32_t v = 0; v < MULTI_PARTS; v++) {
         write_voice(m, v);
     }
     write_filter(m);
+}
+
+void multi_fresh(multi* m) {
+    unsent(m);
+    write_all(m);
 }
 
 static void retake(multi* m) {
@@ -262,6 +271,13 @@ static int read_sound(const multi* m, uint32_t program, char name[LAB_SOUND_NAME
     return 0;
 }
 
+static void sound_start(multi* m, uint32_t v) {
+    multi_part* p = &m->p[v];
+    p->pulse_width = sound_of(m, v)->pulse_width;
+    p->table_pos = 0;
+    p->table_wait = 0;
+}
+
 LIVE_COLD static int load(multi* m, uint32_t part, uint32_t program) {
     char name[LAB_SOUND_NAME + 1u];
     uint8_t sound[LAB_SOUND_BYTES];
@@ -272,9 +288,11 @@ LIVE_COLD static int load(multi* m, uint32_t part, uint32_t program) {
     sound_from(&p->s, sound);
     copy_name(p->s.name, name);
     p->s.program = (uint8_t)program;
-    p->pulse_width = p->s.pulse_width;
-    p->table_pos = 0;
-    p->table_wait = 0;
+    for (uint32_t v = 0; v < MULTI_PARTS; v++) {
+        if (v == part || sound_of(m, v) == &p->s) {
+            sound_start(m, v);
+        }
+    }
     return 1;
 }
 
@@ -283,9 +301,20 @@ int multi_program(multi* m, uint32_t part, uint32_t program) {
     if (!load(m, part, program)) {
         return 0;
     }
-    write_voice(m, part);
-    write_filter(m);
+    if (m->whole) {
+        write_all(m);
+    } else {
+        write_voice(m, part);
+        write_filter(m);
+    }
     return 1;
+}
+
+LIVE_COLD void multi_whole(multi* m, uint32_t whole) {
+    m->whole = (uint8_t)(whole != 0u);
+    for (uint32_t v = 0; v < MULTI_PARTS; v++) {
+        sound_start(m, v);
+    }
 }
 
 static int program_exists(const multi* m, uint32_t program) {
@@ -343,13 +372,13 @@ void multi_note_on(multi* m, uint32_t part, uint8_t note, uint8_t velocity, uint
     }
     if (p->gate) {
         p->gate = 0;
-        put_voice(m, part, 4, part_control(p));
+        put_voice(m, part, 4, part_control(sound_of(m, part), p));
     }
     p->gate = 1;
     p->velocity = velocity > 127u ? 127u : velocity;
     p->pressure = 0;
     p->vibrato_phase = 0;
-    p->vibrato_wait = p->s.vibrato_delay;
+    p->vibrato_wait = sound_of(m, part)->vibrato_delay;
     p->table_pos = 0;
     p->table_wait = 0;
     retake(m);
@@ -364,7 +393,7 @@ void multi_note_off(multi* m, uint32_t part) {
     multi_part* p = &m->p[part];
     p->gate = 0;
     retake(m);
-    put(m, part * VOICE_REGS + 4u, part_control(p));
+    put(m, part * VOICE_REGS + 4u, part_control(sound_of(m, part), p));
 }
 
 void multi_bend(multi* m, uint32_t part, int32_t offset) {
@@ -378,7 +407,7 @@ void multi_wheel(multi* m, uint32_t part, uint8_t value) {
         return;
     }
     multi_part* p = &m->p[part];
-    if (p->s.mod_target == LIVE_MOD_PULSE_WIDTH) {
+    if (sound_of(m, part)->mod_target == LIVE_MOD_PULSE_WIDTH) {
         p->pulse_width = (uint16_t)live_wheel_pulse_width(value);
     } else {
         p->wheel = value;
@@ -418,15 +447,16 @@ void multi_filter(multi* m, uint32_t locks, uint32_t cutoff, uint32_t resonance)
 }
 
 static void table_tick(multi* m, uint32_t v) {
+    const multi_sound* s = sound_of(m, v);
     multi_part* p = &m->p[v];
-    if (++p->table_wait <= p->s.table[LAB_SOUND_TABLE_RATE - LAB_SOUND_TABLE]) {
+    if (++p->table_wait <= s->table[LAB_SOUND_TABLE_RATE - LAB_SOUND_TABLE]) {
         return;
     }
     p->table_wait = 0;
-    uint32_t next = live_table_next(p->s.table, p->table_pos);
+    uint32_t next = live_table_next(s->table, p->table_pos);
     if (next != p->table_pos) {
         p->table_pos = (uint8_t)next;
-        put_voice(m, v, 4, part_control(p));
+        put_voice(m, v, 4, part_control(s, p));
     }
 }
 
@@ -434,22 +464,23 @@ void multi_tick(multi* m) {
     follow_chip(m);
     m->table_frame ^= 1u;
     for (uint32_t v = 0; v < MULTI_PARTS; v++) {
+        const multi_sound* s = sound_of(m, v);
         multi_part* p = &m->p[v];
         if (p->vibrato_wait) {
             p->vibrato_wait--;
         } else {
-            p->vibrato_phase = (uint16_t)(p->vibrato_phase + live_vibrato_step(p->s.vibrato_rate));
+            p->vibrato_phase = (uint16_t)(p->vibrato_phase + live_vibrato_step(s->vibrato_rate));
         }
-        if (p->s.pwm_depth) {
-            p->lfo_phase = (uint16_t)(p->lfo_phase + p->s.pwm_rate);
+        if (s->pwm_depth) {
+            p->lfo_phase = (uint16_t)(p->lfo_phase + s->pwm_rate);
         }
-        if (!m->table_frame && p->note != MULTI_NO_NOTE && table_on(p)) {
+        if (!m->table_frame && p->note != MULTI_NO_NOTE && table_on(s)) {
             table_tick(m, v);
         }
-        if (part_freq(p) != p->freq_out) {
+        if (part_freq(s, p) != p->freq_out) {
             write_freq(m, v);
         }
-        if (part_pw(p) != p->pw_out) {
+        if (part_pw(s, p) != p->pw_out) {
             write_pw(m, v);
         }
     }

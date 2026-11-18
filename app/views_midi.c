@@ -283,13 +283,27 @@ const menu_item MIDI_MULTI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"CLOCK OUT", clock_out_value, clock_out_turn},
 };
 
+static const menu_item MIDI_WHOLE_ITEMS[VIEWS_MIDI_WHOLE_ITEMS] = {
+    {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
+    {part_labels[0], part1_value, part1_turn},
+    {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
+    {"CHORD 2", chord2_value, chord2_turn},  {"CHORD 3", chord3_value, chord3_turn},
+    {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", midi_rows_value, midi_rows_turn},
+    {"WHEEL", wheel_value, wheel_turn},      {"CLOCK", clock_value, clock_turn},
+    {"CLOCK OUT", clock_out_value, clock_out_turn},
+};
+
 static void midi_items(views* v) {
     midi_route_setup s;
-    int multi_mode = midi_setup(v, &s) && s.mode == MIDI_MODE_MULTI;
-    if (multi_mode) {
+    uint32_t mode = midi_setup(v, &s) ? s.mode : MIDI_MODE_OMNI;
+    if (mode == MIDI_MODE_MULTI || mode == MIDI_MODE_WHOLE_A) {
         part_labels_for(s.base);
     }
-    v->midi.items = multi_mode ? MIDI_MULTI_ITEMS : MIDI_ITEMS;
+    v->midi.items = mode == MIDI_MODE_MULTI     ? MIDI_MULTI_ITEMS
+                    : mode == MIDI_MODE_WHOLE_A ? MIDI_WHOLE_ITEMS
+                                                : MIDI_ITEMS;
+    v->midi.count = (uint8_t)(mode == MIDI_MODE_WHOLE_A ? VIEWS_MIDI_WHOLE_ITEMS : VIEWS_MIDI_ITEMS);
+    menu_move(&v->midi, 0);
 }
 
 const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {

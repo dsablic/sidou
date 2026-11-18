@@ -130,12 +130,16 @@ fn booted_with_user_sounds(fw: &Firmware) -> Machine {
     m
 }
 
-fn multi_on(m: &mut Machine, fw: &Firmware) {
+fn mode_on(m: &mut Machine, fw: &Firmware, want: u32) {
     assert_eq!(mode(m, fw), sidou_sys::MIDI_MODE_OMNI as u8);
     open_midi_page(m);
-    turn(m, ALGORITHM, -3);
-    assert_eq!(mode(m, fw), sidou_sys::MIDI_MODE_MULTI as u8);
+    turn(m, ALGORITHM, want as i32 - sidou_sys::MIDI_MODE_OMNI as i32);
+    assert_eq!(u32::from(mode(m, fw)), want);
     m.run_ms(100);
+}
+
+fn multi_on(m: &mut Machine, fw: &Firmware) {
+    mode_on(m, fw, sidou_sys::MIDI_MODE_MULTI);
 }
 
 #[test]
@@ -209,6 +213,34 @@ fn multitimbral_plays_three_parts_on_chip_a_and_the_instrument_on_chip_b() {
     );
 }
 
+fn busiest_pass_and_audio_block(
+    m: &mut Machine,
+    fw: &Firmware,
+    what: &str,
+    message: impl FnMut(u32) -> Vec<u8>,
+) {
+    press(m, HOME);
+    m.run_ms(700);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let from = m.alnk_blocks.len();
+    let fed = m.midi_paced(2000, message);
+    assert_eq!(m.soc.periph.midi_dropped(), 0);
+    assert!(m.soc.periph.midi_queued() > 0, "the jack ran dry");
+    let worst = m.passes.iter().copied().max().unwrap_or(0);
+    let block = m.alnk_blocks[from..].iter().copied().max().unwrap_or(0) as f64 / BLOCK_FRAMES;
+    println!("{what}: {fed} messages in 2 s, the busiest pass {worst}, the audio's worst block {block:.1} a sample");
+    assert!(
+        worst <= common::POLL_INSTRUCTIONS,
+        "a pass took {worst} instructions, over the poll allowance"
+    );
+    assert!(
+        block <= common::AUDIO_TARGET,
+        "the audio interrupt took {block:.1} a sample, over its target"
+    );
+}
+
+const BLOCK_FRAMES: f64 = 128.0;
+
 #[test]
 fn a_dense_four_channel_stream_with_program_changes_keeps_every_pass_within_the_allowance() {
     let Some(fw) = firmware("the MIDI modes stream test") else {
@@ -216,10 +248,7 @@ fn a_dense_four_channel_stream_with_program_changes_keeps_every_pass_within_the_
     };
     let mut m = booted_with_user_sounds(&fw);
     multi_on(&mut m, &fw);
-    press(&mut m, HOME);
-    m.run_ms(700);
-    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    let fed = m.midi_paced(2000, |i| {
+    busiest_pass_and_audio_block(&mut m, &fw, "MULTITIMBRAL", |i| {
         let ch = (i % 4) as u8;
         let n = 48 + (i / 16 % 24) as u8;
         match i / 4 % 5 {
@@ -230,14 +259,139 @@ fn a_dense_four_channel_stream_with_program_changes_keeps_every_pass_within_the_
             _ => vec![0x80 | ch, n, 0],
         }
     });
-    assert_eq!(m.soc.periph.midi_dropped(), 0);
-    assert!(m.soc.periph.midi_queued() > 0, "the jack ran dry");
-    let worst = m.passes.iter().copied().max().unwrap_or(0);
-    println!("MULTITIMBRAL: {fed} messages in 2 s, the busiest pass {worst}");
-    assert!(
-        worst <= common::POLL_INSTRUCTIONS,
-        "a pass took {worst} instructions, over the poll allowance"
+}
+
+fn whole_a_on(m: &mut Machine, fw: &Firmware) {
+    mode_on(m, fw, sidou_sys::MIDI_MODE_WHOLE_A);
+}
+
+const OPTION_ROW: i32 = 3;
+const ARP_RATE_ROW: i32 = 7;
+
+fn page_row(m: &mut Machine, from: i32, to: i32, clicks: i32) {
+    turn(m, SELECT, to - from);
+    turn(m, ALGORITHM, clicks);
+    m.run_ms(100);
+}
+
+fn voice_1_notes(m: &mut Machine, fw: &Firmware, ms: u64) -> Vec<u32> {
+    let mut seen: Vec<u32> = Vec::new();
+    for _ in 0..ms / 5 {
+        m.run_ms(5);
+        let f = voices(m, fw, 0)[0].1;
+        if seen.last() != Some(&f) {
+            seen.push(f);
+        }
+    }
+    seen
+}
+
+#[test]
+fn whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp() {
+    let Some(fw) = firmware("the WHOLE A test") else {
+        return;
+    };
+    let mut m = booted_with_user_sounds(&fw);
+    whole_a_on(&mut m, &fw);
+    assert_eq!(keys_chip(&mut m, &fw), 1, "the instrument went to chip B");
+    m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
+    m.run_ms(50);
+    let a = voices(&mut m, &fw, 0);
+    assert_eq!(
+        gates(&mut m, &fw, 0),
+        3,
+        "POLY: a chord on three voices {a:?}"
     );
+    assert!(
+        a[0].1 < a[1].1 && a[1].1 < a[2].1,
+        "at their pitches: {a:?}"
+    );
+    assert_eq!(waveforms(&mut m, &fw, 0), [SAW; 3], "one sound, N's");
+    assert_eq!(gates(&mut m, &fw, 1), 0, "not the instrument's");
+    m.midi(&[0x80, 60, 0, 0x80, 64, 0, 0x80, 67, 0, 0xC0, 1]);
+    m.run_ms(50);
+    m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
+    m.run_ms(50);
+    assert_eq!(waveforms(&mut m, &fw, 0), [PULSE; 3], "program 1: PWM BASS");
+    m.midi(&[0x80, 60, 0, 0x80, 64, 0, 0x80, 67, 0, 0xC0, 16 + 4]);
+    m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
+    m.run_ms(50);
+    assert_eq!(part_name(&mut m, &fw, 0), "PAD 5", "USER 5");
+    assert_eq!(waveforms(&mut m, &fw, 0), [SAW; 3], "on all three");
+    m.midi(&[0x80, 60, 0, 0x80, 64, 0, 0x80, 67, 0, 0xC0, 0]);
+    m.run_ms(50);
+    assert_eq!(gates(&mut m, &fw, 0), 0);
+
+    page_row(&mut m, 0, OPTION_ROW, 1);
+    m.midi(&[0x90, 60, 100]);
+    m.run_ms(50);
+    let chord = voices(&mut m, &fw, 0);
+    assert_eq!(
+        gates(&mut m, &fw, 0),
+        3,
+        "CHORD: one key, three voices {chord:?}"
+    );
+    let ratio = |v: usize| chord[v].1 as f64 / chord[0].1 as f64;
+    assert!(
+        (ratio(1) - 2f64.powf(4.0 / 12.0)).abs() < 0.01 && (ratio(2) - 1.5).abs() < 0.01,
+        "a major triad: {chord:?}"
+    );
+    m.midi(&[0x80, 60, 0]);
+    m.run_ms(50);
+    assert_eq!(gates(&mut m, &fw, 0), 0);
+
+    page_row(&mut m, OPTION_ROW, OPTION_ROW, 1);
+    m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
+    let notes = voice_1_notes(&mut m, &fw, 400);
+    assert_eq!(gates(&mut m, &fw, 0), 1, "ARP: voice 1 alone");
+    assert!(
+        notes.len() >= 6 && notes[..3] == [notes[3], notes[4], notes[5]],
+        "three notes in turn every 3 frames: {notes:?}"
+    );
+    assert!(
+        notes[0] < notes[1] && notes[1] < notes[2],
+        "as pressed: {notes:?}"
+    );
+
+    page_row(&mut m, OPTION_ROW, ARP_RATE_ROW, -3);
+    m.midi(&[0x90, 60, 100, 0x90, 64, 100, 0x90, 67, 100]);
+    assert_eq!(
+        voice_1_notes(&mut m, &fw, 200).len(),
+        1,
+        "CLOCK: no clock, no step"
+    );
+    let mut stepped = Vec::new();
+    for k in 0..12 {
+        let was = voices(&mut m, &fw, 0)[0].1;
+        m.midi(&[0xF8]);
+        m.run_ms(5);
+        if voices(&mut m, &fw, 0)[0].1 != was {
+            stepped.push(k);
+        }
+    }
+    assert_eq!(stepped, [5, 11], "a step every 16th of the clock");
+}
+
+#[test]
+fn whole_a_with_dense_chords_and_an_arpeggio_keeps_every_pass_and_audio_block_within_budget() {
+    let Some(fw) = firmware("the WHOLE A stream test") else {
+        return;
+    };
+    let mut m = booted_with_user_sounds(&fw);
+    whole_a_on(&mut m, &fw);
+    turn(&mut m, SELECT, OPTION_ROW);
+    turn(&mut m, ALGORITHM, 2);
+    busiest_pass_and_audio_block(&mut m, &fw, "WHOLE A ARP", |i| {
+        let n = 48 + (i / 8 % 24) as u8;
+        match i % 6 {
+            0 => vec![0x90, n, 100],
+            1 => vec![0xE0, (i % 128) as u8, (i / 128 % 128) as u8],
+            2 => vec![0xB0, 74, (i % 128) as u8],
+            3 => vec![0xC0, (16 + i / 20 % 16) as u8],
+            4 => vec![0xB0, 1, (i % 128) as u8],
+            _ => vec![0x80, n.wrapping_sub(24), 0],
+        }
+    });
 }
 
 fn live_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {

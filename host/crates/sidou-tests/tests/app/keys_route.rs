@@ -955,7 +955,7 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
     let mut route = Box::<midi_route>::default();
     let mut s = midi_route_setup::default();
     unsafe {
-        midi_route_init(&mut *route, &mut *k.live, &mut *k.kr, std::ptr::null());
+        midi_route_init(&mut *route, &mut *k.live, &mut *k.kr);
         midi_route_setup_default(&mut s);
     }
     s.mode = MIDI_MODE_MULTI as u8;

@@ -216,18 +216,14 @@ fn every_expert_knob_popup_has_its_name_and_physical_units() {
     );
 }
 
-#[test]
-fn the_midi_page_names_each_edited_value_in_the_popup() {
+fn midi_page_popups(mode_turn: i32, want: &[(&str, &str)]) {
     let mut ui = Ui::new();
     let mut route = Box::<midi_route>::default();
     let mut sync = Box::<midi_sync>::default();
+    let mut parts = crate::multi::Parts::new(&ui.rig.live);
     unsafe {
-        midi_route_init(
-            &mut *route,
-            &mut *ui.rig.live,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-        );
+        midi_route_init(&mut *route, &mut *ui.rig.live, std::ptr::null_mut());
+        midi_route_parts(&mut *route, &mut *parts.m);
         midi_sync_init(&mut *sync);
         views_route(&mut *ui.v, &mut *route);
         views_sync(&mut *ui.v, &mut *sync);
@@ -237,30 +233,42 @@ fn the_midi_page_names_each_edited_value_in_the_popup() {
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
-    for (i, (name, value)) in [
-        ("MODE", "OMNI"),
-        ("CHANNEL", "2"),
-        ("OPTION", "CHORD"),
-        ("LEGATO", "ON"),
-        ("CHORD 2", "+5"),
-        ("CHORD 3", "+8"),
-        ("ARP RATE", "4 FR"),
-        ("ROWS/BEAT", "5"),
-        ("WHEEL", "PULSE"),
-        ("CLOCK", "FOLLOW"),
-        ("CLOCK OUT", "ON"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    for (i, &(name, value)) in want.iter().enumerate() {
         if i != 0 {
             ui.turn(PANEL_ENC_SELECT, 1);
         }
-        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        ui.turn(PANEL_ENC_ALGORITHM, if i == 0 { mode_turn } else { 1 });
         frames_until_whole(&mut ui);
         assert_eq!(says(&ui), (name.to_owned(), value.to_owned()), "item {i}");
         ui.popup_gone();
     }
+}
+
+const MIDI_PAGE_TAIL: [(&str, &str); 8] = [
+    ("OPTION", "CHORD"),
+    ("LEGATO", "ON"),
+    ("CHORD 2", "+5"),
+    ("CHORD 3", "+8"),
+    ("ARP RATE", "4 FR"),
+    ("ROWS/BEAT", "5"),
+    ("WHEEL", "PULSE"),
+    ("CLOCK", "FOLLOW"),
+];
+
+#[test]
+fn the_midi_page_names_each_edited_value_in_the_popup() {
+    let mut want = vec![("MODE", "OMNI"), ("CHANNEL", "2")];
+    want.extend(MIDI_PAGE_TAIL);
+    want.push(("CLOCK OUT", "ON"));
+    midi_page_popups(1, &want);
+}
+
+#[test]
+fn whole_as_sound_row_names_its_channel_and_sound_in_the_popup() {
+    let mut want = vec![("MODE", "WHOLE A"), ("CHANNEL", "2"), ("CH2", "PWM BASS")];
+    want.extend(MIDI_PAGE_TAIL);
+    want.push(("CLOCK OUT", "ON"));
+    midi_page_popups(-2, &want);
 }
 
 fn grid_copy(ui: &Ui) -> (Vec<u8>, Vec<u8>) {

@@ -294,7 +294,7 @@ void midi_init(live* l, keys_route* kr) {
     __builtin_memset((void*)&in_ring, 0, sizeof in_ring);
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
-    midi_route_init(&routing, l, kr, NULL);
+    midi_route_init(&routing, l, kr);
     multi_init(&parts, reg_ring_sink, audio_sink_ctx(), l, kr);
     midi_route_parts(&routing, &parts);
     midi_rx_route(&rx, &routing);
