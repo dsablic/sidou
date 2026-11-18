@@ -17,6 +17,15 @@
 #define LOAD_PAUSED 1u
 #define LOAD_WAKE 2u
 #define LOAD_CONTINUE 3u
+#define FF_NARROW 0u
+#define FF_SEEK 1u
+#define FF_RESUME 2u
+#define ALL_VOICES 7u
+#define SLAM_RESONANCE 0xf0u
+#define SLAM_LOW_PASS 0x10u
+#define FILTER_MODES 0x70u
+#define DIVE_STEP_SAMPLES (SONG_PUNCH_DIVE_SAMPLES / SONG_PUNCH_DIVE_STEPS)
+#define DIVE_ONE 32768u
 
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
@@ -102,6 +111,34 @@ __attribute__((noinline)) static void song_held(song_ctl* sc, const song_cmd* c)
     sc->lock_pin = (uint8_t)(n ? sc->lock_pin | 1u << ch : sc->lock_pin & ~(1u << ch));
 }
 
+static void copy_player(gt2_player* to, const gt2_player* from) {
+    const uint32_t* f = (const uint32_t*)(const void*)from;
+    for (uint32_t i = 0u; i < offsetof(gt2_player, draft) / 4u; i++)
+        ((volatile uint32_t*)(void*)to)[i] = f[i];
+}
+
+__attribute__((noinline)) static void song_punch(song_ctl* sc, uint32_t pads, gt2_player* keep,
+                                                 uint32_t beat) {
+    uint32_t on = pads & ~(uint32_t)sc->punch;
+    if (on & SONG_PUNCH_DIVE)
+        sc->dive_at = sc->samples;
+    if (on & SONG_PUNCH_STUTTER) {
+        copy_player(keep, &sc->player);
+        sc->stutter_from = sc->calls;
+        sc->stutter_len = beat;
+        sc->armed = 1u;
+        sc->armed_now = 0u;
+        sc->armed_state = keep;
+        sc->armed_shape = sc->player.shape;
+        sc->armed_call = sc->calls + beat;
+    } else if (!(pads & SONG_PUNCH_STUTTER) && sc->stutter_len) {
+        sc->stutter_len = 0u;
+        sc->armed = 0u;
+    }
+    sc->punch = (uint8_t)pads;
+    sid_set_mute(sc->chip, (uint8_t)(pads & SONG_PUNCH_MUTE ? ALL_VOICES : 0u));
+}
+
 static void song_apply(song_ctl* sc, const song_cmd* c) {
     switch (c->kind) {
     case SONG_CMD_PLAY:
@@ -140,6 +177,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
             cancel |= sc->player.jam_voices;
         sc->isr_playing = 0u;
         sc->audition = 0u;
+        SIDOU_FAR(song_punch)(sc, 0u, 0, 0u);
         sc->armed = 0u;
         sc->player.jam_voices = 0u;
         for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++) {
@@ -221,6 +259,9 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
     case SONG_CMD_HELD:
         song_held(sc, c);
         break;
+    case SONG_CMD_PUNCH:
+        SIDOU_FAR(song_punch)(sc, c->a, (gt2_player*)c->u.p.ptr, c->u.p.x);
+        break;
     case SONG_CMD_PERIOD:
         sc->period.q = c->u.p.x;
         sc->period.r = c->u.p.y;
@@ -280,16 +321,17 @@ static void song_handover(song_ctl* sc) {
         }
         return;
     }
-    const uint32_t* from = (const uint32_t*)(const void*)sc->armed_state;
-    uint32_t* to = (uint32_t*)(void*)&sc->player;
-    for (uint32_t i = 0u; i < offsetof(gt2_player, draft) / 4u; i++)
-        ((volatile uint32_t*)to)[i] = from[i];
+    copy_player(&sc->player, sc->armed_state);
     sc->player.shape = sc->armed_shape;
     if (sc->armed_now)
         sc->calls = sc->armed_call;
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++)
         sc->shadow[r] = sc->player.regs[r];
     SIDOU_FAR(song_rewrite)(sc, sc->chip);
+    if (sc->stutter_len) {
+        sc->armed_call += sc->stutter_len;
+        return;
+    }
     sc->armed = 0u;
     sc->handover_ok = 1u;
     sc->handover_seq = sc->armed_seq;
@@ -402,8 +444,43 @@ __attribute__((noinline)) static uint32_t slide(song_ctl* sc, uint8_t r[GT2_SID_
     return mask;
 }
 
+#ifdef __PI32V2__
+__attribute__((section(".data.song_punch_dive")))
+#endif
+static const uint16_t DIVE[SONG_PUNCH_DIVE_STEPS + 1u] = {
+    32768, 32066, 31379, 30706, 30048, 29405, 28774, 28158, 27554, 26964, 26386,
+    25821, 25268, 24726, 24196, 23678, 23170, 22674, 22188, 21713, 21247, 20792,
+    20347, 19911, 19484, 19066, 18658, 18258, 17867, 17484, 17109, 16743, 16384};
+
+__attribute__((noinline)) static uint32_t punch_slam(uint8_t r[GT2_SID_REGS]) {
+    r[0x15] = (uint8_t)(r[0x15] & 0xf8u);
+    r[0x16] = 0u;
+    r[0x17] = (uint8_t)((r[0x17] & 0x0fu) | SLAM_RESONANCE | ALL_VOICES);
+    r[0x18] = (uint8_t)((r[0x18] & (uint8_t)~FILTER_MODES) | SLAM_LOW_PASS);
+    return 0xfu << 0x15;
+}
+
+__attribute__((noinline)) static uint32_t punch_dive(const song_ctl* sc, uint8_t r[GT2_SID_REGS],
+                                                     uint8_t drop) {
+    uint32_t step = (sc->samples - sc->dive_at) / DIVE_STEP_SAMPLES;
+    uint32_t k = DIVE[step < SONG_PUNCH_DIVE_STEPS ? step : SONG_PUNCH_DIVE_STEPS];
+    uint32_t mask = 0u;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        if ((drop >> ch) & 1u)
+            continue;
+        uint32_t x = ch * 7u;
+        uint32_t f = ((uint32_t)r[x] | (uint32_t)r[x + 1u] << 8) * k / DIVE_ONE;
+        r[x] = (uint8_t)f;
+        r[x + 1u] = (uint8_t)(f >> 8);
+        mask |= 3u << x;
+    }
+    return mask;
+}
+
 static void song_lock_apply(song_ctl* sc) {
-    if (!(sc->lock_n[0] | sc->lock_n[1] | sc->lock_n[2] | sc->lock_regs | sc->slide_now | sc->gliding))
+    uint32_t punch = sc->punch & (SONG_PUNCH_SLAM | SONG_PUNCH_DIVE);
+    if (!(sc->lock_n[0] | sc->lock_n[1] | sc->lock_n[2] | sc->lock_regs | sc->slide_now |
+          sc->gliding | punch))
         return;
     uint8_t r[GT2_SID_REGS];
     uint32_t mask = 0u;
@@ -455,6 +532,10 @@ static void song_lock_apply(song_ctl* sc) {
             }
         }
     }
+    if (punch & SONG_PUNCH_SLAM)
+        mask |= punch_slam(r);
+    if (punch & SONG_PUNCH_DIVE)
+        mask |= punch_dive(sc, r, drop);
     uint32_t all = mask | sc->lock_regs;
     for (uint32_t g = 0u; all != 0u; g++, all >>= 1) {
         if (all & 1u)
@@ -523,6 +604,8 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
         return;
     const uint32_t end = sc->digi_end;
     int32_t level = sc->digi_level;
+    const int32_t keep = sc->punch & SONG_PUNCH_MUTE ? 0 : -1;
+    int32_t heard = level & keep;
     int16_t* const last = out + n;
     int16_t* next = out + sc->digi_left;
     do {
@@ -534,10 +617,11 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
             }
             uint32_t two = SONG_DIGI_DATA[i >> 1];
             level = ((int32_t)((two >> ((i & 1u) << 2)) & 15u) - 8) * SONG_DIGI_LEVEL;
+            heard = level & keep;
             i++;
             next = out + SONG_DIGI_SPAN;
         }
-        int32_t x = *out + level;
+        int32_t x = *out + heard;
         x = x < -32768 ? -32768 : x;
         *out = (int16_t)(x > 32767 ? 32767 : x);
     } while (++out < last);
@@ -764,6 +848,7 @@ int song_ctl_stop(song_ctl* sc) {
     c.a = sc->hooks.chip_a_keys ? NO_GATE : sc->keys_gate_reset;
     c.b = cancel_jams(sc);
     sc->ff_stop |= sc->ff_on;
+    sc->stutter = SONG_STUTTER_OFF;
     sc->stop_seq = push(sc, &c);
     sc->handback = 1u;
     sc->state = SONG_STOPPED;
@@ -1038,6 +1123,36 @@ int song_ctl_funktempo(song_ctl* sc, uint32_t left, uint32_t right) {
     return 1;
 }
 
+static int stutter_may_start(const song_ctl* sc, uint32_t beat_calls) {
+    return beat_calls && sc->state == SONG_PLAYING && !sc->ff_on && !sc->ff_stop && !sc->deriving &&
+           !sc->want_handover && !sc->handback;
+}
+
+int song_ctl_punch(song_ctl* sc, uint32_t pads, uint32_t beat_calls) {
+    if (room(sc) < 1u)
+        return 0;
+    pads = sc->state == SONG_PLAYING ? pads & SONG_PUNCH_PADS : 0u;
+    uint32_t holding = sc->stutter == SONG_STUTTER_HOLD;
+    if ((pads & SONG_PUNCH_STUTTER) && !holding && !stutter_may_start(sc, beat_calls))
+        pads &= ~SONG_PUNCH_STUTTER;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_PUNCH);
+    c.a = (uint8_t)pads;
+    c.u.p.ptr = &sc->w->ff;
+    c.u.p.x = beat_calls;
+    uint32_t seq = push(sc, &c);
+    if ((pads & SONG_PUNCH_STUTTER) && !holding) {
+        sc->stutter = SONG_STUTTER_HOLD;
+        sc->ff_on = 1u;
+        sc->ff_sent = 0u;
+        sc->ff_now = FF_RESUME;
+    } else if (!(pads & SONG_PUNCH_STUTTER) && holding) {
+        sc->stutter = SONG_STUTTER_LEAVING;
+        sc->stutter_seq = seq;
+    }
+    return 1;
+}
+
 int song_ctl_set_period(song_ctl* sc, song_period p) {
     if (room(sc) < 1u || p.den == 0u || p.q < SONG_BLOCK)
         return 0;
@@ -1221,7 +1336,7 @@ static void far_frame(gt2_player* p, gt2_sid_fn sink, void* ctx) {
 
 static void start_ff(song_ctl* sc, uint32_t target, uint8_t now) {
     song_work* w = sc->w;
-    far_start(&w->ff, sc->song, sc->shapes[now ? sc->active : spare(sc)], sc->start);
+    far_start(&w->ff, sc->song, sc->shapes[now != FF_NARROW ? sc->active : spare(sc)], sc->start);
     sc->ff_calls = 0u;
     sc->ff_target = target;
     sc->ff_now = now;
@@ -1238,7 +1353,7 @@ int song_ctl_seek(song_ctl* sc, uint32_t call) {
 }
 
 int song_ctl_seek_further(song_ctl* sc, uint32_t call) {
-    if (!sc->ff_on || sc->ff_sent || sc->ff_stop || !sc->ff_now)
+    if (!sc->ff_on || sc->ff_sent || sc->ff_stop || sc->ff_now != FF_SEEK)
         return 0;
     if (call > sc->ff_target)
         sc->ff_target = call;
@@ -1301,7 +1416,7 @@ static void poll_applied(song_ctl* sc, int may_ring) {
         sc->ff_sent = 0u;
         if (sc->handover_ok) {
             sc->ff_on = 0u;
-            if (!sc->ff_now) {
+            if (sc->ff_now == FF_NARROW) {
                 sc->active = spare(sc);
                 sc->want_handover = 0u;
             }
@@ -1312,8 +1427,12 @@ static void poll_applied(song_ctl* sc, int may_ring) {
         sc->ff_stop = 0u;
         if (sc->ff_on) {
             sc->ff_on = sc->ff_sent = 0u;
-            sc->want_handover = 1u;
+            sc->want_handover = (uint8_t)(sc->ff_now != FF_RESUME);
         }
+    }
+    if (sc->stutter == SONG_STUTTER_LEAVING && (int32_t)(a - sc->stutter_seq) >= 0) {
+        sc->ff_calls = sc->stutter_from;
+        sc->stutter = SONG_STUTTER_OFF;
     }
     if (sc->handback && may_ring && (int32_t)(a - sc->stop_seq) >= 0) {
         sc->handback = 0u;
@@ -1330,9 +1449,9 @@ static void poll_applied(song_ctl* sc, int may_ring) {
 
 static void poll_ff(song_ctl* sc) {
     song_work* w = sc->w;
-    if (sc->ff_sent || sc->ff_stop || sc->handback)
+    if (sc->ff_sent || sc->ff_stop || sc->handback || sc->stutter)
         return;
-    uint32_t target = sc->ff_now ? sc->ff_target : sc->calls + SONG_HANDOVER_LEAD;
+    uint32_t target = sc->ff_now == FF_SEEK ? sc->ff_target : sc->calls + SONG_HANDOVER_LEAD;
     for (uint32_t i = 0u; i < SONG_FF_CALLS && sc->ff_calls < target; i++) {
         far_frame(&w->ff, discard, 0);
         sc->ff_calls++;
@@ -1341,9 +1460,9 @@ static void poll_ff(song_ctl* sc) {
         return;
     song_cmd c;
     cmd_init(&c, SONG_CMD_HANDOVER);
-    c.a = sc->ff_now;
+    c.a = sc->ff_now == FF_SEEK;
     c.u.p.ptr = &w->ff;
-    c.u.p.ptr2 = sc->shapes[sc->ff_now ? sc->active : spare(sc)];
+    c.u.p.ptr2 = sc->shapes[sc->ff_now != FF_NARROW ? sc->active : spare(sc)];
     c.u.p.x = sc->ff_calls;
     sc->ff_seq = push(sc, &c);
     sc->ff_sent = 1u;
