@@ -1414,7 +1414,13 @@ fn another_knobs_popup_replaces_the_shown_one_a_band_a_frame_and_ends_whole() {
         worst = worst.max(ui.frame_sent().cells);
     }
     let after = says(&ui);
-    assert_ne!(after.0, before.0, "the new knob's name replaced the old one");
-    assert!(worst <= BAND_CELLS, "a frame of the swap sent {worst} cells");
+    assert_ne!(
+        after.0, before.0,
+        "the new knob's name replaced the old one"
+    );
+    assert!(
+        worst <= BAND_CELLS,
+        "a frame of the swap sent {worst} cells"
+    );
     assert_eq!(rows(&ui), SCREEN_POPUP_ROWS as usize);
 }

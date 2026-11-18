@@ -354,7 +354,10 @@ fn row_starts(sng: &[u8], rows: u32) -> Vec<u32> {
 }
 
 fn row_lengths_after_the_first(sng: &[u8], rows: u32) -> Vec<u32> {
-    row_starts(sng, rows).windows(2).map(|w| w[1] - w[0]).collect()
+    row_starts(sng, rows)
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .collect()
 }
 
 fn row_lengths_from_the_first(sng: &[u8], rows: u32) -> Vec<u32> {

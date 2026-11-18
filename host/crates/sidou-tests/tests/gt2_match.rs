@@ -1459,6 +1459,10 @@ fn a_text_song_plays_as_goattrackers_player_plays_it_from_its_first_row() {
             .replace("BPM", &bpm.to_string())
             .replace("SWING", swing);
         let sng = sidou_patch::json::song_song(&text, SID_MODEL_6581).unwrap();
-        check_every_subtune_exactly(&format!("text song {bpm} {swing}"), &sng, &default_options());
+        check_every_subtune_exactly(
+            &format!("text song {bpm} {swing}"),
+            &sng,
+            &default_options(),
+        );
     }
 }

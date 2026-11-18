@@ -62,12 +62,12 @@ fn popup(m: &mut Machine, fw: &Firmware) -> (String, String) {
     (
         text_at(
             m,
-            at + ilp32::screen_popup_state::name as u32,
+            at + ilp32::screen_popup_state::want as u32 + ilp32::screen_popup_face::name as u32,
             SCREEN_POPUP_TEXT,
         ),
         text_at(
             m,
-            at + ilp32::screen_popup_state::value as u32,
+            at + ilp32::screen_popup_state::want as u32 + ilp32::screen_popup_face::value as u32,
             SCREEN_POPUP_TEXT,
         ),
     )

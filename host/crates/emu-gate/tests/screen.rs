@@ -1012,8 +1012,18 @@ fn the_midi_page_popup_names_the_item_and_its_value() {
             .collect();
         String::from_utf8(bytes).unwrap()
     };
-    assert_eq!(text(sidou_sys::ilp32::screen_popup_state::name), "CHANNEL");
-    assert_eq!(text(sidou_sys::ilp32::screen_popup_state::value), "2");
+    assert_eq!(
+        text(
+            sidou_sys::ilp32::screen_popup_state::want + sidou_sys::ilp32::screen_popup_face::name
+        ),
+        "CHANNEL"
+    );
+    assert_eq!(
+        text(
+            sidou_sys::ilp32::screen_popup_state::want + sidou_sys::ilp32::screen_popup_face::value
+        ),
+        "2"
+    );
     compare_golden(&build, "midi-popup", &m.soc.lcd.fb, &[]);
 }
 

@@ -1880,7 +1880,10 @@ fn a_second_knob_in_the_popups_life_keeps_every_frame_within_200_cells() {
                 cells.push(s.ui.frame_sent().cells);
             }
             let worst = cells.iter().copied().max().unwrap();
-            assert!(worst <= FRAME_CELLS, "{name}, second knob after {gap} frames: {cells:?}");
+            assert!(
+                worst <= FRAME_CELLS,
+                "{name}, second knob after {gap} frames: {cells:?}"
+            );
         }
     }
 }

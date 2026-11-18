@@ -682,7 +682,10 @@ fn turned(s: &mut Sids, enc: u32, steps: i32) -> (String, String) {
             .unwrap()
             .to_owned()
     };
-    (text(&s.ui.v.popup.want.name), text(&s.ui.v.popup.want.value))
+    (
+        text(&s.ui.v.popup.want.name),
+        text(&s.ui.v.popup.want.value),
+    )
 }
 
 fn says(name: &str, value: &str) -> (String, String) {
