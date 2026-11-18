@@ -1861,11 +1861,29 @@ fn a_sidou_step_pattern_is_the_lane_steps_keys_make() {
 #[test]
 fn a_second_knob_in_the_popups_life_keeps_every_frame_within_200_cells() {
     const FRAME_CELLS: usize = 200;
-    let scenarios: [(&str, fn(&mut Song), [u32; 2]); 2] = [
-        ("groove", groove, [PANEL_ENC_K2, PANEL_ENC_K1]),
-        ("held step", |s| hold(s, 0), [PANEL_ENC_K4, PANEL_ENC_K2]),
+    struct Scenario {
+        name: &'static str,
+        set_up: fn(&mut Song),
+        knobs: [u32; 2],
+    }
+    let scenarios = [
+        Scenario {
+            name: "groove",
+            set_up: groove,
+            knobs: [PANEL_ENC_K2, PANEL_ENC_K1],
+        },
+        Scenario {
+            name: "held step",
+            set_up: |s| hold(s, 0),
+            knobs: [PANEL_ENC_K4, PANEL_ENC_K2],
+        },
     ];
-    for (name, set_up, [first, second]) in scenarios {
+    for Scenario {
+        name,
+        set_up,
+        knobs: [first, second],
+    } in scenarios
+    {
         for gap in 0..8 {
             let mut s = step();
             set_up(&mut s);
