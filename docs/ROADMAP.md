@@ -61,6 +61,11 @@ Sizes: S is under a day of work, M a few days, L more.
 - **Faster test CI.** An optional sharded emu-gate workflow on GitHub's x86 runners (the gate's
   JIT works there), to take the emulator stage off the local machine. S-M.
 
+- **48 kHz USB recording** (only if players ask; SIDOU is 44.1 kHz only): the resampler shares
+  TIMER5's tick with the USB poll, so on the FM-1 it loses about 10 % of the frames (felucca-bsp
+  #16's 30-minute test, 2026-11-18). Smaller resampler slices, the poll first, the poll timed by
+  the clock. S-M.
+
 ## Parked
 
 - **The 8580 mixer's grit** (measured, not kept): the spike (its branch `mixer-8580` no longer exists; the measurements are here) puts
