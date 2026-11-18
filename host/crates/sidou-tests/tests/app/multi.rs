@@ -360,8 +360,6 @@ fn a_sounds_table_steps_its_parts_waveform_and_pitch() {
 fn under_a_song_a_note_takes_its_voice_and_the_filter_stays_the_songs() {
     let (_, mut p) = rig_parts();
     p.kr.song_on = 1;
-    p.tick();
-    p.chip.log.clear();
     p.on(1, C4, 127);
     assert_eq!(p.taken.0, [0b010], "the song gives voice 2 up at once");
     assert_eq!(unsafe { multi_taken(&*p.m) }, 0b010);

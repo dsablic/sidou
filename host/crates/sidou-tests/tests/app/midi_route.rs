@@ -736,6 +736,33 @@ fn songs_come_from_the_instruments_channel_or_channel_n_only() {
 }
 
 #[test]
+fn programs_16_to_31_on_the_instruments_channel_load_its_kept_user_sounds() {
+    unsafe extern "C" fn load(ctx: *mut c_void, n: u32) -> i32 {
+        unsafe { &mut *ctx.cast::<Vec<u32>>() }.push(n);
+        1
+    }
+    let mut r = Route::new();
+    let mut loads = Box::<Vec<u32>>::default();
+    r.rig.live.user_load = Some(load);
+    r.rig.live.user_ctx = (&mut *loads as *mut Vec<u32>).cast();
+    r.rig.live.sounds_valid = 1 << 2;
+    r.trs(&[0xC0, 18, 0xC0, 19, 0xC0, 32, 0xC0, 4]);
+    assert_eq!(*loads, [2], "an empty slot and other programs load nothing");
+    let pc = |n: u8| midi_msg {
+        kind: MIDI_PROGRAM,
+        channel: 0,
+        data1: n,
+        ..Default::default()
+    };
+    let edits = |r: &Route, n: u8| unsafe { midi_route_edits_live(&*r.route, &pc(n)) };
+    assert_eq!(
+        (edits(&r, 18), edits(&r, 19)),
+        (1, 0),
+        "MIDI out hears the kept one"
+    );
+}
+
+#[test]
 fn bank_2_applies_saved_user_profiles_to_the_instrument_and_ignores_empty_slots() {
     let mut r = Route::new();
     r.trs(&[0xB0, 32, 2, 0xC0, SID_CHIP_8580_R5 as u8]);

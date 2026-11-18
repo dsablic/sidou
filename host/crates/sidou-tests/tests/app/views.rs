@@ -5,7 +5,7 @@ use std::ffi::CStr;
 
 use sidou_sys::*;
 
-use crate::{cutoff_after, drain, piece_part, printable, Rig, Sent};
+use crate::{cutoff_after, drain, piece_part, printable, shown_preset_name, Rig, Sent};
 
 const COLS: usize = GRID_COLS as usize;
 pub(crate) const FRAME_MS: u32 = 40;
@@ -1749,6 +1749,90 @@ fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
+}
+
+#[test]
+fn in_multi_the_midi_page_names_each_channel_and_its_sound_and_a_turn_picks_it() {
+    let mut ui = Ui::new();
+    let mut route = Box::<midi_route>::default();
+    let mut parts = crate::multi::Parts::new(&ui.rig.live);
+    unsafe {
+        midi_route_init(
+            &mut *route,
+            &mut *ui.rig.live,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+        midi_route_parts(&mut *route, &mut *parts.m);
+        views_route(&mut *ui.v, &mut *route);
+    }
+    open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);
+    ui.turn(PANEL_ENC_ALGORITHM, -3);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 14);
+    assert_eq!(
+        (route.setup.mode, route.setup.base),
+        (MIDI_MODE_MULTI as u8, 14)
+    );
+    let rows: Vec<String> = (2..6)
+        .map(|i| {
+            ui.turn(PANEL_ENC_SELECT, i as i32 - i32::from(ui.v.midi.cursor));
+            midi_line(&mut ui, i)
+        })
+        .collect();
+    let want = [
+        ("CH15 ", "SAW LEAD"),
+        ("CH16 ", "PWM BASS"),
+        ("CH1 ", "NOISE PERC"),
+        ("CH2 ", "SAW LEAD"),
+    ];
+    for (row, (label, sound)) in rows.iter().zip(want) {
+        assert!(row.starts_with(label) && row.ends_with(sound), "{row:?}");
+    }
+    ui.turn(PANEL_ENC_SELECT, -2);
+    ui.turn(PANEL_ENC_ALGORITHM, 3);
+    assert_eq!(
+        parts.m.p[1].s.program, MULTI_PROGRAM_KEYS as u8,
+        "the presets, then the instrument's sound"
+    );
+    assert!(midi_line(&mut ui, 3).ends_with(&shown_preset_name(&ui.rig.live)));
+    ui.turn(PANEL_ENC_SELECT, 2);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.rig.live.preset, 1, "N + 3's row steps the instrument");
+    ui.turn(PANEL_ENC_SELECT, -5);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(route.setup.mode, MIDI_MODE_WHOLE_A as u8);
+    assert!(
+        midi_line(&mut ui, 2).starts_with("OPTION"),
+        "WHOLE A's rows again"
+    );
+}
+
+fn roll_dice(ui: &mut Ui) -> Option<String> {
+    let at = i32::from(ui.rig.live.preset);
+    ui.rig.preset_step(LIVE_PRESET_DICE as i32 - at - 1);
+    ui.rig.preset_step(1);
+    unsafe { views_flow(&mut *ui.v, ui.now) };
+    let shown = ui.toast();
+    unsafe { screen_toast_take(&mut ui.v.s) };
+    shown
+}
+
+#[test]
+fn the_first_dice_roll_of_a_power_on_says_once_that_lab_keeps_user_sounds() {
+    let hint = String::from_utf8(VIEWS_USER_HINT[..VIEWS_USER_HINT.len() - 1].to_vec()).unwrap();
+    let mut ui = Ui::new();
+    unsafe { views_flow(&mut *ui.v, ui.now) };
+    assert_eq!(ui.toast(), None, "no roll yet");
+    assert_eq!(roll_dice(&mut ui), Some(hint));
+    assert_eq!(roll_dice(&mut ui), None, "once a power-on");
+    let mut kept = Ui::new();
+    kept.rig.live.sounds_valid = 1;
+    assert_eq!(
+        roll_dice(&mut kept),
+        None,
+        "not to someone who keeps sounds already"
+    );
 }
 
 #[test]

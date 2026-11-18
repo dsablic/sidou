@@ -51,10 +51,9 @@ const char* midi_route_mode_doc(uint32_t mode) {
     static const char* const DOC[MIDI_MODE_COUNT] = {
         "channel N plays the instrument, on the chip the keys play; the other channels are "
         "ignored",
-        "channels N, N+1 and N+2 play chip A's voices 1, 2 and 3, each a jam voice of the "
-        "player with its own GoatTracker instrument, pitch bend and notes (one at a time, "
-        "the last held sounding; LEGATO glides between them); N+3 plays the instrument on "
-        "chip B",
+        "four parts: channels N, N+1 and N+2 each play a LAB sound, picked by program change, on "
+        "chip A's voice 1, 2 and 3 (one note at a time, the last held sounding); N+3 plays the "
+        "instrument on chip B",
         "channel N plays chip A's three voices with one GoatTracker instrument: POLY (three "
         "voices, the oldest note stolen), CHORD (one key plays the stored chord) or ARP (the "
         "held notes cycled on voice 1, every few frames or every 16th of the clock); N+3 "
@@ -67,8 +66,9 @@ const char* midi_route_mode_doc(uint32_t mode) {
 
 const char* midi_route_bank_doc(uint32_t bank) {
     static const char* const DOC[MIDI_ROUTE_BANKS] = {
-        "the channel's sound: on the instrument's channel its preset 0..3 (M1's); on a chip A "
-        "channel (MULTI, WHOLE A) GoatTracker instrument n + 1, 0..62",
+        "the channel's sound: 0..3 the presets, 16..31 USER 1..16 (an empty slot does "
+        "nothing); on a MULTI part's channel also 4, the instrument's sound as it is; on WHOLE "
+        "A's channel N GoatTracker instrument n + 1, 0..62",
         "songs: program n loads the store's n-th song in name order, stopped; on the "
         "instrument's channel or channel N only",
         "the chip's profile: 0 6581 R2, 1 6581 R3, 2 6581 R4AR, 3 8580 R5, 4 worn 6581, 5..12 "
@@ -687,12 +687,17 @@ static uint32_t bank_of(const midi_route* r, uint32_t ch) {
     return (uint32_t)r->bank[ch][0] << 7 | r->bank[ch][1];
 }
 
+static int user_program(const midi_route* r, uint32_t n) {
+    uint32_t slot = n - MULTI_PROGRAM_USER;
+    return slot < LIVE_SOUNDS && r->l->user_load && (r->l->sounds_valid >> slot & 1u);
+}
+
 int midi_route_edits_live(const midi_route* r, const midi_msg* msg) {
     if (msg->kind != MIDI_PROGRAM || r->to[msg->channel & 15u] != MIDI_ROUTE_LIVE) {
         return 0;
     }
     switch (bank_of(r, msg->channel & 15u)) {
-    case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT;
+    case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT || user_program(r, msg->data1);
     case MIDI_ROUTE_BANK_PROFILES: return msg->data1 < SID_CHIPS + LIVE_USER_PROFILES;
     default: return 0;
     }
@@ -712,6 +717,8 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
             }
         } else if (n < LIVE_PRESET_COUNT) {
             live_set_preset(r->l, n);
+        } else if (user_program(r, n)) {
+            (void)r->l->user_load(r->l->user_ctx, n - MULTI_PROGRAM_USER);
         }
         break;
     case MIDI_ROUTE_BANK_SONGS:

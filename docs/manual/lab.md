@@ -2,7 +2,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Shape a sound in LAB, and keep it
 
-LAB is where you shape one sound with every parameter in sight, and keep it with one press.
+LAB is where you shape one sound with every parameter in sight, and keep it with one press:
+SAVE stores it as one of 16 USER sounds, which stay when the FM-1 is off.
 It is made for experimenting: turn something, hear it, compare, undo, roll the dice, keep what
 you like. LAB came in 1.0.
 
@@ -57,8 +58,12 @@ the cursor, ALGORITHM changes the character, K1 chooses the slot, and SAVE write
 asks once more). HOME leaves without writing.
 
 A USER sound is a preset: PRESETS goes to it after DICE (`U01` to `U16`, empty slots skipped),
-it is shown with its name, and it survives switching the FM-1 off. A MIDI program change knows
-only the built-in presets.
+it is shown with its name, and it survives switching the FM-1 off. A MIDI program change of
+16 to 31 plays USER 1 to 16, on the instrument's channel and on each part's channel in MULTI
+([SIDOU from a DAW](daw.md)).
+
+A DICE roll you like is one SAVE from being yours: open LAB (ENV, LFO or FX on LIVE) and press
+SAVE. The first roll after power-on says so (`LAB KEEPS 16 USER SOUNDS`) until you keep one.
 
 ## 5. Learn a knob
 

@@ -298,10 +298,28 @@ LIVE_COLD void multi_init(multi* m, live_sink_fn sink, void* sink_ctx, const liv
     }
 }
 
+static void follow_chip(multi* m) {
+    const keys_route* kr = m->kr;
+    if (!kr) {
+        return;
+    }
+    uint8_t song = kr->song_on;
+    uint8_t tune = kr->tune;
+    uint8_t profile = kr->ctl[0].has.profile;
+    int back = (m->song && !song) || (m->tune && !tune) || profile != m->profile;
+    m->song = song;
+    m->tune = tune;
+    m->profile = profile;
+    if (back) {
+        multi_fresh(m);
+    }
+}
+
 void multi_note_on(multi* m, uint32_t part, uint8_t note, uint8_t velocity, uint32_t legato) {
     if (part >= MULTI_PARTS || note > 127u) {
         return;
     }
+    follow_chip(m);
     multi_part* p = &m->p[part];
     p->note = note;
     if (legato && p->gate) {
@@ -381,23 +399,6 @@ void multi_filter(multi* m, uint32_t locks, uint32_t cutoff, uint32_t resonance)
     m->cutoff_cc = (uint16_t)at_most(cutoff, LIVE_CUTOFF_MAX);
     m->resonance_cc = (uint8_t)at_most(resonance, LIVE_RESONANCE_MAX);
     write_filter(m);
-}
-
-static void follow_chip(multi* m) {
-    const keys_route* kr = m->kr;
-    if (!kr) {
-        return;
-    }
-    uint8_t song = kr->song_on;
-    uint8_t tune = kr->tune;
-    uint8_t profile = kr->ctl[0].has.profile;
-    int back = (m->song && !song) || (m->tune && !tune) || profile != m->profile;
-    m->song = song;
-    m->tune = tune;
-    m->profile = profile;
-    if (back) {
-        multi_fresh(m);
-    }
 }
 
 static void table_tick(multi* m, uint32_t v) {

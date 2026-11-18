@@ -262,31 +262,53 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
 | Mode | What plays |
 |---|---|
 | LIVE | channel N plays the instrument, on the chip the keys play; the other channels are ignored |
-| MULTI | channels N, N+1 and N+2 play chip A's voices 1, 2 and 3, each a jam voice of the player with its own GoatTracker instrument, pitch bend and notes (one at a time, the last held sounding; LEGATO glides between them); N+3 plays the instrument on chip B |
+| MULTI | four parts: channels N, N+1 and N+2 each play a LAB sound, picked by program change, on chip A's voice 1, 2 and 3 (one note at a time, the last held sounding); N+3 plays the instrument on chip B |
 | WHOLE A | channel N plays chip A's three voices with one GoatTracker instrument: POLY (three voices, the oldest note stolen), CHORD (one key plays the stored chord) or ARP (the held notes cycled on voice 1, every few frames or every 16th of the clock); N+3 plays the instrument on chip B |
 | WHOLE B | channel N plays the instrument on chip B; chip A is the song's |
 | OMNI | every channel plays the instrument, on the chip the keys play (the default, M1's) |
 
-- **Chip A is the player's** in MULTI and both WHOLE modes, with or without a song: the
+- **Chip A is MIDI's** in MULTI and both WHOLE modes, with or without a song: the
   instrument (the panel's keys, and its MIDI channel) plays chip B, with the keys' setup, as
-  while a song plays.
-- **Chip A's channels:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
+  while a song plays. [SIDOU from a DAW](../manual/daw.md) sets a sequencer up for each mode.
+- **MULTI's parts:** N, N+1 and N+2 are a part each, monophonic, on chip A's voice 1, 2 and 3:
+  SAW LEAD, PWM BASS and NOISE PERC at power-on, the MIDI page's CH rows naming them. Program
+  change (bank 0) picks a part's sound: 0..3 the presets, 4 the instrument's sound as it is
+  then (a DICE roll, an edit; a copy), 16..31 USER 1..16; an empty slot or another number
+  keeps the sound. A part plays its sound's first layer: the waveform, envelope, pulse width
+  and its modulation, tuning, vibrato, velocity, wheel and aftertouch targets and the table;
+  its other layers, LFOs, filter envelope, arpeggio and effect slots are the instrument's
+  only, and hard sync and ring modulation, which need a second voice, are left out. Notes
+  0..127 with velocity; the last held note sounds, and LEGATO on the page moves to the next
+  without a new attack. Pitch bend bends the part by its channel's range: the sound's
+  (2 semitones on the presets) until RPN 0 sets it, kept over program changes. The mod
+  wheel (CC 1) and aftertouch (channel, or polyphonic on the sounding note) move what the
+  sound says, at the 100 Hz tick. CC 120 and 123 release the part; CC 121 centres its bend
+  and zeroes its wheel and aftertouch.
+- **Chip A's filter is channel N's:** its type, cutoff and resonance come from N's sound
+  (with N's wheel, aftertouch and velocity on the cutoff where the sound says so); each part's
+  voice goes through it when its own sound routes its first voice. With no filter type on N's
+  sound, no voice is routed (a routed voice would fall silent). CC 74 (cutoff) and 71
+  (resonance) on any chip A channel lock the filter at the value until CC 121 or a change of
+  mode.
+- **With a song:** the song plays on chip A as always, and a part's note takes its voice
+  while it is held (the song's writes to it are held back) and gives it back at its release;
+  meanwhile the filter is the song's. PLAY, STOP and the clock work as in any mode. A `.sid`
+  tune owns chip A: the parts are silent until it stops.
+- **WHOLE A's channel:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
   instruments have none). Program change n (0..62) picks GoatTracker instrument n + 1
-  for the channel's next note. Pitch bend bends the channel's voice by the channel's own
-  range, 2 semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 (cutoff) and 71
-  (resonance) lock chip A's filter at the value, over the song's, until CC 121 or a change
-  of mode. CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model, envelope mode, profile and
-  character. CC 120 and 123 release the channel's voices; CC 121 also centres its bend.
-  Nothing else (the map, MIDI learn) reaches them: those are the instrument's channel's.
-- **A jam note takes its voice from the song** while it sounds (the song's writes to it
-  are held back) and gives it back at its release.
+  for the channel's next note. Pitch bend bends the voices by the channel's own range,
+  2 semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 and 71 lock chip A's
+  filter as in MULTI. CC 120 and 123 release the voices; CC 121 also centres the bend.
+- **Chip A's channels, both modes:** CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model,
+  envelope mode, profile and character. Nothing else (the map, MIDI learn) reaches them:
+  those are the instrument's channel's.
 - **The options:** LEGATO (MULTI, CHORD) moves to the next note without a new attack while
   one is held. CHORD plays the note and its two intervals (CHORD 2 and CHORD 3 on the page,
   +4 and +7 by default: a major triad). ARP cycles the held notes, in the order they
   were pressed, on voice 1, a step every ARP RATE frames (3 by default), or every 16th of
   the MIDI clock (6 clocks) with the rate at CLOCK.
-- **Not yet on the device:** chip A's channels are routed and tracked, and sound once song
-  control (M2c) takes jam releases, voices and bends.
+- **Not yet on the device:** WHOLE A's channel is routed and tracked, and sounds once song
+  control takes jam releases, voices and bends.
 
 ## Program change and banks
 
@@ -296,7 +318,7 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
 
 | Bank | Program n selects |
 |---|---|
-| 0 | the channel's sound: on the instrument's channel its preset 0..3 (M1's); on a chip A channel (MULTI, WHOLE A) GoatTracker instrument n + 1, 0..62 |
+| 0 | the channel's sound: 0..3 the presets, 16..31 USER 1..16 (an empty slot does nothing); on a MULTI part's channel also 4, the instrument's sound as it is; on WHOLE A's channel N GoatTracker instrument n + 1, 0..62 |
 | 1 | songs: program n loads the store's n-th song in name order, stopped; on the instrument's channel or channel N only |
 | 2 | the chip's profile: 0 6581 R2, 1 6581 R3, 2 6581 R4AR, 3 8580 R5, 4 worn 6581, 5..12 USER 1..8; the instrument's (the keys' setup) on its channel, chip A's on chip A's |
 
