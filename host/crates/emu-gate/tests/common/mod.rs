@@ -1394,6 +1394,33 @@ pub fn booted(fw: &Firmware) -> Machine {
     m
 }
 
+pub const CORE1_LOOP: &str = "fm1_cpu1_main";
+
+pub fn boot_with_core1(fw: &Firmware, fate: dual::Core1Fate) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    if fw.has_symbol(CORE1_LOOP) {
+        m.core1.mailbox_loop = fw.function_range(CORE1_LOOP);
+    }
+    m.core1.fate = fate;
+    m
+}
+
+pub const CORE1_FAULTS: dual::Core1Fate = dual::Core1Fate {
+    faults_at_fpu: true,
+    ..dual::NO_FATE
+};
+
+pub fn booted_fallen_back_to_one_core(fw: &Firmware) -> Machine {
+    let mut m = boot_with_core1(fw, CORE1_FAULTS);
+    run_past_boot(&mut m, fw);
+    assert_eq!(
+        m.soc.read8(fw.symbol("fm1_cpu1_on")),
+        0,
+        "core 1 still runs after its fault"
+    );
+    m
+}
+
 pub fn booted_with_art(fw: &Firmware) -> Machine {
     let mut m = Machine::boot_with_art(&fw.image);
     run_past_boot(&mut m, fw);

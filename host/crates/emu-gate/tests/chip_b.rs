@@ -7,8 +7,9 @@ use fm1_core::Bus;
 
 use common::ring::{chip_b_use, note, push, settle, with_b, worst_on_both_chips};
 use common::{
-    booted, firmware, max_diff, render_host_chips, rendered_sid, ChipEvent, Machine, AUDIO_TARGET,
-    HALF_FRAMES, ISR_OVERHEAD, SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
+    booted, booted_fallen_back_to_one_core, firmware, max_diff, render_host_chips, rendered_sid,
+    ChipEvent, Firmware, Machine, AUDIO_TARGET, HALF_FRAMES, ISR_OVERHEAD,
+    SID_WORST_BLOCK_TWO_CHIPS, TAP_PER_SAMPLE,
 };
 use sidou_sys::ilp32;
 
@@ -57,16 +58,11 @@ fn chip_b_out_of_use_costs_the_interrupt_what_m1_did() {
     );
 }
 
-#[test]
-fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
+fn two_chips_at_their_worst_with_every_slot_heaviest(m: &mut Machine, fw: &Firmware) -> (f64, f64) {
     use sidou_sys::{
         LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, SID_DIST_COUNT, SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT,
         SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
     };
-    let Some(fw) = firmware("the two-chip budget test") else {
-        return;
-    };
-    let mut m = booted(&fw);
     let alg = |a: u32, n: u32| ((2 * a + 1) * 128 / (2 * n)) as u8;
     for (slot, a, n) in [
         (0, SID_DIST_OVERDRIVE, SID_DIST_COUNT),
@@ -80,15 +76,26 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         }
     }
     m.run_ms(500);
-    settle(&mut m, &fw);
-    push(&mut m, &fw, &worst_on_both_chips());
-    chip_b_use(&mut m, &fw, true);
+    settle(m, fw);
+    push(m, fw, &worst_on_both_chips());
+    chip_b_use(m, fw, true);
     m.watch_alnk_pcs(fw.function_range("chip_mix"));
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let blocks = &m.alnk_blocks[from..];
     let worst_block = blocks.iter().copied().max().unwrap() as f64 / BLOCK_FRAMES;
     let mix = m.alnk_pcs_inside as f64 / (blocks.len() as f64 * BLOCK_FRAMES);
+    (worst_block, mix)
+}
+
+#[test]
+fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target_on_one_core_or_two() {
+    let Some(fw) = firmware("the two-chip budget test") else {
+        return;
+    };
+    let (two_cores, _) = two_chips_at_their_worst_with_every_slot_heaviest(&mut booted(&fw), &fw);
+    let mut m = booted_fallen_back_to_one_core(&fw);
+    let (worst_block, mix) = two_chips_at_their_worst_with_every_slot_heaviest(&mut m, &fw);
     let headroom_gates = AUDIO_TARGET
         - SID_WORST_BLOCK_TWO_CHIPS
         - TAP_PER_SAMPLE
@@ -96,6 +103,7 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         - common::SLOTS_SWITCH_WORST;
     let report = serde_json::json!({
         "worst_block_instructions_per_sample": worst_block,
+        "worst_block_instructions_per_sample_chip_b_on_core_1": two_cores,
         "chip_mix_instructions_per_sample": mix,
         "gates_headroom_for_6502": headroom_gates,
         "headroom_for_6502_with_the_mix": headroom_gates - mix,
@@ -104,7 +112,13 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
     println!("{report}");
     assert!(
         worst_block <= AUDIO_TARGET,
-        "two chips at their worst and every slot's heaviest: {worst_block:.1} a sample"
+        "two chips at their worst and every slot's heaviest, core 1 fallen back: {worst_block:.1} \
+         a sample"
+    );
+    assert!(
+        two_cores <= AUDIO_TARGET,
+        "two chips at their worst and every slot's heaviest, chip B on core 1: {two_cores:.1} a \
+         sample"
     );
     assert!(mix < 10.0, "chip B's mix costs {mix:.2} a sample");
     m.alnk_pcs_inside = 0;

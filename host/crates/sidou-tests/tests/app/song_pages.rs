@@ -1128,7 +1128,7 @@ fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() 
     h.ui.turn(PANEL_ENC_K1, 1);
     settle(&mut h.ui);
     assert_eq!(
-        unsafe { CStr::from_ptr(h.ui.v.popup.name.as_ptr()) }.to_str(),
+        unsafe { CStr::from_ptr(h.ui.v.popup.want.name.as_ptr()) }.to_str(),
         Ok("ATTACK/DECAY")
     );
     assert_eq!(
@@ -1139,7 +1139,7 @@ fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() 
     h.ui.turn(PANEL_ENC_K3, 1);
     settle(&mut h.ui);
     assert_eq!(
-        unsafe { CStr::from_ptr(h.ui.v.popup.name.as_ptr()) }.to_str(),
+        unsafe { CStr::from_ptr(h.ui.v.popup.want.name.as_ptr()) }.to_str(),
         Ok("DECAY")
     );
 }
@@ -1388,7 +1388,7 @@ fn nested_song_views_above_an_unnamed_save_return_to_the_original_page_and_popup
         h.ui.turn(PANEL_ENC_K1, 1);
         settle(&mut h.ui);
         assert_eq!(
-            unsafe { CStr::from_ptr(h.ui.v.popup.name.as_ptr()) }.to_str(),
+            unsafe { CStr::from_ptr(h.ui.v.popup.want.name.as_ptr()) }.to_str(),
             Ok(popup)
         );
         assert_eq!(

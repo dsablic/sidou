@@ -25,6 +25,7 @@
 
 #define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
 #define MIDI_LOST_WRITES LIVE_VOICES
+#define MIDI_LINK_CLOCK_GUARD (2u * AUDIO_SAMPLE_RATE / 1000u)
 #define MIDI_DRAIN_RESERVE (MIDI_ENTRY_WRITES + MIDI_LOST_WRITES + REG_RING_WORST_PASS)
 _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room");
 
@@ -40,7 +41,8 @@ _Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
 static midi_ring in_ring __attribute__((section(".noinit.midi_in")));
 static midi_rx rx;
 static midi_learn learned __attribute__((used, section(".pool")));
-static midi_route routing __attribute__((used));
+static midi_route routing __attribute__((used, section(".pool")));
+static multi parts __attribute__((used, section(".pool")));
 static midi_sync syncing __attribute__((used));
 static midi_out midi_tx __attribute__((used));
 static uint32_t poll_stamp;
@@ -272,7 +274,8 @@ void midi_link_run(const grid* g, uint32_t now_ms) {
         return;
     }
     uint32_t used = mo_w - mo_r;
-    int busy = midi_sysex_running || sx_busy || so_w != so_r;
+    int busy = midi_sysex_running || sx_busy || so_w != so_r ||
+               midi_sync_out_soon(&syncing, fm1_ticks(), MIDI_LINK_CLOCK_GUARD);
     uint8_t f[LINK_FRAME_MAX + 2u];
     uint32_t n = link_poll(&live_link, g, now_ms, used < MQ ? MQ - used : 0u, busy, f);
     f[n] = f[n + 1u] = 0;
@@ -292,6 +295,8 @@ void midi_init(live* l, keys_route* kr) {
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     midi_route_init(&routing, l, kr, NULL);
+    multi_init(&parts, reg_ring_sink, audio_sink_ctx(), l, kr);
+    midi_route_parts(&routing, &parts);
     midi_rx_route(&rx, &routing);
     midi_sync_init(&syncing);
     midi_rx_sync(&rx, &syncing);
@@ -312,6 +317,10 @@ midi_learn* midi_learned(void) {
 
 midi_route* midi_routed(void) {
     return &routing;
+}
+
+multi* midi_parts(void) {
+    return &parts;
 }
 
 void midi_tick(void) {

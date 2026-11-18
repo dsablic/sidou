@@ -161,7 +161,7 @@ LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the r
 on LIVE, ARP is the [chord arpeggio](#chord-arpeggio) and LFO opens LAB (with ENV and FX); elsewhere
 LFO and ARP do nothing yet, nor do ENV and FX outside LIVE, LAB and the song views, and
 PRESETS steps the preset. SELECT does nothing on ABOUT (on STATUS it turns the
-[page](#status-pages)), ALGORITHM nothing on STATUS and ABOUT.
+[page](#status-pages)), ALGORITHM nothing on ABOUT and on STATUS but its CORES page.
 
 ## The button LEDs
 
@@ -1200,8 +1200,11 @@ chip, the octave and the volume as they are: they are the instrument's, not a pr
 knobs turn a roll like any sound, and DICE shows no `*`. EDIT held + PRESETS on DICE puts back
 its base (SAW LEAD's settings) and forgets the roll.
 
-DICE is the panel's: a MIDI program change selects 0..3 only (a program of 4 or more is refused),
-and on MIDI out the roll goes as CCs, parameter by parameter, with no program change. The
+DICE is the panel's: on the instrument's channel a MIDI program change selects 0..3 and the USER
+sounds (16..31), never DICE, and on MIDI out the roll goes as CCs, parameter by parameter, with no
+program change. A MULTI part takes a roll with program 4, a copy of the instrument's sound as it is.
+The first roll after power-on toasts `LAB KEEPS 16 USER SOUNDS` (unless a USER sound is kept
+already): SAVE in LAB keeps the roll. The
 settings keep the roll's parameters like any sound's and bring DICE back on power-up (its number
 starts from 0 again).
 
@@ -1400,7 +1403,7 @@ the old register's 15 steps by the taper: the register's steps were linear in ga
 
 Notes on every channel by default (MIDI's mode OMNI: [the MIDI page](#the-midi-page) can
 give the instrument one channel and chip A's voices channels of their own); program change
-0..3 selects the preset. Bank select (CC 0 and 32) makes program changes pick songs (bank 1)
+0..3 selects the preset, 16..31 a kept USER sound. Bank select (CC 0 and 32) makes program changes pick songs (bank 1)
 or the chip's profile (bank 2): [midi.md](midi.md), Program change and banks. A program change loads
 the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync, the
 envelope, filter routing and mode) and expression settings over any edits, even when it
@@ -1765,7 +1768,8 @@ settings, except WHEEL, which is kept with them; a song carries its own mode in 
 
 MIDI follows STATUS in the large main menu. The options page shows six rows at 2×, like the
 main menu; its title bar says which of the eleven items is selected, and it scrolls to CLOCK and
-CLOCK OUT. It opens in a cut, the title bar and the help first and then its lines two a frame
+CLOCK OUT. In MULTI the four CH rows take the places of OPTION, CHORD 2, CHORD 3 and ARP RATE
+(WHOLE A's), so the page shows which channel plays which sound. It opens in a cut, the title bar and the help first and then its lines two a frame
 (four frames, 0.16 s: a frame of it stays within the page's `ui_poll` bound). Turning ALGORITHM
 names the selected item
 and its value in the large value popup; closing it restores the page underneath.
@@ -1774,8 +1778,9 @@ and its value in the large value popup; closing it restores the page underneath.
 |---|---|---|
 | MODE | LIVE, MULTI, WHOLE A, WHOLE B, OMNI (at power-on) | which channel plays what |
 | CHANNEL | 1..16 (1) | N, the first channel: the instrument's in LIVE and WHOLE B, chip A's voice 1 in MULTI, chip A's in WHOLE A; N + 3 plays the instrument on chip B in MULTI and WHOLE A |
+| CH*n* (MULTI only) | a sound | four rows named by their channel (`CH1` to `CH4` with CHANNEL at 1): N, N + 1 and N + 2 show their part's sound and step it through the presets, the instrument's sound (a copy) and the kept USER sounds, as a program change does; N + 3 shows the instrument's sound and steps it as PRESETS does. The popup names the channel and the whole sound name |
 | OPTION | POLY (default), CHORD, ARP | WHOLE A's: three-voice polyphony, the stored chord, the arpeggio on voice 1 |
-| LEGATO | OFF (default), ON | MULTI and CHORD: the next note while one is held glides on, no new attack |
+| LEGATO | OFF (default), ON | MULTI and CHORD: the next note while one is held changes the pitch with no new attack |
 | CHORD 2, CHORD 3 | +0..+24 (+4, +7) | the stored chord: semitones above the note on voices 2 and 3 |
 | ARP RATE | CLOCK, 1..32 FR (3 FR) | frames an arpeggio step; CLOCK: every 16th of the MIDI clock |
 | ROWS/BEAT | 1..16 (4) | the song's rows a beat, for following and sending the MIDI clock |
@@ -1783,10 +1788,10 @@ and its value in the large value popup; closing it restores the page underneath.
 | CLOCK | AUTO (default), FOLLOW, OFF | AUTO: the song follows a MIDI clock and transport while one arrives, and carries on at the last tempo when it stops; FOLLOW: the same, but the song stops with the clock; OFF: the song on its own frames, MIDI's start and stop ignored |
 | CLOCK OUT | OFF (default), ON | the song's clock out over USB, 24 a beat, with start, stop and continue, while no clock comes in |
 
-In MULTI and both WHOLE modes chip A belongs to the player, song or not, so the keys play
-chip B as they do [while a song plays](#which-chip-the-keys-play). The MIDI
-chip-A jam callbacks remain unbound: those channels are routed but sound nothing
-yet. This is an integration follow-up, separate from the panel's working song audition.
+In MULTI and both WHOLE modes chip A belongs to MIDI, song or not, so the keys play
+chip B as they do [while a song plays](#which-chip-the-keys-play). MULTI's three parts sound on
+chip A ([midi.md](midi.md), Modes; [SIDOU from a DAW](../manual/daw.md)); WHOLE A's channel is
+routed but sounds nothing yet.
 
 ## MIDI learn
 
@@ -1868,7 +1873,7 @@ same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#c
 on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
 <a id="status-pages"></a>The **status screen** (STATUS in the menu) shows the numbers at 2×, on
-three pages that **SELECT** turns (either way, round the three); the title bar's `1/3` says which. It
+four pages that **SELECT** turns (either way, round the four); the title bar's `1/4` says which. It
 opens on the first page every time, as a help card does.
 
 | Page | Shows |
@@ -1876,6 +1881,7 @@ opens on the first page every time, as a help card does.
 | 1 | the sound's knobs, each with its bar: CUTOFF, RESO, PULSE and VOLUME. While a `.sid` tune is loaded, the 6502's rows instead: `6502` and its state, `CPU` (its share), `T/KC`, `LATE`, `OVERRUNS`, then `CYC/S` (cycles a second), `SHADOW` and `3RD SID` (see [SIDS and NOW PLAYING](#sids-and-now-playing)) |
 | 2 | the chip (its model and the profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play), the preset and octave (`OCT +0`), and the held notes |
 | 3 | under the effect slots DIST, MOD and FX each slot's algorithm and Mix (`>` marks the selected slot), then the selected slot's Amount, A and B |
+| 4 | CORES, the FM-1's second core, which renders chip B beside a one-chip player (the song or the keys on chip B, a one-SID tune): `CORE 1` `RUNNING` or `OFF`, `WHY` it is off (`--` while it runs; `MISREAD`, `SELF-TEST`, `LATE`, `SILENT`, `FAULT`, or `BARRED` on the boots after one, until power-off), its `JOBS`, where `CHIP B` renders (`CORE 1` or `CORE 0`), and core 0's audio time as a share of a block, `AVG` over the last second and `WORST` since the last switch; the small print under it holds the register words. **ALGORITHM** moves chip B to the other core and back, to compare the two (the same sound; chip B is on core 1 again at the next start). **SAVE**, then **SAVE AGAIN**, restarts the FM-1 to try two cores again after a fallback; HOME or any other control backs out |
 
 The version number sits after SIDOU in the title. On every page the bottom row, beside `READY.`,
 shows the store's health when it is not clean: `STORE ERR 3` (flash operations that failed since

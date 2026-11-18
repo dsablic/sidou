@@ -422,8 +422,9 @@ function buildSong(a, { timeline, name = "", author = "", released = "" }) {
       const pulse = s.head.some((h) => h.ctrl & CTRL.PULSE) || s.first & CTRL.PULSE ? tables.add(1, pulseRows(s)) : 0;
       const filter = vi === filterAt && chipState ? tables.add(2, filterRows(chipState)) : 0;
       if (!wave) dropped.add("wave table rows past 255");
+      const voice = `${String.fromCharCode(65 + x.chip)}${x.v + 1}`;
       instruments.push({ ad: s.ad, sr: s.sr, wave, pulse, filter, vibrato: 0, vibDelay: 0, gate: GATE_TIMER,
-        first: firstWave(s.first), name: `${String.fromCharCode(65 + x.chip)}${x.v + 1} ${instruments.length + 1}` });
+        first: firstWave(s.first), name: `${voice} ${instruments.length + 1}`, voice, uses: 0 });
       keyIndex.set(key, instruments.length);
       return instruments.length;
     });
@@ -433,6 +434,7 @@ function buildSong(a, { timeline, name = "", author = "", released = "" }) {
       const r = rowAt(n.start);
       if (r < 0 || r >= rows) return;
       const ins = numbers[assign[k]];
+      if (ins > 0) instruments[ins - 1].uses++;
       cells[r] = [NOTE.FIRST + Math.min(NOTE.HIGHEST, n.note), ins === last ? 0 : ins, 0, 0];
       last = ins;
       for (const l of legatoOf(n, rowAt)) if (l.row > r && l.row < rows && cells[l.row][0] === NOTE.REST) cells[l.row] = [NOTE.FIRST + Math.min(NOTE.HIGHEST, l.note), 0, CMD.TIE, TIE_SPEED];

@@ -202,7 +202,11 @@ static void cpu2_boot(uint32_t c1_con) {
     c1_con_at_boot = c1_con;
     cpu2_meter_clear();
     fm1_cpu1_bar_build(SIDOU_CPU2_BUILD);
-    if (fm1_cpu1_start() == 0) {
+    (void)fm1_cpu1_start();
+}
+
+static void cpu2_boot_self_test(void) {
+    if (fm1_cpu1_on) {
         cpu2_self_test(audio_boot_scratch());
     }
 }
@@ -1385,6 +1389,22 @@ static const song_transport song_binding = {
 static song_transport song_bound;
 
 static uint8_t song_taken;
+static uint8_t keys_taken;
+static uint8_t parts_taken;
+
+static void song_retake(void) {
+    uint8_t taken = (uint8_t)(keys_taken | parts_taken);
+    if (taken != song_taken && !song_away) {
+        song_taken = taken;
+        (void)song_ctl_take(audio_song(), taken);
+    }
+}
+
+static void song_parts_take(void* ctx, uint32_t taken) {
+    (void)ctx;
+    parts_taken = (uint8_t)taken;
+    song_retake();
+}
 
 static void song_keys_take(void* ctx, uint32_t voices) {
     (void)ctx;
@@ -2108,10 +2128,10 @@ static void commit_pass(void) {
         audio_set_spread(spread_sent);
     }
     audio_commit();
-    uint8_t taken = keys_route_voices_taken(&keys_router);
-    if (taken != song_taken && !song_away) {
-        song_taken = taken;
-        (void)song_ctl_take(audio_song(), taken);
+    uint8_t keys = keys_route_voices_taken(&keys_router);
+    if (keys != keys_taken && !song_away) {
+        keys_taken = keys;
+        song_retake();
     }
 }
 
@@ -2245,6 +2265,9 @@ static void boot_feed(void) {
 
 static void while_lcd_resets(void) {
     sid_noise_tables_init();
+#if defined(SIDOU_CPU2)
+    cpu2_boot_self_test();
+#endif
     song_load();
 }
 
@@ -2276,6 +2299,7 @@ static void sidou_main(void) {
     audio_set_master(instrument.master);
     midi_init(&instrument, &keys_router);
     route_state = midi_routed();
+    midi_parts()->taking = song_parts_take;
     midi_sync_bind(midi_synced(), &song_bound);
     sync_state = midi_synced();
     update_boot();

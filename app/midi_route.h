@@ -8,6 +8,7 @@
 #include "keys_route.h"
 #include "live.h"
 #include "midi_in.h"
+#include "multi.h"
 #include "song/song_ext.h"
 
 #ifdef __cplusplus
@@ -71,6 +72,8 @@ typedef struct {
     uint8_t instr;
     uint16_t bend;
     uint8_t range;
+    uint8_t range_rpn;
+    uint8_t velocity;
     uint8_t rpn_msb, rpn_lsb;
 } midi_route_chan;
 
@@ -85,10 +88,10 @@ typedef struct midi_route {
     midi_route_player player;
     live* l;
     keys_route* kr;
-    midi_route_chan ch[MIDI_ROUTE_VOICES];
-    midi_route_voice v[MIDI_ROUTE_VOICES];
     uint8_t to[16];
     uint8_t fast[16];
+    midi_route_chan ch[MIDI_ROUTE_VOICES];
+    midi_route_voice v[MIDI_ROUTE_VOICES];
     uint8_t bank[16][2];
     uint8_t song_req;
     uint8_t locks;
@@ -100,6 +103,7 @@ typedef struct midi_route {
     uint8_t arp_wait;
     uint32_t stamp;
     uint32_t dropped;
+    multi* parts;
 } midi_route;
 
 typedef enum {
@@ -111,6 +115,8 @@ typedef enum {
 void midi_route_setup_default(midi_route_setup* s);
 void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_player* player);
 void midi_route_set(midi_route* r, const midi_route_setup* s);
+void midi_route_parts(midi_route* r, multi* parts);
+int midi_route_part_program(midi_route* r, uint32_t part, uint32_t program);
 int midi_route_owns_chip_a(uint32_t mode);
 #define midi_route_fast(r, msg) (((r)->fast[(msg)->channel & 15u] >> (msg)->kind) & 1u)
 midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg);

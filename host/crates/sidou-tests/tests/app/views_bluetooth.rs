@@ -108,7 +108,7 @@ fn popup(ui: &Ui) -> (String, String) {
             .to_string_lossy()
             .into_owned()
     };
-    (text(&ui.v.popup.name), text(&ui.v.popup.value))
+    (text(&ui.v.popup.want.name), text(&ui.v.popup.want.value))
 }
 
 fn keyboard_with(b: &mut Bound, state: u32, name: &str) {

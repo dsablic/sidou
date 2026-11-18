@@ -140,14 +140,15 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
-**Chip B on the second core** (`SIDOU_CPU2`, off by default, never released yet; for the device
-check of [decision 0010](docs/decisions/0010-second-core-reopened.md)): core 1 renders chip B
-beside core 0, after a start-up self-test, and falls back to one core with the same sound. The
-default image has none of it, and `sidou-pack --verify` fails a package of it:
+**Chip B on the second core** (`SIDOU_CPU2`, on by default since 2.0;
+[decision 0010](docs/decisions/0010-second-core-reopened.md)): core 1 renders chip B beside
+core 0, after a start-up self-test, and falls back to one core with the same sound. The
+one-core image, the emulator gate's reference (`SIDOU_FM1_ONE_CORE_BUILD`, TESTING.md), has none
+of it, and `sidou-pack --verify` fails a package of it:
 
 ```sh
-tools/fm1-docker cmake --preset fm1 -B build/fm1-cpu2 -DSIDOU_CPU2=ON
-tools/fm1-docker cmake --build build/fm1-cpu2
+tools/fm1-docker cmake --preset fm1 -B build/fm1-cpu1 -DSIDOU_CPU2=OFF
+tools/fm1-docker cmake --build build/fm1-cpu1
 ```
 
 **Bluetooth MIDI** (`SIDOU_BLE`, on by default): SIDOU with Optimist's open Bluetooth MIDI
@@ -366,6 +367,7 @@ tools/wasm-tune                 # build/wasm-tune/sidou-tune.wasm
 tools/wasm-tune OUT.wasm        # elsewhere (tools/web-demo builds it into build/web)
 node web/tune.test.mjs          # the capture against the host build (web/tune-fixtures.json)
 node web/sidconv.test.mjs       # the converter on the starter pack, with sidou-core.wasm
+node web/sidsound.test.mjs      # its instruments as LAB sounds, with the patch module too
 ```
 
 The toolchain is the wasm core's (above). The module is about 79 KB; its budget is 96 KiB,

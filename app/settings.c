@@ -139,6 +139,10 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             v == LIVE_MOD_PULSE_WIDTH) {
             v = LIVE_MOD_VIBRATO;
         }
+        if (p == LIVE_PARAM_PRESSURE_TARGET && rec[0] < SETTINGS_VERSION_PRESSURE_VIBRATO &&
+            v == LIVE_PRESSURE_OFF) {
+            v = LIVE_PRESSURE_VIBRATO;
+        }
         if (p != LIVE_PARAM_VOLUME && v <= live_param_max(p)) {
             live_param_set(l, p, v);
         }

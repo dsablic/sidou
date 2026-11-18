@@ -25,7 +25,7 @@
 |---|---|
 | `chip/fm1_cc.h` | `FM1_INLINE` |
 | `chip/fm1_cpu1_stop.h` | holds the second core (`fm1_cpu1_stop`, Felucca 1.6.1's `fm1_cpu1_halt`) |
-| `chip/fm1_cpu1.h`, `fm1_cpu1.S`, `fm1_guard.h` | the second core's worker (start, mailbox, wait, fallback, fault path) and the guards it includes: only the second-core spike's bench image (`bench/fm1` `sid_bench_cpu1`) and the app built with `-DSIDOU_CPU2=ON` (`main.c`, which owns the fault handler), never the default build; both with `FM1_CPU1=1`, `FM1_CPU1_FALLBACK=1`, `FM1_CPU1_TIMEOUT_US=1000u`. The flash driver's unit (`midi.c`) builds the gate without `FM1_CPU1` (design notes, "Second core") |
+| `chip/fm1_cpu1.h`, `fm1_cpu1.S`, `fm1_guard.h` | the second core's worker (start, mailbox, wait, fallback, fault path) and the guards it includes: only the second-core spike's bench image (`bench/fm1` `sid_bench_cpu1`) and the app (`main.c`, which owns the fault handler; `SIDOU_CPU2`, on by default since 2.0, not in the one-core reference built with `-DSIDOU_CPU2=OFF`); both with `FM1_CPU1=1`, `FM1_CPU1_FALLBACK=1`, `FM1_CPU1_TIMEOUT_US=1000u`. The flash driver's unit (`midi.c`) builds the gate without `FM1_CPU1` (design notes, "Second core") |
 | `chip/fm1_flash.h`, `fm1_flash_access.h`, `fm1_flash_api.h`, `fm1_flash_policy.h`, `fm1_flash_wait.h` | SPI NOR erase/program from `.ram_text`, its write regions, its access gate (core 0, interrupts off), the busy-safe wait |
 | `chip/fm1_gpio.h` | GPIO port registers |
 | `chip/fm1_irq.h` | interrupt controller, vector table, fault record (`fm1_crash_ctx`, NOINIT); `FM1_IRQ_DEFS 0` leaves the record and `fm1_fault_c` to another unit |
@@ -87,7 +87,8 @@ loader: the update loader stays Felucca 1.6.1's (below).
   from the main loop.
 - **The second core** is held first thing at every boot (`fm1_cpu1_stop`), and `fm1_sys.h` holds
   it again on every reboot and update; there is no `FM1_CPU1_USED` any more. The default build
-  never starts it; the `-DSIDOU_CPU2=ON` build does, and in both the flash gate is built without
+  starts it after the RAM copy (`SIDOU_CPU2`, on since 2.0); the one-core reference
+  (`-DSIDOU_CPU2=OFF`) never does, and in both the flash gate is built without
   `FM1_CPU1` and checks core 0 and the interrupts only, which the interrupt-only rule makes safe
   with core 1 running (design notes, "Second core").
 - **The audio start checks the clock:** `fm1_audio_init` starts the DMA only when the audio PLL

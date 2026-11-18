@@ -45,6 +45,7 @@ static inline void views_octave_text(char* buf, int32_t octave) {
 extern const char* const SLOT_NAMES[LIVE_SLOTS];
 extern const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS + 1u];
 extern const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS];
+extern const menu_item MIDI_MULTI_ITEMS[VIEWS_MIDI_ITEMS];
 
 void views_put(grid* g, uint8_t attr, uint32_t row, uint32_t col, const char* s);
 void views_append(char* buf, uint32_t cap, const char* s);
@@ -52,6 +53,8 @@ void views_join(char* buf, uint32_t cap, const char* a, const char* b);
 void views_profile_label(char* buf, uint32_t id);
 void views_number_text(char* buf, uint32_t n);
 void views_sound(views* v, ui_sound_id id);
+void views_preset_value(void* ctx, char* buf);
+void views_preset_turn(void* ctx, int32_t steps);
 const view* views_shows(const views* v);
 int curtain(const views* v);
 const char* views_bluetooth_mode(const views* v);

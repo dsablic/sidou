@@ -405,9 +405,9 @@ try {
   }
   const names = () => lib.locator("#files td.name").allTextContents();
   if ((await names()).join("|") !== "IRON RITE|A TUNE") fail(`the Library lists ${JSON.stringify(await names())}`);
-  const settle = async (what, cond) => {
+  const settle = async (what, cond, arg = null) => {
     try {
-      await lib.waitForFunction(cond, null, { timeout: 10_000 });
+      await lib.waitForFunction(cond, arg, { timeout: 10_000 });
     } catch {
       fail(`the Library page did not ${what}: ${await lib.locator("#store-state").textContent()}`);
     }
@@ -545,6 +545,23 @@ try {
   prompts.push("DOJO 2");
   await lib.locator("#sid-send").click();
   await settle("send a converted .sid", () => /DOJO 2 sent/.test(document.getElementById("store-state").textContent));
+  const listedSounds = lib.locator("#sid-sounds-list li");
+  if (await listedSounds.count() < 3 || !/^A1\.1 /.test(await listedSounds.first().locator("b").textContent())) fail(`the tune's sounds are wrong: ${await lib.locator("#sid-sounds-list").textContent()}`);
+  await lib.evaluate(() => { window.__library.previewed = null; window.__library.copied = null; });
+  await listedSounds.first().getByRole("button", { name: "Listen" }).click();
+  await lib.waitForFunction(() => window.__library.previewed, null, { timeout: 10_000 }).catch(async () => fail(`a tune's sound did not play: ${await lib.locator("#sid-sounds-state").textContent()}`));
+  await listedSounds.first().getByRole("button", { name: "Copy link" }).click();
+  if (!/\/library\.html#patch=/.test(await lib.evaluate(() => window.__library.copied))) fail("a tune's sound gave no #patch= link");
+  await listedSounds.first().getByRole("button", { name: "Keep" }).click();
+  const keptRows = lib.locator("#kept-list li");
+  if (await keptRows.count() !== 1) fail(`Keep did not list the sound: ${await lib.locator("#sid-sounds-state").textContent()}`);
+  const keptName = await keptRows.first().locator("b").textContent();
+  await keptRows.first().getByRole("button", { name: "Send to the FM-1" }).click();
+  await settle("send a kept sound", (name) => document.getElementById("store-state").textContent.includes(`${name} sent`), keptName);
+  await keptRows.first().getByRole("button", { name: "Edit as text" }).click();
+  await lib.waitForFunction((name) => new RegExp(`${name} is a sound`).test(document.getElementById("patch-state").textContent) && /"format": "sidou-patch\/1"/.test(document.getElementById("patch-text").value), keptName, { timeout: 10_000 })
+    .catch(async () => fail(`a tune's sound did not open as a patch: ${await patchState()}`));
+  console.log(`library page: dojo.sid's sounds listed, one played, linked, kept, sent as ${keptName} and opened as a patch`);
   console.log(`library page: dojo.sid's sub-tune 2 converted (${sng.length} B), both played, downloaded and sent as DOJO 2`);
   if (await lib.evaluate(() => window.__midi.other.length) !== 0) fail("the Library page sent to the other port");
   if (!(await lib.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))) fail("the Library page scrolls sideways at phone width");
@@ -801,7 +818,8 @@ async function checkArtPage(browser) {
 
   const arena = art.locator('.slot[data-slot="arena"]');
   await arena.locator('input[type="file"]').setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: await pngOf(art, 64, 124, [0, 0, 0, 255]) });
-  if (!/takes a 240 × 240 PNG, one frame of 240 × 240; this one is 64 × 124/.test(await arena.locator('[role="status"]').textContent())) fail(`a wrong-sized PNG is not refused in words: ${await arena.locator('[role="status"]').textContent()}`);
+  await arena.locator('[role="status"]').filter({ hasText: /takes a 240 × 240 PNG, one frame of 240 × 240; this one is 64 × 124/ }).waitFor({ timeout: 5_000 })
+    .catch(async () => fail(`a wrong-sized PNG is not refused in words: ${await arena.locator('[role="status"]').textContent()}`));
 
   const template = await downloaded('.slot[data-slot="arena"] button:text("Template PNG")');
   if (template.name !== "arena.png") fail(`the arena's template is ${template.name}`);

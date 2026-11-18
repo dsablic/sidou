@@ -53,6 +53,7 @@ mod midi_route;
 mod midi_rx;
 mod midi_sync;
 mod midi_usb;
+mod multi;
 mod panel;
 mod popup;
 mod punch_echo;

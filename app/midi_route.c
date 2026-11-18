@@ -51,10 +51,9 @@ const char* midi_route_mode_doc(uint32_t mode) {
     static const char* const DOC[MIDI_MODE_COUNT] = {
         "channel N plays the instrument, on the chip the keys play; the other channels are "
         "ignored",
-        "channels N, N+1 and N+2 play chip A's voices 1, 2 and 3, each a jam voice of the "
-        "player with its own GoatTracker instrument, pitch bend and notes (one at a time, "
-        "the last held sounding; LEGATO glides between them); N+3 plays the instrument on "
-        "chip B",
+        "four parts: channels N, N+1 and N+2 each play a LAB sound, picked by program change, on "
+        "chip A's voice 1, 2 and 3 (one note at a time, the last held sounding); N+3 plays the "
+        "instrument on chip B",
         "channel N plays chip A's three voices with one GoatTracker instrument: POLY (three "
         "voices, the oldest note stolen), CHORD (one key plays the stored chord) or ARP (the "
         "held notes cycled on voice 1, every few frames or every 16th of the clock); N+3 "
@@ -67,8 +66,9 @@ const char* midi_route_mode_doc(uint32_t mode) {
 
 const char* midi_route_bank_doc(uint32_t bank) {
     static const char* const DOC[MIDI_ROUTE_BANKS] = {
-        "the channel's sound: on the instrument's channel its preset 0..3 (M1's); on a chip A "
-        "channel (MULTI, WHOLE A) GoatTracker instrument n + 1, 0..62",
+        "the channel's sound: 0..3 the presets, 16..31 USER 1..16 (an empty slot does "
+        "nothing); on a MULTI part's channel also 4, the instrument's sound as it is; on WHOLE "
+        "A's channel N GoatTracker instrument n + 1, 0..62",
         "songs: program n loads the store's n-th song in name order, stopped; on the "
         "instrument's channel or channel N only",
         "the chip's profile: 0 6581 R2, 1 6581 R3, 2 6581 R4AR, 3 8580 R5, 4 worn 6581, 5..12 "
@@ -112,16 +112,44 @@ int midi_route_owns_chip_a(uint32_t mode) {
     return mode == MIDI_MODE_MULTI || mode == MIDI_MODE_WHOLE_A || mode == MIDI_MODE_WHOLE_B;
 }
 
-static int p_on(midi_route* r, uint32_t v, uint32_t note, uint32_t instr, uint32_t legato) {
-    return r->player.jam_on ? r->player.jam_on(r->player.ctx, v, note, instr, legato) : 1;
+static int multi_mode(const midi_route* r) {
+    return r->setup.mode == MIDI_MODE_MULTI;
+}
+
+static int p_on(midi_route* r, uint32_t v, uint8_t n, uint32_t instr, uint32_t legato) {
+    if (multi_mode(r)) {
+        if (r->parts) {
+            multi_note_on(r->parts, v, n, r->ch[v].velocity, legato);
+        }
+        return 1;
+    }
+    return r->player.jam_on ? r->player.jam_on(r->player.ctx, v, (uint32_t)n - MIDI_ROUTE_GT_FIRST,
+                                                instr, legato)
+                            : 1;
 }
 
 static int p_off(midi_route* r, uint32_t v) {
+    if (multi_mode(r)) {
+        if (r->parts) {
+            multi_note_off(r->parts, v);
+        }
+        return 1;
+    }
     return r->player.jam_off ? r->player.jam_off(r->player.ctx, v) : 1;
 }
 
+static int p_bend(midi_route* r, uint32_t v, int32_t offset) {
+    if (multi_mode(r)) {
+        if (r->parts) {
+            multi_bend(r->parts, v, offset);
+        }
+        return 1;
+    }
+    return r->player.jam_bend ? r->player.jam_bend(r->player.ctx, v, offset) : 1;
+}
+
 static void sound(midi_route* r, uint32_t v, uint8_t n, uint32_t instr, uint32_t legato) {
-    if (!p_on(r, v, (uint32_t)n - MIDI_ROUTE_GT_FIRST, instr, legato)) {
+    if (!p_on(r, v, n, instr, legato)) {
         r->dropped++;
         return;
     }
@@ -142,6 +170,10 @@ static void silence(midi_route* r, uint32_t v) {
 
 static int in_range(uint32_t n) {
     return n >= MIDI_ROUTE_GT_FIRST && n < MIDI_ROUTE_GT_FIRST + MIDI_ROUTE_GT_NOTES;
+}
+
+static int playable(const midi_route* r, uint32_t n) {
+    return multi_mode(r) ? n < 128u : in_range(n);
 }
 
 static void held_remove(midi_route_chan* c, uint8_t n) {
@@ -185,6 +217,7 @@ static void release_all(midi_route* r) {
 void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_player* player) {
     r->l = l;
     r->kr = kr;
+    r->parts = NULL;
     if (player) {
         r->player = *player;
     } else {
@@ -200,6 +233,8 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
         chan_reset(&r->ch[c]);
         r->ch[c].instr = 1;
         r->ch[c].range = LIVE_BEND_RANGE_DEFAULT;
+        r->ch[c].range_rpn = 0;
+        r->ch[c].velocity = LIVE_EXPRESSION_MAX;
         r->v[c].note = MIDI_ROUTE_NO_NOTE;
         r->v[c].stamp = 0;
         r->v[c].bend_sent = 0;
@@ -238,6 +273,12 @@ void midi_route_set(midi_route* r, const midi_route_setup* s) {
         r->locks = 0;
         r->filter_dirty = 1;
     }
+    if (r->parts && (o->mode == MIDI_MODE_MULTI || n.mode == MIDI_MODE_MULTI)) {
+        multi_reset(r->parts);
+        for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
+            r->v[v].bend_sent = 0;
+        }
+    }
     r->arp_pos = 0;
     r->arp_wait = 0;
     live_all_notes_off(r->l);
@@ -252,7 +293,31 @@ void midi_route_reset_input(midi_route* r) {
     release_all(r);
     for (uint32_t c = 0; c < MIDI_ROUTE_VOICES; c++) {
         chan_reset(&r->ch[c]);
+        if (r->parts) {
+            multi_reset_controllers(r->parts, c);
+        }
     }
+}
+
+static void part_range(midi_route* r, uint32_t part) {
+    if (!r->ch[part].range_rpn) {
+        r->ch[part].range = r->parts->p[part].s.bend_range;
+    }
+}
+
+void midi_route_parts(midi_route* r, multi* parts) {
+    r->parts = parts;
+    for (uint32_t v = 0; parts && v < MIDI_ROUTE_VOICES; v++) {
+        part_range(r, v);
+    }
+}
+
+int midi_route_part_program(midi_route* r, uint32_t part, uint32_t program) {
+    if (!r->parts || !multi_program(r->parts, part, program)) {
+        return 0;
+    }
+    part_range(r, part);
+    return 1;
 }
 
 static uint32_t role(const midi_route_setup* s, uint32_t channel, uint32_t* jam) {
@@ -405,11 +470,12 @@ static void arp_off(midi_route* r, uint8_t n) {
     }
 }
 
-static void note_on(midi_route* r, uint32_t jam, uint8_t n) {
-    if (!in_range(n)) {
+static void note_on(midi_route* r, uint32_t jam, uint8_t n, uint8_t velocity) {
+    if (!playable(r, n)) {
         return;
     }
-    if (r->setup.mode == MIDI_MODE_MULTI) {
+    if (multi_mode(r)) {
+        r->ch[jam].velocity = velocity;
         mono_on(r, jam, &r->ch[jam], n);
         return;
     }
@@ -426,10 +492,10 @@ static void note_on(midi_route* r, uint32_t jam, uint8_t n) {
 }
 
 static void note_off(midi_route* r, uint32_t jam, uint8_t n) {
-    if (!in_range(n)) {
+    if (!playable(r, n)) {
         return;
     }
-    if (r->setup.mode == MIDI_MODE_MULTI) {
+    if (multi_mode(r)) {
         mono_off(r, jam, &r->ch[jam], n);
         return;
     }
@@ -568,6 +634,7 @@ static void rpn_data(midi_route_chan* c, uint8_t cc, uint8_t value) {
     default: return;
     }
     c->range = clamp(now, 0u, LIVE_BEND_RANGE_MAX);
+    c->range_rpn = 1;
 }
 
 static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
@@ -588,7 +655,15 @@ static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
     case LIVE_CC_RESONANCE: filter_cc(r, cc, value); break;
     case LIVE_CC_ALL_SOUND_OFF:
     case LIVE_CC_ALL_NOTES_OFF: channel_off(r, jam); break;
+    case LIVE_CC_MOD_WHEEL:
+        if (multi_mode(r) && r->parts) {
+            multi_wheel(r->parts, jam, value);
+        }
+        break;
     case LIVE_CC_RESET_ALL:
+        if (multi_mode(r) && r->parts) {
+            multi_reset_controllers(r->parts, jam);
+        }
         c->bend = LIVE_BEND_CENTRE;
         c->rpn_msb = RPN_NONE;
         c->rpn_lsb = RPN_NONE;
@@ -612,12 +687,17 @@ static uint32_t bank_of(const midi_route* r, uint32_t ch) {
     return (uint32_t)r->bank[ch][0] << 7 | r->bank[ch][1];
 }
 
+static int user_program(const midi_route* r, uint32_t n) {
+    uint32_t slot = n - MULTI_PROGRAM_USER;
+    return slot < LIVE_SOUNDS && r->l->user_load && (r->l->sounds_valid >> slot & 1u);
+}
+
 int midi_route_edits_live(const midi_route* r, const midi_msg* msg) {
     if (msg->kind != MIDI_PROGRAM || r->to[msg->channel & 15u] != MIDI_ROUTE_LIVE) {
         return 0;
     }
     switch (bank_of(r, msg->channel & 15u)) {
-    case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT;
+    case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT || user_program(r, msg->data1);
     case MIDI_ROUTE_BANK_PROFILES: return msg->data1 < SID_CHIPS + LIVE_USER_PROFILES;
     default: return 0;
     }
@@ -629,12 +709,16 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
     }
     switch (bank_of(r, ch)) {
     case MIDI_ROUTE_BANK_SOUND:
-        if (k == ROLE_JAM) {
+        if (k == ROLE_JAM && multi_mode(r)) {
+            (void)midi_route_part_program(r, jam, n);
+        } else if (k == ROLE_JAM) {
             if (n < MIDI_ROUTE_INSTR_MAX) {
                 r->ch[jam].instr = (uint8_t)(n + 1u);
             }
         } else if (n < LIVE_PRESET_COUNT) {
             live_set_preset(r->l, n);
+        } else if (user_program(r, n)) {
+            (void)r->l->user_load(r->l->user_ctx, n - MULTI_PROGRAM_USER);
         }
         break;
     case MIDI_ROUTE_BANK_SONGS:
@@ -694,12 +778,22 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
         return;
     }
     switch (msg->kind) {
-    case MIDI_NOTE_ON: note_on(r, jam, msg->data1); break;
+    case MIDI_NOTE_ON: note_on(r, jam, msg->data1, msg->data2); break;
     case MIDI_NOTE_OFF: note_off(r, jam, msg->data1); break;
     case MIDI_PITCH_BEND:
         r->ch[jam].bend = msg->bend > LIVE_BEND_MAX ? (uint16_t)LIVE_BEND_MAX : msg->bend;
         break;
     case MIDI_CC: jam_cc(r, jam, msg->data1, msg->data2); break;
+    case MIDI_CHANNEL_PRESSURE:
+        if (multi_mode(r) && r->parts) {
+            multi_pressure(r->parts, jam, msg->data1);
+        }
+        break;
+    case MIDI_POLY_PRESSURE:
+        if (multi_mode(r) && r->parts && r->v[jam].note == msg->data1) {
+            multi_pressure(r->parts, jam, msg->data2);
+        }
+        break;
     default: break;
     }
 }
@@ -714,8 +808,7 @@ void midi_route_tick(midi_route* r) {
         for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
             const midi_route_chan* c = &r->ch[s->mode == MIDI_MODE_MULTI ? v : 0u];
             int32_t off = ((int32_t)c->bend - (int32_t)LIVE_BEND_CENTRE) * (int32_t)c->range;
-            if (off != r->v[v].bend_sent &&
-                (!r->player.jam_bend || r->player.jam_bend(r->player.ctx, v, off))) {
+            if (off != r->v[v].bend_sent && p_bend(r, v, off)) {
                 r->v[v].bend_sent = off;
             }
         }
@@ -726,18 +819,24 @@ void midi_route_tick(midi_route* r) {
         }
     } else {
         for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
-            if (r->v[v].bend_sent &&
-                (!r->player.jam_bend || r->player.jam_bend(r->player.ctx, v, 0))) {
+            if (r->v[v].bend_sent && p_bend(r, v, 0)) {
                 r->v[v].bend_sent = 0;
             }
         }
     }
     if (r->filter_dirty) {
-        if (!r->player.filter ||
-            r->player.filter(r->player.ctx, r->locks, r->cutoff, r->resonance)) {
+        if (multi_mode(r) && r->parts) {
+            multi_filter(r->parts, r->locks, r->cutoff, r->resonance);
+            r->filter_dirty = 0;
+            r->locks_sent = r->locks;
+        } else if (!r->player.filter ||
+                   r->player.filter(r->player.ctx, r->locks, r->cutoff, r->resonance)) {
             r->filter_dirty = 0;
             r->locks_sent = r->locks;
         }
+    }
+    if (multi_mode(r) && r->parts) {
+        multi_tick(r->parts);
     }
 }
 

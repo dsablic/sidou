@@ -250,6 +250,7 @@ static const uint8_t DEFAULTS[LAB_SOUND_BYTES] = {
     [LAB_SOUND_FILTER_MODE] = 0x10,
     [LAB_SOUND_BEND_RANGE] = LIVE_BEND_RANGE_DEFAULT,
     [LAB_SOUND_MOD] = LIVE_MOD_VIBRATO,
+    [LAB_SOUND_PRESSURE] = LIVE_PRESSURE_VIBRATO,
     [LAB_SOUND_VIBRATO_RATE] = LIVE_VIBRATO_RATE_DEFAULT,
     [LAB_SOUND_ARP + LIVE_ARP_RATE] = LIVE_ARP_RATE_DEFAULT,
     [LAB_SOUND_ARP + LIVE_ARP_SPAN] = 1,
@@ -2627,6 +2628,18 @@ static int swing_refused(patch_song* sg, uint32_t speed_sum) {
     return -1;
 }
 
+static int song_start_speed(gt2_song* s, patch_song* sg, uint32_t speed) {
+    uint8_t* last = s->instr[GT2_MAX_INSTR - 1u];
+    for (uint32_t k = 0; k < GT2_INSTR_BYTES; k++) {
+        if (last[k]) {
+            return song_fail(sg, "instruments", NULL, -1, SONG_TABLES_FULL);
+        }
+    }
+    last[GT2_INS_AD] = (uint8_t)speed;
+    gt2_saved_recount(s);
+    return 0;
+}
+
 static int song_tempo(gt2_song* s, song_build* b, patch_song* sg) {
     song_speeds sp = speeds_of(sg->bpm);
     sg->bpm_played10 = (uint16_t)sp.bpm10;
@@ -2647,7 +2660,7 @@ static int song_tempo(gt2_song* s, song_build* b, patch_song* sg) {
     }
     s->ltable[GT2_STBL][b->tempo_row - 1u] = (uint8_t)sp.first;
     s->rtable[GT2_STBL][b->tempo_row - 1u] = (uint8_t)sp.second;
-    return 0;
+    return song_start_speed(s, sg, sp.second);
 }
 
 static void lane_of(const song_build* b, uint32_t section, uint32_t voice, song_lane* lane) {

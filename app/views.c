@@ -62,14 +62,14 @@ void views_sound(views* v, ui_sound_id id) {
     }
 }
 
-static void preset_value(void* ctx, char* buf) {
+void views_preset_value(void* ctx, char* buf) {
     const views* v = ctx;
     char name[LIVE_PRESET_NAME_CHARS];
     live_preset_name(v->l, name);
     views_join(buf, MENU_VALUE_CHARS, name, "");
 }
 
-static void preset_turn(void* ctx, int32_t steps) {
+void views_preset_turn(void* ctx, int32_t steps) {
     views* v = ctx;
     live_preset_step(v->l, steps, 0);
 }
@@ -189,7 +189,7 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
     {"LAB", NULL, lab_open},               {"SIDS", NULL, sids_open},
-    {"PRE", preset_value, preset_turn},
+    {"PRE", views_preset_value, views_preset_turn},
     {"OCTAVE", octave_value, octave_turn},
     {"SETTINGS", NULL, settings_open},     {"STATUS", NULL, status_open},
     {"MIDI", NULL, midi_open},             {"CHARSET", NULL, charset_open},
@@ -492,10 +492,19 @@ void views_popup_midi(views* v, int on) {
     screen_popup_watch(&v->s, on ? midi_watch : NULL, on ? v : NULL);
 }
 
+static int read_user_sound(void* ctx, uint32_t slot, char name[LAB_SOUND_NAME + 1u],
+                           uint8_t sound[LAB_SOUND_BYTES]) {
+    return user_sound_read(ctx, slot, name, sound);
+}
+
 void views_route(views* v, midi_route* route) {
     v->route = route;
     if (route) {
         v->song.rows_beat = route->setup.rows_per_beat;
+    }
+    if (route && route->parts) {
+        route->parts->user = read_user_sound;
+        route->parts->user_ctx = &v->sounds;
     }
 }
 
@@ -554,6 +563,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->home_down = 0;
     v->help.done = 0;
     v->tour = 0;
+    v->user_hint = 0;
+    v->dice_seen = l->dice_rolls;
     v->toast_held = 0;
     v->song_last = NULL;
     v->tune = 0;
@@ -857,9 +868,21 @@ __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_
     }
 }
 
+__attribute__((noinline, unused)) static void user_hint(views* v) {
+    if (v->l->dice_rolls == v->dice_seen) {
+        return;
+    }
+    v->user_hint = 1;
+    if (!v->l->sounds_valid) {
+        screen_toast(&v->s, VIEWS_USER_HINT, VIEWS_USER_HINT_MS);
+    }
+}
+
 void views_flow(views* v, uint32_t now_ms) {
     if (v->tour) {
         tour_frame(v, now_ms);
+    } else if (!v->user_hint) {
+        user_hint(v);
     }
     if (!v->p) {
         return;

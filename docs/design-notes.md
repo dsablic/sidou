@@ -169,8 +169,8 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   that may crash: only the second-core hold, `fm1_time_init`, the watchdog's arming and the power-on
   UBOOT gesture come before it.
   `fm1_cpu1_halt` (the HAL's second-core hold) runs at every boot and before every reset, because
-  SIDOU never starts the second core but one left running from a previous boot would execute
-  whatever its PC points at during RAM clear and fill. The HAL builds the hold function only when
+  SIDOU starts the second core only after the RAM copy ("Second core", below), and one left
+  running from a previous boot would execute whatever its PC points at during RAM clear and fill. The HAL builds the hold function only when
   `FM1_CPU1_USED` is set: `main.c` sets it to 1 for `fm1_sys.h` (the hold) and to 0 for
   `fm1_irq.h`, whose second-core fault paths need Felucca's `fm1_cpu1.S`.
 - Interrupt priorities in `main.c`: TIMER5 (4) sits above ALNK0 (3), so the tick keeps pace even
@@ -738,17 +738,51 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
 
 ### Second core (`SIDOU_CPU2`)
 
-- **Off by default, the default image unchanged** ([decision 0010](decisions/0010-second-core-reopened.md),
-  [the spike](plans/2026-11-15-second-core-spike.md)). `-DSIDOU_CPU2=ON` builds chip B's render
-  on core 1 for the device check; nothing in the default build changes (577,536 bytes, the same
-  bytes as without the option). The option record names `SIDOU_CPU2=ON` only when it is on
-  (`ABSENT_WHEN_OFF`), so the default record is unchanged and `sidou-pack` fails an ON package.
-  Players see nothing: no menu entry, no setting.
-- **The ON image's size gate.** Deferred to 2.0 on 2026-11-15 (the owner) while the ON image was
-  581,120 bytes, 1,604 over the 579,516 ceiling (the second core adds about 1,890 bytes, and the
-  default image had 284 to spare). Restored in 1.20 once RED MOON RITE's art left the image: with
-  pairing, the ON image is 547,796 bytes, 31,720 under the ceiling, and `flash_budget.rs` and
-  `psid_budget.rs` check it as they check the default image (`flash_plan::assert_fits`).
+- **On by default since 2.0** (the owner, 2026-11-18, after the device day:
+  [hardware-test §42](hardware-test.md#42-20-the-second-core-on-the-device),
+  [decision 0010](decisions/0010-second-core-reopened.md), [the spike](plans/2026-11-15-second-core-spike.md)).
+  On the owner's FM-1 core 1 has an FPU and runs SIDOU's float render; with SIDOU LOOP and the
+  keys, core 0's audio time is AVG 16.6 %, WORST 29.4 % with chip B on core 1 against AVG 31.4 %,
+  WORST 41.7 % with chip B on core 0 (the average 47 % lower, the worst 30 % lower; about twice
+  fm1-emu's 7.5 % and 14.3 %, which counts instructions and models neither the cache nor flash
+  waits); a 30-minute soak heard nothing wrong and SAVE, SAVE AGAIN restarted on two cores. Every
+  fallback stays: the self-test, one core until power-off with the same sound, the bar in NOINIT,
+  SAVE, SAVE AGAIN on CORES to lift it. The option record names `SIDOU_CPU2=ON` in every release
+  (`DEFAULT_OPTIONS`), so `sidou-pack --verify` and `tools/preflash` fail an OFF package.
+- **The OFF build is kept as the emulator gate's reference, never shipped.** `-DSIDOU_CPU2=OFF`
+  builds the image with no second core at all (no worker, no hand-over, no meter, no CORES page),
+  555,908 bytes. CI and `tools/merge-check` build it into `build/fm1-cpu1` and `cpu2.rs` holds the
+  default image to it: chip B on core 1 and every fallback play its samples, core 0's worst block
+  drops by chip B against its own, and the layout test finds none of core 1's code in it. A
+  reference that has no hand-over can catch a fault common to both of the default image's paths,
+  which the default image fallen back to one core cannot, and it keeps the option buildable for a
+  unit whose core 1 the fallbacks do not catch. Its size needs no gate of its own: it is the
+  default image less the second core's code. Dropping the option would have cost no tests but this
+  reference; the build costs CI nothing new, as it takes the old two-core build's place.
+- **Every gate runs on the default, two-core image**, so core 0's budgets measure with chip B on
+  core 1 wherever chip B plays beside a one-chip player. A unit that falls back renders chip B on
+  core 0 inside the same block, so the two-chip worst case with every slot's heaviest effect is
+  held to the audio target twice (`chip_b.rs`, `..._on_one_core_or_two`): on two cores and on the
+  same image with core 1 retired by a fault at its first FPU instruction
+  (`booted_fallen_back_to_one_core`). The emulator steps core 1 beside core 0, so the gate's
+  run takes longer in time, not in what it checks; the `cpu2` shard, which ran a subset of the
+  gates on the ON image, is gone. Moving every gate over found timing the subset never met: the
+  self-test before `sidou_main` (now in the LCD's wait, below), and a SysEx sent within 10 ms of a
+  bus left idle for 100 ms (`usb.c` marks it suspended until its 10 ms frame check sees the frame
+  number move, and `midi_sysex_service` drops a USB frame while it is). A plugged host sends a
+  frame every millisecond, so `usb.rs`'s `keep_sounds` keeps its frames going through the settle;
+  a host that sleeps and wakes waits out USB's 10 ms resume recovery before it sends.
+- **STATUS's input stays within the popup's 256 instructions** with the CORES page in every image:
+  `status_input` tests the event for ALGORITHM before anything else and the flip
+  (`cores_chip_b_flip`, which reads the report on the stack) is kept out of line, so a knob over
+  STATUS costs 255 (the OFF build 249; inlined, the report's frame made it 260). The RED MOON
+  RITE song frame, the fire's and the scopes' goldens moved by a frame's phase with the main loop's
+  new time.
+- **Sizes at the switch:** the default image 559,796 bytes (19,720 under the 579,516 ceiling;
+  +3,888 against the OFF image), RAMTEXT 45,728 of 49,152 (+704), the RAM region 5,128 bytes free
+  (the floor is 5,120), NOINIT 11,384 of 15,696 bytes. The two-chip worst block with every slot's
+  heaviest effect: 1,672.2 instructions a sample on two cores, 2,491.4 fallen back to one, against
+  the target of 2,700.
 - **felucca-bsp's worker byte for byte**: `chip/fm1_cpu1.{h,S}` with `FM1_CPU1_FALLBACK 1` (one
   core until power-off after a failure, never a restart) and `FM1_CPU1_TIMEOUT_US 1000` (2.6 times
   chip B's worst job at 240 MHz, and the block still has room to render chip B on core 0).
@@ -794,8 +828,11 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   noise and the filter) for 100 blocks while core 0 renders its twin, compared block by block. A
   difference retires core 1 (`gave_up` 0x10, barred until power-off); a refused or late job retires
   it as the hand-over does. The two chips borrow the effect pool (128 KB, before `audio_init`; two
-  chips are 70 KB) and leave it zeroed. About 25 ms of boot (6.1 M instructions on core 0) and
-  about 370 bytes of flash. It closes the spike's gap: a misread inside the render, which the
+  chips are 70 KB) and leave it zeroed. About 25 ms (6.1 M instructions on core 0) and about 370
+  bytes of flash. It runs inside the LCD's 150 ms reset wait (`while_lcd_resets`, beside the
+  noise tables and the song's load), not before `sidou_main`: there it pushed the audio's start
+  from 397 to 422 ms after power-on in fm1-emu, past `boot.rs`'s 400 ms; in the wait the boot
+  keeps its time (396 ms) and the interrupts are still off. It closes the spike's gap: a misread inside the render, which the
   mailbox's check word cannot see. Measured in fm1-emu (`SIDOU_CPU2_SWEEP`, 40 units each): misreads only in core 1's
   render at 1e-5 a load reached the sound unseen on 18 units without the self-test, damaged it on
   20 more before the timeout retired them, and left 2 clean; with it all 40 were retired at power-on
@@ -814,14 +851,14 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   21). Comparisons with the default build drive both chips through the register ring at cues on
   the audio's block grid: the main loop's own timing differs between the builds (a song's first
   note or a UI frame can land a block apart), so the song and the tunes are held to the host's
-  render on the two-core image instead (the `cpu2` shard, `tools/emu-shards`).
-- **Device-only:** whether core 1 has an FPU (a trap retires it at the self-test), whether this
-  unit misreads under SIDOU's load, the hand-over's real cost with both cores on the SRAM, and
-  whether the watchdog resets core 1.
-- **The device day's page (hardware-test §42): STATUS's fourth page, CORES, in the two-core build
-  only.** The app's code for it is under `SIDOU_CPU2` (`sidou_live` gets the define with the
-  option), so the default image stays byte for byte the same (554,916 bytes, checked by SHA-1); the
-  two-core image grows by 1,968 bytes to 558,756. The platform hands the page a report
+  render on the default, two-core image instead.
+- **Device-only:** answered on the owner's unit on 2026-11-18 (§42, the first bullet): core 1 has
+  an FPU, it did not misread in 30 minutes of SIDOU's load, and the hand-over's gain is above.
+  Whether the watchdog resets core 1 was not run (it needs §10's hang build); SIDOU holds core 1
+  first thing at every boot either way.
+- **STATUS's fourth page, CORES, for every player since 2.0** (built for the device day,
+  hardware-test §42). The app's code for it is under `SIDOU_CPU2` (`sidou_live` gets the define
+  with the option), so the OFF reference has three STATUS pages. The platform hands the page a report
   (`views_cores`, bound in `ui.c` as the radio is): core 1 RUNNING or OFF, the reason, its jobs,
   where chip B renders, core 0's audio time and the small print. Big text for what the owner reads
   off the device; the register words are small print, read once and photographed.
@@ -832,12 +869,17 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   In fm1-emu the page's AVG matches the emulator's own instruction count of the interrupt (7.5 %
   with both chips at their worst on two cores, 14.3 % with chip B on core 0, at 240 MHz and one
   instruction a cycle); on the device it is the real time, caches and `csync` included.
-- **One core against two on the same image.** The default build has no meter (it would cost the
-  default image and the interrupt for a question only this build asks), so ALGORITHM on CORES
+- **One core against two on the same image.** The OFF build has no meter, so ALGORITHM on CORES
   switches chip B between core 1 and core 0 (`cpu2_chip_b_away` refuses the hand-over); core 1
   idles in its RAM loop meanwhile and takes jobs again on the way back. Chip B on core 0 is the
   default build's render path plus one byte's test, so the difference between the two AVGs is the
   hand-over's real gain. The switch resets WORST, so each side's worst is its own.
+- **ALGORITHM stays on CORES for players (2.0).** It is one turn on the page that shows its result
+  at 2× (`CHIP B CORE 1` or `CORE 0`, and AVG and WORST moving with it), so the popup rule is met
+  without a popup, and it is the one way a player can hear for themselves that the two cores sound
+  alike and see what the second core gives back. It changes no sound and nothing kept: chip B goes
+  back to core 1 at the next start (`chip_b_on_core0` is in `.bss`). Hiding it behind a held key
+  or a setting would add a gesture for a diagnostic that does no harm.
 - **Lifting the bar: SAVE, then SAVE AGAIN on CORES** (the confirmation every irreversible step
   takes; HOME backs out). It clears the bar's word and restarts through `fm1_reboot` (the audio
   stopped, the boot guard told it is on purpose, core 1 held), because core 1 can only be started
@@ -5179,6 +5221,21 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   the menu, 230 on SCENE), K2 170 to 186, ALGORITHM 166, SELECT 129; the busiest pass 37.2k on the
   views that compose little and 59.8k on SCENE. K4 (the preset) loads a preset and is no popup's
   cost (1,185 and a pass of 89k over LIVE). CHIP has its own bound (`CHIP_INPUT`, 245).
+- **A popup of another knob replaces the shown one a band a frame** (`popup_draw`'s `swapped`):
+  swapping a whole open popup (252 cells, most of them new when the name and its large text change)
+  sent 211 cells in one frame with nothing else moving (STEP's GROOVE page, K2 then K1; 229 with
+  the view's own cells), over the 200 a frame. A knob with another name or colour now replaces the
+  popup in three bands, the name (rows 0 to 3, at most 112 cells), the value (4 to 6) and the bar
+  with the foot (7 and 8). The bands not yet replaced are drawn again, when the view under the
+  popup composed, in what the popup showed: the source is asked again for the earlier ask
+  (`old_ask`, one byte; a copy of the old face cost 29 bytes of the RAM region, which has 8 over
+  its floor of 5,120), so the old value shown is the old knob's value now. The covered cells
+  claimed to the views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
+  read when the swap ends), so no frame holds two swaps. The cost: for two frames the value is
+  the old knob's under the new name. A turn of the same knob (same name and colour) changes only
+  its value and bar, in one frame as before. The sweep in `popup.rs` and STEP's test turn a second
+  knob at every frame of the first popup's life; SCENE is left out of the sweep, whose own plasma
+  draws between frames in the host's count.
 - `POPUP_GONE_MS`, 2 s: a popup closes a second after its last detent, plus the three frames it
   takes to close, with room. The gates of what a view itself costs when a control changes clear the
   popup's source (`without_popups` in emu-gate): its hundreds of cells would drown the view's.
@@ -5465,12 +5522,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - Route input channels.
 - OMNI (the default): every channel plays the instrument, on the chip the keys play.
 - LIVE: channel N alone plays the instrument; the others are ignored.
-- MULTITIMBRAL: channels N, N+1, N+2 play chip A's voices 1, 2, 3, each a jam voice of the
-  player with its own GoatTracker instrument (program change n is instrument n + 1), its own
-  pitch bend (the range per channel, RPN 0) and its own notes: one at a time, the last one held
-  sounding (a release goes back to the note held before it), with the LEGATO option a change of
-  note while one is held glides on without a new attack. Channel N+3 plays the instrument, on
-  chip B.
+- MULTITIMBRAL: channels N, N+1, N+2 are a monophonic part each on chip A's voice 1, 2, 3,
+  playing a LAB sound (MULTI's parts, below); channel N+3 plays the instrument, on chip B.
 - WHOLE-CHIP A: channel N plays all three voices of chip A with one GoatTracker instrument
   (channel N's program): three-voice polyphony, a new note taking the voice whose note started
   longest ago when all three sound. Options: CHORD (one key plays the stored chord) and ARP
@@ -5487,14 +5540,77 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - CC 74 (cutoff) and CC 71 (resonance) lock chip A's filter to the value, over the song's
   filter writes, until CC 121 or a change of mode.
 - Program change n (0..62) picks the channel's instrument n + 1; others are ignored.
+- These chip A rules are WHOLE-CHIP A's now; MULTI's parts follow their own (below).
+
+### MULTI's parts (`app/multi.c`)
+
+- Why: MULTI was in the menu with nothing behind chip A's channels (a review of 1.10 read it
+  as "one MIDI channel"). The owner's decision (2026-11-18): MULTI is four channels for a DAW,
+  and chip A's three play LAB sounds, not the song's GoatTracker instruments, which a DAW user
+  neither has nor sees.
+- Not a second `live`: one is 1,232 bytes (five slots of edits, the USER edit, the base sound)
+  and the RAM region kept 5,268 bytes over its 5,120 floor. A part keeps only what one voice
+  plays: the sound's first layer decoded (76 bytes, the 35-byte table included) and its state
+  (24 bytes); `multi` is 348 bytes, in POOL. The RAM region has almost no room on the two-core
+  build (8 bytes over its 5,120 floor), so the route (`routing`, 216 bytes, main-loop only and
+  initialised by `midi_route_init` over POOL's boot-time zeroing) moved to POOL too, which more
+  than pays for what MULTI adds there (the route's per-channel range flag and velocity, the
+  page's labels, the hint: 52 bytes). Measured: the RAM region 5,444 free (5,272 before), 5,300
+  on the two-core build; POOL 5,248 (5,808 before), both over 5,120.
+- Shared with `live.c`, not copied: the vibrato's triangle, the PWM swing, velocity on the
+  sustain and the pulse, the wheel's pulse width, the table's next step and pitch are `static
+  inline` in `live.h`, so `live.c`'s code is unchanged in shape and `multi.c` calls the same
+  arithmetic. `live_preset_sound` writes a preset as sound bytes; a host test holds it equal to
+  what `live_sound_get` gives after `live_set_preset`.
+- What a part plays: waveform, envelope, pulse width and PWM, the sound's tune and its first
+  layer's transpose and detune, vibrato, velocity, wheel and aftertouch targets, and the table
+  when it runs on layer 1. Left out: layers 2 and 3 (one voice each), the two LFOs, the filter
+  LFO and envelope and the links (they move chip-wide registers three parts would fight over),
+  the arpeggio (a part is monophonic), the effect slots (chip B's instrument's), the layer level
+  and hard sync and ring (they couple a voice to its neighbour, another part). The test bit is
+  kept: a table may use it.
+- Program map, bank 0: 0..3 the presets, 4 the instrument's sound as it is (`live_sound_get`:
+  the way to send a DICE roll or a sound being shaped to a part), 16..31 USER 1..16 read from the
+  store (`user_sound_read`) at the program change. 16..31 leave 5..15 free and match USER n +
+  15 at a glance; the instrument's channel takes 16..31 too (`l->user_load`), so one map serves
+  every channel. An empty slot or any other number keeps the sound.
+- The filter, one per chip: N's sound sets type, cutoff and resonance, and N's wheel,
+  aftertouch and velocity move the cutoff where N's sound says; each part routes its own voice
+  by bit 0 of its sound's filter voices. One owner is predictable (a DAW user gives track 1
+  the filtered sound), and routing per part keeps a dry drum dry under a filtered lead. With no
+  type on N's sound nothing is routed: a routed voice with no type is silent on the SID. CC 74
+  and 71 on any chip A channel lock it (the route's locks, as before), until CC 121.
+- The bend range: the sound's until RPN 0 sets the channel's, and an RPN's range outlasts
+  program changes (as the instrument's `bend_range_rpn`).
+- With a song: the song keeps chip A and PLAY does what it always does; a part's held note takes
+  its voice (`song_ctl_take`: the parts call `taking` with their whole mask whenever it
+  changes, and `commit_pass` only folds it in when the keys' mask changes: polling it every pass
+  cost about 12,000 instructions a second in a CC flood, and the main loop's flood bounds in
+  emu-gate `midi.rs` had 300 to spare) and its release write still goes; while the song plays the parts write no
+  filter or volume register and nothing to a voice not held. The jam rule the docs had
+  promised, the simplest for a DAW user (nothing stops). A `.sid` tune owns chip A: the parts
+  write nothing until it stops; then, and after a song or a change of chip A's profile, every
+  part's registers and the filter are written again (`multi_fresh`).
+- Cost: the main loop only. A part's note writes 7 registers and the filter up to 4; the 100 Hz
+  tick recomputes three frequencies and pulse widths and writes what changed. A dense stream on
+  four channels with program changes to USER sounds (each a store read) kept the busiest pass
+  under 27,000 instructions of the 120,000 allowance (emu-gate `midi_modes`). The image grew 3,904
+  bytes (555,892 to 559,828, 19,688 under the ceiling) with this branch's other changes;
+  RAMTEXT did not change (45,024).
+- The MIDI page in MULTI swaps OPTION, CHORD 2, CHORD 3 and ARP RATE (WHOLE A's) for four rows
+  named by channel (`CH1`..`CH16`, labels written into a static buffer from CHANNEL): three
+  parts' sounds, stepped as a program change would, and N+3's, the instrument's PRESETS. Same
+  count of items, so the page's budgets and scrolling are unchanged; the popup shows the full
+  name, which a 14-character row can cut.
 
 ### Program change and bank select
 
 - CC 0 MSB and CC 32 LSB select a channel's bank, MSB × 128 + LSB, held until changed (from
   either port; kept across lost input); a program change means what the channel's bank says.
 - Bank 0, the channel's sound: on the instrument's channel the instrument's preset
-  (0..`LIVE_PRESET_COUNT` − 1, where `LIVE_PRESET_COUNT` is 4), on a chip A channel
-  (MULTITIMBRAL, WHOLE-CHIP A) GoatTracker instrument n + 1.
+  (0..`LIVE_PRESET_COUNT` − 1, where `LIVE_PRESET_COUNT` is 4) or a kept USER sound (16..31), on
+  a MULTI part's channel its sound (above), on WHOLE-CHIP A's channel GoatTracker instrument
+  n + 1.
 - Bank 1, songs: program n asks for the store's n-th song in name order, loaded stopped, on the
   instrument's channel or channel N only.
 - Bank 2, the chip's profiles: 0..4 the built-in ones, on the instrument's channel live's
@@ -5756,6 +5872,36 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   wheel's centre is the square. Only the wheel's mapping changed: NRPN 0/2 and learned CCs
   set the raw width. The pulse width's CC 1 on MIDI out still scales 0..4095, so a loop-back
   lands inside the audible range, not on the same number.
+
+### Live Link waits for a clock that is due
+
+- Under a Live Link session a MIDI clock queued behind a whole frame (up to 25 packets) waited
+  for the frame to drain, and whether one landed there was a matter of phase: main sat at 2 ms
+  of jitter against the bound of 1 + a USB frame, and MULTI's boot and main-loop changes moved
+  the phase to 3 (the clocks were queued at the same instants; only delivery moved). Now
+  `midi_sync_poll` keeps the next clock's sample (`out_next_at`), and `midi_link_run` holds a
+  frame back while a clock is due within 2 ms (`MIDI_LINK_CLOCK_GUARD`), so a clock never
+  queues behind a frame started just before it. The frame goes at the next pass after the clock.
+  The same phase move redrew SCENE's FIRE and SCOPE goldens one frame on.
+
+### The USER sounds hint
+
+- USER sounds were hard to find: a DICE roll you liked was gone at the next turn. The first roll
+  after power-on toasts `LAB KEEPS 16 USER SOUNDS` for 3 s, once, and not at all while a USER
+  sound is kept (whoever has one knows). A frame's check in `views_flow` compares the roll
+  count with the count at `views_init`: no hook in `live`, two bytes in `views`. The first-run
+  tour's toasts go first.
+
+### Aftertouch's default
+
+- Aftertouch (NRPN 6/3) was off by default, so a keyboard's pressure did nothing on the factory
+  sounds. Its default is the vibrato depth, as the wheel's (above): the two add, and General
+  MIDI gives both that meaning. The enum values stay (off 0, vibrato 1, pulse 2, cutoff 3).
+- Record version 11 has version 10's layout; an older record's stored OFF reads as VIBRATO, the
+  wheel's rule (the old default and a deliberate OFF are the same byte), and a stored PULSE or
+  CUTOFF is kept. A sound or patch that names a target keeps it; one that names none
+  (`patch_json_defaults`, the factory sixteen, the presets) gets VIBRATO. `DICE_HASH` changed
+  for that byte alone.
 
 ### Tests: Live Link
 
@@ -7640,10 +7786,17 @@ gain.
   250.6). Multispeed would be finer but runs the instruments' tables faster, so it is not used.
   A pair other than the NEW song's 6 and 6 is a speedtable row (left `a`, right `b`) and the first
   row of the first section's first voice carries the funktempo command `E` with that row; the
-  reported BPM is the one that plays, which a test measures from the played frames (the rows after
-  the first: the player starts the song's very first row at the default speed 6, and funktempo
-  takes over from the second, so the first pass's first row is short; the test reads each row's
-  length and pins bpm 60 to 12 then 13). A `swing` is the long speed first and goes on voice 1's
+  reported BPM is the one that plays, which a test measures from the played frames (every row, the
+  first included: GoatTracker's tempo command on row 0 takes effect after that row, so a song that
+  carried only the command played its first row at the default speed 6, short against the song's
+  tempo. The song's last instrument slot (63) now carries the start speed, as GoatTracker's own
+  player reads it (the AD byte of slot 63, with no wave pointer, is the default speed; the
+  packed player and SIDOU's give the same writes, `gt2_match`): the pair's second speed, since row
+  0 takes it and funktempo's first speed then follows on row 1, so the rows run second, first,
+  second ... and row 0 is one of the pair. An even pair has equal rows from row 0; a pair
+  like 7 and 8 starts on the 8. A song whose instruments fill slot 63 is refused, with the
+  tables-full words. The test reads each row's length from the first and pins bpm 60 to 12 then
+  13 after it). A `swing` is the long speed first and goes on voice 1's
   rows as SWING writes it ([Swing](#swing-121): eighths or sixteenths by the song's grid, the
   same `song_swing.c`), after the patterns are written so the grid is the song's. The limit
   of 250 is speed 3 twice; the docs list the played values, generated from the converter by
@@ -7801,6 +7954,43 @@ gain.
   not follow are allowed at most one call in `WRONG_PITCH_AT_MOST_ONE_IN` (2000).
 - With the GoatTracker examples checked out (`SONGS_WITH_GT2_EXAMPLES`, 17 songs) the comparison
   must cover more than 17,000 gate runs, 100,000 calls and 20,000 ties to mean something.
+
+### Sounds from a .sid tune (2.0)
+
+- The converter's instruments are LAB sounds too (the owner, 2026-11-18): after Convert the page
+  lists each instrument with its voice, the notes that use it, a short description and what LAB
+  could not hold, and Listen, Keep, Edit as text, Send to the FM-1 and Copy link work as for any
+  patch. It is site-only: `web/sidsound.js` writes `sidou-patch/1` JSON from the song's
+  instruments and tables, and the patch module (88 KiB) and the tune module (96 KiB) are not
+  touched. No SidStation or MBSID mapping could be reused: those are Rust, from a bank's own
+  fields; this reads GoatTracker's tables.
+- The patch is JSON, not the 112 bytes, so the patch converter does every unit and every range:
+  the envelope's nibbles, the pulse in percent, the note names. The one unit it cannot give is
+  the filter's cutoff in Hz (a measured 8580 curve, a table in `sid_filter`); `Patcher.cutoffHz`
+  writes a default sound with the register value into the cutoff's two bytes and reads the Hz
+  back, so the Hz reads back as that register value. The default's own value is left out of the
+  JSON, and is taken from its neighbours (a step is about 7 Hz, and reading snaps to the nearest).
+- Wave table: a row is a step of one frame; a row with no wave repeats the previous wave; the gate
+  bit is dropped (LAB gates itself). Rows 0 to 95 are semitones from the key, 96 to 127 below it,
+  `$80` holds, and a note above it is fixed: `C#0` to `B7`, as GoatTracker's. Steps that repeat at
+  the end of a table that stops are one (the last step holds), because LAB's table holds its last
+  step as GoatTracker's wave table does. LAB's table has 16 steps; a longer one is cut, its loop
+  kept when it points inside the cut, and the sound says so. An instrument whose table is one
+  wave and no pitch move has no table, only a wave.
+- Pulse: the set row is the pulse width; a sweep is the sweep's runs as one triangle PWM, its
+  depth half the longest run's travel (a run is `time` frames at `speed` units of 4096 a frame, as
+  `gplay.c` adds them), its rate 50 Hz over the runs' frames (twice the run when there is one),
+  its centre half a run past the set width; under half a percent it is not written.
+- Filter: mode, resonance and cutoff from the instrument's first set row and cutoff row. LAB
+  routes a one-oscillator sound's filter to all three voices or none, so a filter on the tune's
+  own voice becomes all three, and the sound says so; the tune's moves of the cutoff are not kept
+  (the converter keeps one setting for each instrument too). An instrument with no mode or no
+  voice has `"voices": []`.
+- Not mapped, because the converter never writes them: table delays and commands, vibrato, and the
+  speed table. Each kept sound stays in the browser (`localStorage`, 16 of them, a bank's most),
+  and All as a bank opens `sidou-bank/1` in the patch section, so one song carries them to the
+  FM-1. A USER sound slot is not written by the page: the FM-1 writes those itself (SAVE in LAB
+  after loading the song).
 
 ### .sid to song (1.21)
 
