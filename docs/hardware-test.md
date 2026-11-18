@@ -3335,7 +3335,7 @@ Set up:
 - [x] **Install the two-core package** over the current build with Felucca's installer
   (`fm1_install.py sidou-cpu2.fwsc`). Pass: it finishes ("done: the FM-1 runs FM-1_964"); SIDOU
   boots as usual (the self-test adds about 25 ms); SONG, LOAD lists the songs it had.
-  *Emulator:* `package.rs`. *Device-only:* the install of a two-core image. *Result:* Passed 2026-11-18 on the two-core test package from main c7339b18 (`-DSIDOU_CPU2=ON`, FM-1_964, app 559,796 B, SHA-256 53942813…26feaac53), over the 48 kHz test build of §16's check: "done: the FM-1 runs FM-1_964".
+  *Emulator:* `package.rs`. *Device-only:* the install of a two-core image. *Result:* Passed 2026-11-18 on the two-core test package from main c7339b18 (`-DSIDOU_CPU2=ON`, FM-1_964, app 559,796 B, SHA-256 53942813…26feaac53), over the 48 kHz test build of felucca-bsp #16's check: "done: the FM-1 runs FM-1_964".
 - [x] **Core 1 after the boot:** STATUS, SELECT counter-clockwise once (CORES). Pass: `CORE 1
   RUNNING`, `WHY --`, `JOBS` at 100 or more; write down `C1_CON AT BOOT` (the cold boot's value).
   If it says OFF, record `WHY` and the small print, photograph the page, and stop here (go to the
