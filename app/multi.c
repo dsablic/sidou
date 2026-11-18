@@ -176,6 +176,23 @@ void multi_fresh(multi* m) {
     write_filter(m);
 }
 
+static void follow_chip(multi* m) {
+    const keys_route* kr = m->kr;
+    if (!kr) {
+        return;
+    }
+    uint8_t song = kr->song_on;
+    uint8_t tune = kr->tune;
+    uint8_t profile = kr->ctl[0].has.profile;
+    int back = (m->song && !song) || (m->tune && !tune) || profile != m->profile;
+    m->song = song;
+    m->tune = tune;
+    m->profile = profile;
+    if (back) {
+        multi_fresh(m);
+    }
+}
+
 static void sound_from(multi_sound* s, const uint8_t in[LAB_SOUND_BYTES]) {
     s->control = in[LAB_SOUND_CONTROL];
     s->attack_decay = in[LAB_SOUND_AD];
@@ -248,6 +265,7 @@ LIVE_COLD static int load(multi* m, uint32_t part, uint32_t program) {
 }
 
 int multi_program(multi* m, uint32_t part, uint32_t program) {
+    follow_chip(m);
     if (!load(m, part, program)) {
         return 0;
     }
@@ -295,23 +313,6 @@ LIVE_COLD void multi_init(multi* m, live_sink_fn sink, void* sink_ctx, const liv
         p->note = MULTI_NO_NOTE;
         p->velocity = LIVE_EXPRESSION_MAX;
         (void)load(m, v, programs[v]);
-    }
-}
-
-static void follow_chip(multi* m) {
-    const keys_route* kr = m->kr;
-    if (!kr) {
-        return;
-    }
-    uint8_t song = kr->song_on;
-    uint8_t tune = kr->tune;
-    uint8_t profile = kr->ctl[0].has.profile;
-    int back = (m->song && !song) || (m->tune && !tune) || profile != m->profile;
-    m->song = song;
-    m->tune = tune;
-    m->profile = profile;
-    if (back) {
-        multi_fresh(m);
     }
 }
 
@@ -385,6 +386,7 @@ void multi_reset_controllers(multi* m, uint32_t part) {
 }
 
 void multi_reset(multi* m) {
+    follow_chip(m);
     for (uint32_t v = 0; v < MULTI_PARTS; v++) {
         multi_note_off(m, v);
         multi_reset_controllers(m, v);
@@ -395,6 +397,7 @@ void multi_reset(multi* m) {
 }
 
 void multi_filter(multi* m, uint32_t locks, uint32_t cutoff, uint32_t resonance) {
+    follow_chip(m);
     m->locks = (uint8_t)locks;
     m->cutoff_cc = (uint16_t)at_most(cutoff, LIVE_CUTOFF_MAX);
     m->resonance_cc = (uint8_t)at_most(resonance, LIVE_RESONANCE_MAX);

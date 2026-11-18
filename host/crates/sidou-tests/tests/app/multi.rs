@@ -388,6 +388,16 @@ fn under_a_song_a_note_takes_its_voice_and_the_filter_stays_the_songs() {
 }
 
 #[test]
+fn under_a_song_a_program_change_or_cc_74_leaves_the_songs_filter_alone() {
+    let (_, mut p) = rig_parts();
+    p.kr.song_on = 1;
+    assert!(p.program(0, u32::from(PWM_BASS)));
+    unsafe { multi_filter(&mut *p.m, MULTI_LOCK_CUTOFF, 100, 0) };
+    unsafe { multi_reset(&mut *p.m) };
+    assert!(p.chip.log.is_empty(), "{:?}", p.chip.log);
+}
+
+#[test]
 fn a_sid_tune_owns_chip_a_and_the_parts_come_back_after_it() {
     let (_, mut p) = rig_parts();
     p.kr.tune = 1;
