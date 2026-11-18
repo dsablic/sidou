@@ -7726,6 +7726,43 @@ gain.
 - With the GoatTracker examples checked out (`SONGS_WITH_GT2_EXAMPLES`, 17 songs) the comparison
   must cover more than 17,000 gate runs, 100,000 calls and 20,000 ties to mean something.
 
+### Sounds from a .sid tune (2.0)
+
+- The converter's instruments are LAB sounds too (the owner, 2026-11-18): after Convert the page
+  lists each instrument with its voice, the notes that use it, a short description and what LAB
+  could not hold, and Listen, Keep, Edit as text, Send to the FM-1 and Copy link work as for any
+  patch. It is site-only: `web/sidsound.js` writes `sidou-patch/1` JSON from the song's
+  instruments and tables, and the patch module (88 KiB) and the tune module (96 KiB) are not
+  touched. No SidStation or MBSID mapping could be reused: those are Rust, from a bank's own
+  fields; this reads GoatTracker's tables.
+- The patch is JSON, not the 112 bytes, so the patch converter does every unit and every range:
+  the envelope's nibbles, the pulse in percent, the note names. The one unit it cannot give is
+  the filter's cutoff in Hz (a measured 8580 curve, a table in `sid_filter`); `Patcher.cutoffHz`
+  writes a default sound with the register value into the cutoff's two bytes and reads the Hz
+  back, so the Hz reads back as that register value. The default's own value is left out of the
+  JSON, and is taken from its neighbours (a step is about 7 Hz, and reading snaps to the nearest).
+- Wave table: a row is a step of one frame; a row with no wave repeats the previous wave; the gate
+  bit is dropped (LAB gates itself). Rows 0 to 95 are semitones from the key, 96 to 127 below it,
+  `$80` holds, and a note above it is fixed: `C#0` to `B7`, as GoatTracker's. Steps that repeat at
+  the end of a table that stops are one (the last step holds), because LAB's table holds its last
+  step as GoatTracker's wave table does. LAB's table has 16 steps; a longer one is cut, its loop
+  kept when it points inside the cut, and the sound says so. An instrument whose table is one
+  wave and no pitch move has no table, only a wave.
+- Pulse: the set row is the pulse width; a sweep is the sweep's runs as one triangle PWM, its
+  depth half the longest run's travel (a run is `time` frames at `speed` units of 4096 a frame, as
+  `gplay.c` adds them), its rate 50 Hz over the runs' frames (twice the run when there is one),
+  its centre half a run past the set width; under half a percent it is not written.
+- Filter: mode, resonance and cutoff from the instrument's first set row and cutoff row. LAB
+  routes a one-oscillator sound's filter to all three voices or none, so a filter on the tune's
+  own voice becomes all three, and the sound says so; the tune's moves of the cutoff are not kept
+  (the converter keeps one setting for each instrument too). An instrument with no mode or no
+  voice has `"voices": []`.
+- Not mapped, because the converter never writes them: table delays and commands, vibrato, and the
+  speed table. Each kept sound stays in the browser (`localStorage`, 16 of them, a bank's most),
+  and All as a bank opens `sidou-bank/1` in the patch section, so one song carries them to the
+  FM-1. A USER sound slot is not written by the page: the FM-1 writes those itself (SAVE in LAB
+  after loading the song).
+
 ### .sid to song (1.21)
 
 - Musical, not literal (the owner, 2026-11-17, `docs/plans/2026-11-17-groove-design.md`): the

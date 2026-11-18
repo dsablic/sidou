@@ -9,6 +9,15 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Sounds from a `.sid` tune, on the Library page**: after Convert, the instruments the
+  conversion found are listed as LAB sounds, each with its voice, the notes that use it, a short
+  description and what LAB could not hold (a table cut to LAB's 16 steps, a pulse sweep as a
+  triangle PWM, a filter on all three voices). Listen plays one, Keep lists it in this browser
+  (16 at most, all as a bank), Edit as text opens it as `sidou-patch/1`, Send to the FM-1 sends it
+  as a one-instrument song, and Copy link makes a `#patch=` link. Site only: the wave table
+  becomes LAB's table, the envelope, pulse and filter the patch's fields; nothing is uploaded, and
+  the original's copyright applies to the sounds. `web/sidsound.test.mjs` round-trips every
+  instrument of the ten starter tunes through the patch converter.
 - **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
   (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a
   bar and a number. The audio interrupt scales each voice by its level in the render, about 8
