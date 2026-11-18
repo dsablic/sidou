@@ -818,7 +818,8 @@ async function checkArtPage(browser) {
 
   const arena = art.locator('.slot[data-slot="arena"]');
   await arena.locator('input[type="file"]').setInputFiles({ name: "wrong.png", mimeType: "image/png", buffer: await pngOf(art, 64, 124, [0, 0, 0, 255]) });
-  if (!/takes a 240 × 240 PNG, one frame of 240 × 240; this one is 64 × 124/.test(await arena.locator('[role="status"]').textContent())) fail(`a wrong-sized PNG is not refused in words: ${await arena.locator('[role="status"]').textContent()}`);
+  await arena.locator('[role="status"]').filter({ hasText: /takes a 240 × 240 PNG, one frame of 240 × 240; this one is 64 × 124/ }).waitFor({ timeout: 5_000 })
+    .catch(async () => fail(`a wrong-sized PNG is not refused in words: ${await arena.locator('[role="status"]').textContent()}`));
 
   const template = await downloaded('.slot[data-slot="arena"] button:text("Template PNG")');
   if (template.name !== "arena.png") fail(`the arena's template is ${template.name}`);
