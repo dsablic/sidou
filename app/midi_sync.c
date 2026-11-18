@@ -406,6 +406,7 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
             out[n++] = realtime(STOP);
         }
     }
+    s->out_next = 0;
     if (!on || st->state != MIDI_SYNC_PLAYING || b2 == 0u || st->calls == 0u) {
         return n;
     }
@@ -417,6 +418,8 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
         uint32_t at = st->call_sample + (uint32_t)(int32_t)(d * period);
         int32_t wait = (int32_t)(at - now);
         if (wait > 0) {
+            s->out_next = 1;
+            s->out_next_at = at;
             break;
         }
         if (per >= 1.0f && (float)(-wait) > (float)OUT_CATCH_UP * per) {
@@ -477,4 +480,8 @@ uint32_t midi_sync_poll(midi_sync* s, uint32_t ticks, uint32_t out[MIDI_SYNC_OUT
     uint32_t n = out_packets(s, &st, now, out);
     s->sent += n;
     return n;
+}
+
+int midi_sync_out_soon(const midi_sync* s, uint32_t ticks, uint32_t samples) {
+    return s->out_next && (int32_t)(s->out_next_at - midi_sync_sample_of(s, ticks)) < (int32_t)samples;
 }

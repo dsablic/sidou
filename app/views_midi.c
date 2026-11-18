@@ -214,6 +214,84 @@ static void wheel_turn(void* ctx, int32_t steps) {
     v->l->settings_dirty = 1;
 }
 
+#define PART_LABEL 5u
+#define CHANNELS 4u
+static char part_labels[CHANNELS][PART_LABEL];
+
+static void part_labels_for(uint32_t base) {
+    for (uint32_t k = 0; k < CHANNELS; k++) {
+        views_join(part_labels[k], PART_LABEL, "CH", "");
+        views_number_text(part_labels[k] + 2, ((base + k) & 15u) + 1u);
+    }
+}
+
+static const multi* parts_of(const views* v) {
+    return v->route ? v->route->parts : NULL;
+}
+
+static void part_value(const views* v, char* buf, uint32_t k) {
+    const multi* m = parts_of(v);
+    if (!m) {
+        midi_none(buf);
+        return;
+    }
+    views_join(buf, MENU_VALUE_CHARS, m->p[k].s.name, "");
+}
+
+static void part_turn(views* v, int32_t steps, uint32_t k) {
+    const multi* m = parts_of(v);
+    if (m) {
+        (void)midi_route_part_program(v->route, k, multi_program_step(m, m->p[k].s.program, steps));
+    }
+}
+
+static void part1_value(void* ctx, char* buf) {
+    part_value(ctx, buf, 0);
+}
+
+static void part1_turn(void* ctx, int32_t steps) {
+    part_turn(ctx, steps, 0);
+}
+
+static void part2_value(void* ctx, char* buf) {
+    part_value(ctx, buf, 1);
+}
+
+static void part2_turn(void* ctx, int32_t steps) {
+    part_turn(ctx, steps, 1);
+}
+
+static void part3_value(void* ctx, char* buf) {
+    part_value(ctx, buf, 2);
+}
+
+static void part3_turn(void* ctx, int32_t steps) {
+    part_turn(ctx, steps, 2);
+}
+
+const menu_item MIDI_MULTI_ITEMS[VIEWS_MIDI_ITEMS] = {
+    {"MODE", mode_value, mode_turn},
+    {"CHANNEL", channel_value, channel_turn},
+    {part_labels[0], part1_value, part1_turn},
+    {part_labels[1], part2_value, part2_turn},
+    {part_labels[2], part3_value, part3_turn},
+    {part_labels[3], views_preset_value, views_preset_turn},
+    {"LEGATO", legato_value, legato_turn},
+    {"ROWS/BEAT", midi_rows_value, midi_rows_turn},
+    {"WHEEL", wheel_value, wheel_turn},
+    {"CLOCK", clock_value, clock_turn},
+    {"CLOCK OUT", clock_out_value, clock_out_turn},
+};
+
+static void midi_items(views* v) {
+    midi_route_setup s;
+    int multi_mode = midi_setup(v, &s) && s.mode == MIDI_MODE_MULTI;
+    if (multi_mode) {
+        part_labels_for(s.base);
+    }
+    v->midi.items = multi_mode ? MIDI_MULTI_ITEMS : MIDI_ITEMS;
+}
+
 const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
     {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
@@ -241,6 +319,13 @@ static void midi_look(const views* v, uint8_t out[VIEWS_MIDI_LOOK]) {
     out[11] = v->route != NULL;
     out[12] = v->sync ? v->sync->mode : 0xffu;
     out[13] = v->sync ? v->sync->clock_out : 0xffu;
+    const multi* m = parts_of(v);
+    for (uint32_t k = 0; k < MULTI_PARTS; k++) {
+        out[14u + k] = m ? m->p[k].s.program : 0xffu;
+    }
+    out[17] = v->l->preset;
+    out[18] = v->l->user_sound;
+    out[19] = (uint8_t)live_preset_edited(v->l);
 }
 
 static int midi_input(screen* s, void* state, const screen_event* e) {
@@ -249,6 +334,7 @@ static int midi_input(screen* s, void* state, const screen_event* e) {
     if (e->kind != SCREEN_TURN) {
         return 0;
     }
+    midi_items(v);
     if (e->id == PANEL_ENC_SELECT) {
         uint8_t was = v->midi.cursor;
         menu_move(&v->midi, e->steps);
@@ -260,6 +346,7 @@ static int midi_input(screen* s, void* state, const screen_event* e) {
         uint8_t after[VIEWS_MIDI_LOOK];
         midi_look(v, before);
         menu_turn(&v->midi, e->steps);
+        midi_items(v);
         midi_look(v, after);
         views_sound(v, memcmp(before, after, sizeof before) ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
         return 1;
@@ -279,6 +366,7 @@ static void midi_compose(screen* s, void* state, grid* g) {
     views* v = state;
     uint8_t cursor = v->midi_drawn[8];
     uint8_t top = v->midi_drawn[9];
+    midi_items(v);
     midi_look(v, v->midi_drawn);
     uint32_t parts = MENU_PART_LINES;
     if (s->redraw) {

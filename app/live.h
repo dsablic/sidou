@@ -221,6 +221,7 @@ typedef struct {
 #define LIVE_PRESET_DICE 4u
 #define LIVE_SOUNDS 16u
 const live_preset* live_preset_get(uint8_t index);
+void live_preset_sound(uint32_t index, uint8_t out[LAB_SOUND_BYTES]);
 
 extern const uint16_t live_freq_table[128];
 extern const uint32_t live_freq_top_q4[12];
@@ -454,6 +455,70 @@ typedef enum {
 #define LIVE_PARAM_TAIL (LIVE_PARAM_COUNT - LIVE_PARAM_EXPERT_END)
 uint32_t live_pwm_step(uint32_t rate);
 uint32_t live_pwm_rate(uint32_t step);
+
+#define LIVE_LFO_CENTRE 16384u
+#define LIVE_CUTOFF_PER_VALUE 8
+#define LIVE_PW_PER_VALUE 16
+#define LIVE_TABLE_NOTE_C0 12u
+
+static inline uint32_t live_vibrato_step(uint32_t rate) {
+    return (rate * 65536u + 500u) / 1000u;
+}
+
+static inline int32_t live_vibrato_swing(uint16_t phase, uint32_t depth) {
+    int32_t p = phase;
+    int32_t t = p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536;
+    return t * (int32_t)depth / 256;
+}
+
+static inline int32_t live_pwm_swing(int32_t pw, int32_t depth, uint16_t phase) {
+    int32_t room = pw - LIVE_PULSE_FIRST;
+    int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
+    room = room < top ? room : top;
+    depth = depth < room ? depth : room;
+    if (depth > 0) {
+        int32_t tri = phase < 32768u ? (int32_t)phase : 65536 - (int32_t)phase;
+        pw += (tri - (int32_t)LIVE_LFO_CENTRE) * depth / (int32_t)LIVE_LFO_CENTRE;
+    }
+    return pw < 0 ? 0 : pw > (int32_t)LIVE_PULSE_WIDTH_MAX ? (int32_t)LIVE_PULSE_WIDTH_MAX : pw;
+}
+
+static inline uint8_t live_velocity_sustain(uint8_t sr, uint8_t velocity) {
+    uint32_t s = ((uint32_t)(sr >> 4) * velocity + 63u) / 127u;
+    return (uint8_t)(s << 4 | (sr & 0x0fu));
+}
+
+static inline int32_t live_velocity_pulse(int32_t pw, uint8_t velocity) {
+    int32_t edge = pw <= 2048 ? pw : 4096 - pw;
+    int32_t d = (edge * velocity + 63) / 127;
+    int32_t out = pw <= 2048 ? d : 4096 - d;
+    return out > (int32_t)LIVE_PULSE_WIDTH_MAX ? (int32_t)LIVE_PULSE_WIDTH_MAX : out;
+}
+
+static inline uint32_t live_wheel_pulse_width(uint8_t value) {
+    uint32_t span = LIVE_PULSE_WIDTH_MAX + 1u - 2u * LIVE_PULSE_FIRST;
+    return LIVE_PULSE_FIRST + ((uint32_t)value * span + 63u) / 127u;
+}
+
+static inline uint32_t live_table_next(const uint8_t table[LAB_SOUND_TABLE_BYTES], uint32_t pos) {
+    uint32_t steps = table[0] & LAB_TABLE_COUNT_MASK;
+    uint32_t loop = table[LAB_SOUND_TABLE_LOOP - LAB_SOUND_TABLE];
+    uint32_t next = pos + 1u;
+    return next < steps ? next : loop ? loop - 1u : steps - 1u;
+}
+
+static inline const uint8_t* live_table_step(const uint8_t table[LAB_SOUND_TABLE_BYTES],
+                                             uint32_t pos) {
+    return &table[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 2u * pos];
+}
+
+static inline int32_t live_table_pitch(uint8_t step_note, uint8_t* note) {
+    if (lab_table_absolute(step_note)) {
+        *note = (uint8_t)(step_note - LAB_TABLE_NOTE_NONE + LIVE_TABLE_NOTE_C0);
+        return 0;
+    }
+    return lab_table_offset(step_note) * LIVE_PITCH_SEMITONE;
+}
 
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 uint32_t live_layers_set(live* l, uint32_t extra);

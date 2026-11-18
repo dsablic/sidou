@@ -1223,8 +1223,8 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   0..4095) or to the cutoff (it opens the filter
   above the cutoff that is set, 8 steps per value). A new target starts the wheel at 0.
 - **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
-  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
-  (the default), the vibrato depth (it adds), the pulse width (it raises the voice's, 16
+  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off,
+  the vibrato depth (it adds; the default, General MIDI's meaning), the pulse width (it raises the voice's, 16
   steps per value) or the cutoff (it opens the filter 8 steps per value of the most
   pressed voice: the SID has one filter).
 - **Velocity:** the SID has no amplifier per voice, so velocity sets one of three things,
@@ -1427,26 +1427,48 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
     }
     s.push_str(&format!(
         "\
-\n- **Chip A is the player's** in MULTI and both WHOLE modes, with or without a song: the
+\n- **Chip A is MIDI's** in MULTI and both WHOLE modes, with or without a song: the
   instrument (the panel's keys, and its MIDI channel) plays chip B, with the keys' setup, as
-  while a song plays.
-- **Chip A's channels:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
+  while a song plays. [SIDOU from a DAW](../manual/daw.md) sets a sequencer up for each mode.
+- **MULTI's parts:** N, N+1 and N+2 are a part each, monophonic, on chip A's voice 1, 2 and 3:
+  SAW LEAD, PWM BASS and NOISE PERC at power-on, the MIDI page's CH rows naming them. Program
+  change (bank 0) picks a part's sound: 0..3 the presets, 4 the instrument's sound as it is
+  then (a DICE roll, an edit; a copy), 16..31 USER 1..16; an empty slot or another number
+  keeps the sound. A part plays its sound's first layer: the waveform, envelope, pulse width
+  and its modulation, tuning, vibrato, velocity, wheel and aftertouch targets and the table;
+  its other layers, LFOs, filter envelope, arpeggio and effect slots are the instrument's
+  only, and hard sync and ring modulation, which need a second voice, are left out. Notes
+  0..127 with velocity; the last held note sounds, and LEGATO on the page moves to the next
+  without a new attack. Pitch bend bends the part by its channel's range: the sound's
+  ({range} semitones on the presets) until RPN 0 sets it, kept over program changes. The mod
+  wheel (CC 1) and aftertouch (channel, or polyphonic on the sounding note) move what the
+  sound says, at the 100 Hz tick. CC 120 and 123 release the part; CC 121 centres its bend
+  and zeroes its wheel and aftertouch.
+- **Chip A's filter is channel N's:** its type, cutoff and resonance come from N's sound
+  (with N's wheel, aftertouch and velocity on the cutoff where the sound says so); each part's
+  voice goes through it when its own sound routes its first voice. With no filter type on N's
+  sound, no voice is routed (a routed voice would fall silent). CC 74 (cutoff) and 71
+  (resonance) on any chip A channel lock the filter at the value until CC 121 or a change of
+  mode.
+- **With a song:** the song plays on chip A as always, and a part's note takes its voice
+  while it is held (the song's writes to it are held back) and gives it back at its release;
+  meanwhile the filter is the song's. PLAY, STOP and the clock work as in any mode. A `.sid`
+  tune owns chip A: the parts are silent until it stops.
+- **WHOLE A's channel:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
   instruments have none). Program change n (0..{instr}) picks GoatTracker instrument n + 1
-  for the channel's next note. Pitch bend bends the channel's voice by the channel's own
-  range, {range} semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 (cutoff) and 71
-  (resonance) lock chip A's filter at the value, over the song's, until CC 121 or a change
-  of mode. CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model, envelope mode, profile and
-  character. CC 120 and 123 release the channel's voices; CC 121 also centres its bend.
-  Nothing else (the map, MIDI learn) reaches them: those are the instrument's channel's.
-- **A jam note takes its voice from the song** while it sounds (the song's writes to it
-  are held back) and gives it back at its release.
+  for the channel's next note. Pitch bend bends the voices by the channel's own range,
+  {range} semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 and 71 lock chip A's
+  filter as in MULTI. CC 120 and 123 release the voices; CC 121 also centres the bend.
+- **Chip A's channels, both modes:** CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model,
+  envelope mode, profile and character. Nothing else (the map, MIDI learn) reaches them:
+  those are the instrument's channel's.
 - **The options:** LEGATO (MULTI, CHORD) moves to the next note without a new attack while
   one is held. CHORD plays the note and its two intervals (CHORD 2 and CHORD 3 on the page,
   +{c2} and +{c3} by default: a major triad). ARP cycles the held notes, in the order they
   were pressed, on voice 1, a step every ARP RATE frames ({arp} by default), or every 16th of
   the MIDI clock ({clocks} clocks) with the rate at CLOCK.
-- **Not yet on the device:** chip A's channels are routed and tracked, and sound once song
-  control (M2c) takes jam releases, voices and bends.
+- **Not yet on the device:** WHOLE A's channel is routed and tracked, and sounds once song
+  control takes jam releases, voices and bends.
 
 ",
         instr = MIDI_ROUTE_INSTR_MAX - 1,

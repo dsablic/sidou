@@ -5446,12 +5446,8 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - Route input channels.
 - OMNI (the default): every channel plays the instrument, on the chip the keys play.
 - LIVE: channel N alone plays the instrument; the others are ignored.
-- MULTITIMBRAL: channels N, N+1, N+2 play chip A's voices 1, 2, 3, each a jam voice of the
-  player with its own GoatTracker instrument (program change n is instrument n + 1), its own
-  pitch bend (the range per channel, RPN 0) and its own notes: one at a time, the last one held
-  sounding (a release goes back to the note held before it), with the LEGATO option a change of
-  note while one is held glides on without a new attack. Channel N+3 plays the instrument, on
-  chip B.
+- MULTITIMBRAL: channels N, N+1, N+2 are a monophonic part each on chip A's voice 1, 2, 3,
+  playing a LAB sound (MULTI's parts, below); channel N+3 plays the instrument, on chip B.
 - WHOLE-CHIP A: channel N plays all three voices of chip A with one GoatTracker instrument
   (channel N's program): three-voice polyphony, a new note taking the voice whose note started
   longest ago when all three sound. Options: CHORD (one key plays the stored chord) and ARP
@@ -5468,14 +5464,77 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - CC 74 (cutoff) and CC 71 (resonance) lock chip A's filter to the value, over the song's
   filter writes, until CC 121 or a change of mode.
 - Program change n (0..62) picks the channel's instrument n + 1; others are ignored.
+- These chip A rules are WHOLE-CHIP A's now; MULTI's parts follow their own (below).
+
+### MULTI's parts (`app/multi.c`)
+
+- Why: MULTI was in the menu with nothing behind chip A's channels (a review of 1.10 read it
+  as "one MIDI channel"). The owner's decision (2026-11-18): MULTI is four channels for a DAW,
+  and chip A's three play LAB sounds, not the song's GoatTracker instruments, which a DAW user
+  neither has nor sees.
+- Not a second `live`: one is 1,232 bytes (five slots of edits, the USER edit, the base sound)
+  and the RAM region kept 5,268 bytes over its 5,120 floor. A part keeps only what one voice
+  plays: the sound's first layer decoded (76 bytes, the 35-byte table included) and its state
+  (24 bytes); `multi` is 348 bytes, in POOL. The RAM region has almost no room on the two-core
+  build (8 bytes over its 5,120 floor), so the route (`routing`, 216 bytes, main-loop only and
+  initialised by `midi_route_init` over POOL's boot-time zeroing) moved to POOL too, which more
+  than pays for what MULTI adds there (the route's per-channel range flag and velocity, the
+  page's labels, the hint: 52 bytes). Measured: the RAM region 5,444 free (5,272 before), 5,300
+  on the two-core build; POOL 5,248 (5,808 before), both over 5,120.
+- Shared with `live.c`, not copied: the vibrato's triangle, the PWM swing, velocity on the
+  sustain and the pulse, the wheel's pulse width, the table's next step and pitch are `static
+  inline` in `live.h`, so `live.c`'s code is unchanged in shape and `multi.c` calls the same
+  arithmetic. `live_preset_sound` writes a preset as sound bytes; a host test holds it equal to
+  what `live_sound_get` gives after `live_set_preset`.
+- What a part plays: waveform, envelope, pulse width and PWM, the sound's tune and its first
+  layer's transpose and detune, vibrato, velocity, wheel and aftertouch targets, and the table
+  when it runs on layer 1. Left out: layers 2 and 3 (one voice each), the two LFOs, the filter
+  LFO and envelope and the links (they move chip-wide registers three parts would fight over),
+  the arpeggio (a part is monophonic), the effect slots (chip B's instrument's), the layer level
+  and hard sync and ring (they couple a voice to its neighbour, another part). The test bit is
+  kept: a table may use it.
+- Program map, bank 0: 0..3 the presets, 4 the instrument's sound as it is (`live_sound_get`:
+  the way to send a DICE roll or a sound being shaped to a part), 16..31 USER 1..16 read from the
+  store (`user_sound_read`) at the program change. 16..31 leave 5..15 free and match USER n +
+  15 at a glance; the instrument's channel takes 16..31 too (`l->user_load`), so one map serves
+  every channel. An empty slot or any other number keeps the sound.
+- The filter, one per chip: N's sound sets type, cutoff and resonance, and N's wheel,
+  aftertouch and velocity move the cutoff where N's sound says; each part routes its own voice
+  by bit 0 of its sound's filter voices. One owner is predictable (a DAW user gives track 1
+  the filtered sound), and routing per part keeps a dry drum dry under a filtered lead. With no
+  type on N's sound nothing is routed: a routed voice with no type is silent on the SID. CC 74
+  and 71 on any chip A channel lock it (the route's locks, as before), until CC 121.
+- The bend range: the sound's until RPN 0 sets the channel's, and an RPN's range outlasts
+  program changes (as the instrument's `bend_range_rpn`).
+- With a song: the song keeps chip A and PLAY does what it always does; a part's held note takes
+  its voice (`song_ctl_take`: the parts call `taking` with their whole mask whenever it
+  changes, and `commit_pass` only folds it in when the keys' mask changes: polling it every pass
+  cost about 12,000 instructions a second in a CC flood, and the main loop's flood bounds in
+  emu-gate `midi.rs` had 300 to spare) and its release write still goes; while the song plays the parts write no
+  filter or volume register and nothing to a voice not held. The jam rule the docs had
+  promised, the simplest for a DAW user (nothing stops). A `.sid` tune owns chip A: the parts
+  write nothing until it stops; then, and after a song or a change of chip A's profile, every
+  part's registers and the filter are written again (`multi_fresh`).
+- Cost: the main loop only. A part's note writes 7 registers and the filter up to 4; the 100 Hz
+  tick recomputes three frequencies and pulse widths and writes what changed. A dense stream on
+  four channels with program changes to USER sounds (each a store read) kept the busiest pass
+  under 27,000 instructions of the 120,000 allowance (emu-gate `midi_modes`). The image grew 3,904
+  bytes (555,892 to 559,828, 19,688 under the ceiling) with this branch's other changes;
+  RAMTEXT did not change (45,024).
+- The MIDI page in MULTI swaps OPTION, CHORD 2, CHORD 3 and ARP RATE (WHOLE A's) for four rows
+  named by channel (`CH1`..`CH16`, labels written into a static buffer from CHANNEL): three
+  parts' sounds, stepped as a program change would, and N+3's, the instrument's PRESETS. Same
+  count of items, so the page's budgets and scrolling are unchanged; the popup shows the full
+  name, which a 14-character row can cut.
 
 ### Program change and bank select
 
 - CC 0 MSB and CC 32 LSB select a channel's bank, MSB × 128 + LSB, held until changed (from
   either port; kept across lost input); a program change means what the channel's bank says.
 - Bank 0, the channel's sound: on the instrument's channel the instrument's preset
-  (0..`LIVE_PRESET_COUNT` − 1, where `LIVE_PRESET_COUNT` is 4), on a chip A channel
-  (MULTITIMBRAL, WHOLE-CHIP A) GoatTracker instrument n + 1.
+  (0..`LIVE_PRESET_COUNT` − 1, where `LIVE_PRESET_COUNT` is 4) or a kept USER sound (16..31), on
+  a MULTI part's channel its sound (above), on WHOLE-CHIP A's channel GoatTracker instrument
+  n + 1.
 - Bank 1, songs: program n asks for the store's n-th song in name order, loaded stopped, on the
   instrument's channel or channel N only.
 - Bank 2, the chip's profiles: 0..4 the built-in ones, on the instrument's channel live's
@@ -5737,6 +5796,36 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   wheel's centre is the square. Only the wheel's mapping changed: NRPN 0/2 and learned CCs
   set the raw width. The pulse width's CC 1 on MIDI out still scales 0..4095, so a loop-back
   lands inside the audible range, not on the same number.
+
+### Live Link waits for a clock that is due
+
+- Under a Live Link session a MIDI clock queued behind a whole frame (up to 25 packets) waited
+  for the frame to drain, and whether one landed there was a matter of phase: main sat at 2 ms
+  of jitter against the bound of 1 + a USB frame, and MULTI's boot and main-loop changes moved
+  the phase to 3 (the clocks were queued at the same instants; only delivery moved). Now
+  `midi_sync_poll` keeps the next clock's sample (`out_next_at`), and `midi_link_run` holds a
+  frame back while a clock is due within 2 ms (`MIDI_LINK_CLOCK_GUARD`), so a clock never
+  queues behind a frame started just before it. The frame goes at the next pass after the clock.
+  The same phase move redrew SCENE's FIRE and SCOPE goldens one frame on.
+
+### The USER sounds hint
+
+- USER sounds were hard to find: a DICE roll you liked was gone at the next turn. The first roll
+  after power-on toasts `LAB KEEPS 16 USER SOUNDS` for 3 s, once, and not at all while a USER
+  sound is kept (whoever has one knows). A frame's check in `views_flow` compares the roll
+  count with the count at `views_init`: no hook in `live`, two bytes in `views`. The first-run
+  tour's toasts go first.
+
+### Aftertouch's default
+
+- Aftertouch (NRPN 6/3) was off by default, so a keyboard's pressure did nothing on the factory
+  sounds. Its default is the vibrato depth, as the wheel's (above): the two add, and General
+  MIDI gives both that meaning. The enum values stay (off 0, vibrato 1, pulse 2, cutoff 3).
+- Record version 11 has version 10's layout; an older record's stored OFF reads as VIBRATO, the
+  wheel's rule (the old default and a deliberate OFF are the same byte), and a stored PULSE or
+  CUTOFF is kept. A sound or patch that names a target keeps it; one that names none
+  (`patch_json_defaults`, the factory sixteen, the presets) gets VIBRATO. `DICE_HASH` changed
+  for that byte alone.
 
 ### Tests: Live Link
 

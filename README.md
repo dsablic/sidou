@@ -32,7 +32,7 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,
   which rolls a new sound at each turn. Cutoff, resonance, the sound's own control and the
-  release are on K1 to K4.
+  release are on K1 to K4. Like a roll? Open LAB and press SAVE: it keeps up to 16 USER sounds.
 - **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
   its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
   follow the chip in stereo.
@@ -131,8 +131,12 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   current song, or one stored on it), into a `.mid`, a MIDI channel a SID voice, with the notes where
   GoatTracker's player puts them, wavetable arpeggios included.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
-  presets and songs, and an NRPN for every LAB card, so a DAW can automate each
-  ([midi.md](docs/reference/midi.md)).
+  presets, USER sounds and songs, and an NRPN for every LAB card, so a DAW can automate each
+  ([midi.md](docs/reference/midi.md)). The wheel and aftertouch add vibrato.
+- **Four parts from a DAW (MULTI).** Three tracks play chip A, a monophonic part each with its
+  own LAB sound (a preset, a USER sound, the keys' sound), picked by program change, with its
+  own bend, wheel and aftertouch; a fourth plays the polyphonic instrument on chip B. The MIDI
+  page names each channel's sound ([SIDOU from a DAW](docs/manual/daw.md)).
 - **Play over Bluetooth.** Turn BLUETOOTH on in SETTINGS and a Mac, an iPad or a phone finds
   SIDOU as a Bluetooth MIDI device, no pairing: notes, CCs and clock in, the panel out, as over
   USB ([controls](docs/reference/controls.md)). Or set it to KEYBOARD and SIDOU connects to a

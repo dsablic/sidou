@@ -109,8 +109,10 @@ typedef struct {
     void (*unbar)(void);
 } views_cores;
 #endif
+#define VIEWS_USER_HINT "LAB KEEPS 16 USER SOUNDS"
+#define VIEWS_USER_HINT_MS 3000u
 #define VIEWS_MIDI_ITEMS 11u
-#define VIEWS_MIDI_LOOK 14u
+#define VIEWS_MIDI_LOOK 20u
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 #define VIEWS_LOOK (18u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
@@ -169,6 +171,8 @@ typedef struct {
     uint32_t home_at;
     help_view help;
     uint8_t tour;
+    uint8_t user_hint;
+    uint8_t dice_seen;
     uint32_t tour_at;
     uint16_t tour_ref;
     uint16_t toast_held;

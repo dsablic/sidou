@@ -9,6 +9,22 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **MULTI plays four parts from a DAW.** Channels N, N+1 and N+2 are a monophonic part each on
+  chip A's voice 1, 2 and 3, each with its own LAB sound: program change 0..3 the presets, 4 the
+  instrument's sound as it is (a DICE roll, an edit), 16..31 USER 1..16. Each part has its own
+  velocity, pitch bend (the sound's range until RPN 0 sets the channel's), mod wheel and
+  aftertouch, and plays its sound's first layer: waveform, envelope, pulse width and PWM,
+  tuning, vibrato and the table. Chip A's one filter is channel N's sound's; each part routes
+  its own voice as its sound says, and CC 74 and 71 on any chip A channel move it. N+3 plays the
+  instrument on chip B, as before. With a song playing, a held note takes its voice from the
+  song until it is released. In MULTI the MIDI page shows `CH1` to `CH4` with each channel's
+  sound, and ALGORITHM there picks it, in the big popup. Until now chip A's channels were routed
+  but silent. A new manual page, [SIDOU from a DAW](docs/manual/daw.md), sets a sequencer up for
+  each mode, the clock, USB audio recording and Bluetooth.
+- **Program changes 16..31 play USER 1..16** on the instrument's channel too (an empty slot
+  does nothing).
+- **The first DICE roll after power-on says `LAB KEEPS 16 USER SOUNDS`**, once, unless a USER
+  sound is kept already; LAB's manual says it in its first lines.
 - **Sounds from a `.sid` tune, on the Library page**: after Convert, the instruments the
   conversion found are listed as LAB sounds, each with its voice, the notes that use it, a short
   description and what LAB could not hold (a table cut to LAB's 16 steps, a pulse sweep as a
@@ -27,6 +43,10 @@ All notable changes are documented here. The format follows
   `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
 
 ### Changed
+- **Aftertouch adds vibrato by default**, as the mod wheel does since 1.20: pressing a key
+  harder shakes the note on every sound. NRPN 6/3 still picks OFF, PULSE or CUTOFF; it is kept
+  with the settings (record version 11: an older record's OFF reads as VIBRATO, any other choice
+  is kept). The factory sounds and a patch without `aftertouch` use VIBRATO.
 - **Chip B renders on the FM-1's second core**: core 0's audio time halved on the device (with
   SIDOU LOOP and the keys, AVG 31.4 % to 16.6 % of a block, WORST 41.7 % to 29.4 %). A start-up
   self-test checks core 1 first; a unit whose core 1 fails it, misreads, stops answering or faults

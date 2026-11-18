@@ -483,9 +483,24 @@ fn fc(rig: &Rig) -> u32 {
 }
 
 #[test]
-fn pressure_does_nothing_by_default() {
+fn pressure_adds_vibrato_by_default() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    assert_eq!(rig.param(LIVE_PARAM_PRESSURE_TARGET), LIVE_PRESSURE_OFF);
+    assert_eq!(rig.param(LIVE_PARAM_PRESSURE_TARGET), LIVE_PRESSURE_VIBRATO);
+    rig.note_on(C4);
+    pressure(&mut rig, 127);
+    rig.tick();
+    rig.tick();
+    assert_ne!(
+        rig.voice_freq(0),
+        freq_at(C4, 0),
+        "aftertouch bends the pitch"
+    );
+}
+
+#[test]
+fn pressure_off_does_nothing() {
+    let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_param(LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_OFF);
     rig.note_on(C4);
     rig.clear();
     pressure(&mut rig, 127);
@@ -654,7 +669,7 @@ fn a_program_change_resets_the_expression_settings_and_keeps_the_controllers() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.set_param(LIVE_PARAM_BEND_RANGE, 12);
     rig.set_param(LIVE_PARAM_VELOCITY_TARGET, LIVE_VELOCITY_CUTOFF);
-    rig.set_param(LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_VIBRATO);
+    rig.set_param(LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_CUTOFF);
     rig.cc(LIVE_CC_VIBRATO_RATE, 10);
     rig.cc(LIVE_CC_VIBRATO_DEPTH, 10);
     rig.cc(LIVE_CC_VIBRATO_DELAY, 10);
@@ -664,7 +679,7 @@ fn a_program_change_resets_the_expression_settings_and_keeps_the_controllers() {
         (LIVE_PARAM_BEND_RANGE, 2),
         (LIVE_PARAM_VELOCITY_TARGET, 0),
         (LIVE_PARAM_MOD_TARGET, LIVE_MOD_VIBRATO),
-        (LIVE_PARAM_PRESSURE_TARGET, 0),
+        (LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_VIBRATO),
         (LIVE_PARAM_VIBRATO_RATE, LIVE_VIBRATO_RATE_DEFAULT),
         (LIVE_PARAM_VIBRATO_DEPTH, 0),
         (LIVE_PARAM_VIBRATO_DELAY, 0),
