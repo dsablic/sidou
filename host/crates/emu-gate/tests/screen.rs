@@ -1046,9 +1046,12 @@ fn a_multi_channels_row_picks_its_sound_in_the_popup() {
     m.turn(ALGORITHM, 1);
     m.run_ms(200);
     to_mid_frame(&mut m, &fw);
-    use sidou_sys::ilp32::screen_popup_state as popup;
-    assert_eq!(popup_text(&mut m, &fw, popup::name), "CH2");
-    assert_eq!(popup_text(&mut m, &fw, popup::value), "SYNC LEAD");
+    use sidou_sys::ilp32::{screen_popup_face as face, screen_popup_state as popup};
+    assert_eq!(popup_text(&mut m, &fw, popup::want + face::name), "CH2");
+    assert_eq!(
+        popup_text(&mut m, &fw, popup::want + face::value),
+        "SYNC LEAD"
+    );
     let program = m.soc.read8(
         fw.symbol("parts")
             + (sidou_sys::ilp32::multi::p
