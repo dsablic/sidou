@@ -123,7 +123,6 @@ pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("menu", "FX"),
     ("settings", "FX"),
     ("chip", "FX"),
-    ("tracker", "FX"),
     ("scene", "FX"),
     ("status", "FX"),
     ("midi", "FX"),
