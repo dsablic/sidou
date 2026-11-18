@@ -9,10 +9,11 @@ Sizes: S is under a day of work, M a few days, L more.
 
 ## 2.0
 
-- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on,
-  after the device check, falling back to one core; built for 1.20 behind `SIDOU_CPU2`. Its room
-  is there since RED MOON RITE's art moved into the store (1.20): with pairing the ON image is
-  547,796 bytes, 31,720 under the 579,516 ceiling, and its size gate is checked again.
+- **Chip B on the second core** ([decision 0010](decisions/0010-second-core-reopened.md)): on by
+  default, built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)) after the device check
+  (hardware-test §42): core 0's audio time halved on the owner's FM-1, falling back to one core
+  with the same sound; STATUS's CORES page for every player. The default image is 559,796 bytes,
+  19,720 under the 579,516 ceiling.
 - **A layer's level in LAB**: built for 2.0 ([Unreleased](../CHANGELOG.md#unreleased)), LAYERS' K4
   LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
   instructions a sample per chip, inside every audio budget unchanged

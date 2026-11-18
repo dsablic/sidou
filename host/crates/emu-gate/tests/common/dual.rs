@@ -46,6 +46,16 @@ pub struct Core1Fate {
     pub faults_at_fpu: bool,
 }
 
+pub const NO_FATE: Core1Fate = Core1Fate {
+    flaky: None,
+    misreads_mailbox_after_jobs: None,
+    stalls_after: None,
+    misreads: Misreads::Anywhere,
+    flaky_after_jobs: None,
+    stalls_after_jobs: None,
+    faults_at_fpu: false,
+};
+
 #[derive(Default)]
 pub struct Core1 {
     cpu: Option<Cpu>,

@@ -25,6 +25,15 @@ All notable changes are documented here. The format follows
   does nothing).
 - **The first DICE roll after power-on says `LAB KEEPS 16 USER SOUNDS`**, once, unless a USER
   sound is kept already; LAB's manual says it in its first lines.
+- **Sounds from a `.sid` tune, on the Library page**: after Convert, the instruments the
+  conversion found are listed as LAB sounds, each with its voice, the notes that use it, a short
+  description and what LAB could not hold (a table cut to LAB's 16 steps, a pulse sweep as a
+  triangle PWM, a filter on all three voices). Listen plays one, Keep lists it in this browser
+  (16 at most, all as a bank), Edit as text opens it as `sidou-patch/1`, Send to the FM-1 sends it
+  as a one-instrument song, and Copy link makes a `#patch=` link. Site only: the wave table
+  becomes LAB's table, the envelope, pulse and filter the patch's fields; nothing is uploaded, and
+  the original's copyright applies to the sounds. `web/sidsound.test.mjs` round-trips every
+  instrument of the ten starter tunes through the patch converter.
 - **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
   (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a
   bar and a number. The audio interrupt scales each voice by its level in the render, about 8
@@ -38,10 +47,28 @@ All notable changes are documented here. The format follows
   harder shakes the note on every sound. NRPN 6/3 still picks OFF, PULSE or CUTOFF; it is kept
   with the settings (record version 11: an older record's OFF reads as VIBRATO, any other choice
   is kept). The factory sounds and a patch without `aftertouch` use VIBRATO.
+- **Chip B renders on the FM-1's second core**: core 0's audio time halved on the device (with
+  SIDOU LOOP and the keys, AVG 31.4 % to 16.6 % of a block, WORST 41.7 % to 29.4 %). A start-up
+  self-test checks core 1 first; a unit whose core 1 fails it, misreads, stops answering or faults
+  plays on one core with the same sound until power-off. STATUS's fourth page, CORES, shows core 1
+  running or why it is off, its jobs, where chip B renders and core 0's audio time; ALGORITHM
+  there moves chip B between the cores to compare, and SAVE, SAVE AGAIN restarts to try two cores
+  again after a fallback. `SIDOU_CPU2` is on by default; `-DSIDOU_CPU2=OFF` builds the one-core
+  image the emulator gate compares against, never a release.
 - **LAYERS' K4 FILT is gone from the panel**: which layers go through the filter is FILTER's K3
   VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
   layer, so a controller mapped to it keeps working.
 - EDIT + ARP on LAYERS leaves the layers' levels as they are.
+
+### Fixed
+- **A second knob while a popup shows no longer sends a frame over 200 cells**: another knob's
+  popup replaces the open one in three bands (name, value, bar), a frame each, instead of redrawing
+  all of it at once (211 cells on STEP's GROOVE page with K2 then K1). The new name shows a frame
+  before its value.
+- **A text song's first row plays at its tempo**: a `sidou-song/1` at a tempo other than 125.3
+  BPM played its first row at speed 6 and the song's speeds only from the second row. The song's
+  start speed (instrument slot 63's AD, as GoatTracker reads it) now carries the tempo, so row 0
+  is one of the song's speed pair; GoatTracker's own player plays the song the same.
 
 ## [1.21.0] - 2026-11-17
 

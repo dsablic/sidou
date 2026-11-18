@@ -99,7 +99,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   funktempo), notes, a handful of instruments a voice with their wave, pulse and filter tables,
   and patterns that repeat where the tune does; six-voice tunes use both chips. The original and
   the conversion play side by side, the page says how many notes come back on time and what it
-  simplified, and the song downloads, opens in the editor or goes to the FM-1; nothing is
+  simplified, and the song downloads, opens in the editor or goes to the FM-1; the tune's
+  instruments come as LAB sounds to listen to, keep, edit as text, send or link; nothing is
   uploaded, and a conversion keeps the original's copyright
   ([convert a tune](docs/manual/sid-tunes.md#6-convert-a-tune-into-a-song)).
 - **A sound from a prompt.** Any language model (ChatGPT, Claude, Gemini or a local one) designs
@@ -155,7 +156,8 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
 Eleven openly licensed tunes for the store, a starter pack, are in [assets/starter](assets/starter),
 and one `sidou-sysex sid --pack` command makes them a single upload
 ([the manual](docs/manual/sid-tunes.md#the-starter-pack)). STATUS shows how much of the CPU the
-6502 takes.
+6502 takes, and on its CORES page the FM-1's second core, which renders chip B and halves the
+audio's load on the first.
 
 ## Try it in your browser
 

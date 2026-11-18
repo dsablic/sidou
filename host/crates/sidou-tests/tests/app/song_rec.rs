@@ -450,7 +450,7 @@ fn k1_and_k2_record_cutoff_and_resonance_locks_on_the_row_they_were_turned_in() 
     );
     assert_eq!(s.f.cell_writes, 0, "locks are not cell writes");
     assert_eq!(
-        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        unsafe { CStr::from_ptr(s.ui.v.popup.want.name.as_ptr()) }.to_str(),
         Ok("RESONANCE")
     );
 }
@@ -623,7 +623,7 @@ fn k1_and_k2_in_step_record_locks_and_a_held_step_keeps_its_own_lock() {
     assert_eq!(locks(&s), vec![(0, 6, 0, (cut + 32) as u16)]);
     s.ui.frame();
     assert_eq!(
-        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        unsafe { CStr::from_ptr(s.ui.v.popup.want.name.as_ptr()) }.to_str(),
         Ok("CUTOFF")
     );
 }

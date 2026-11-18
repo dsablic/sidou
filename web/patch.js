@@ -10,6 +10,9 @@ export const LINK_MAX = 8192;
 
 const QUIET = 1;
 const USER_SLOTS = 16;
+const SOUND_BYTES = 112;
+const CUTOFF_AT = 5;
+const DEFAULT_PATCH = '{"format":"sidou-patch/1"}';
 
 const cstr = (mem, ptr) => {
   const b = new Uint8Array(mem.buffer, ptr);
@@ -50,6 +53,25 @@ export class Patcher {
     at.set(new TextEncoder().encode(name).subarray(0, 12), sound.length);
     const n = x.sp_write();
     return new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.sp_out(), n));
+  }
+
+  defaultSound() {
+    const x = this.x;
+    const bytes = new TextEncoder().encode(DEFAULT_PATCH);
+    new Uint8Array(x.memory.buffer, x.sp_in(), bytes.length).set(bytes);
+    x.sp_patch(bytes.length);
+    return new Uint8Array(x.memory.buffer, x.sp_sound(), SOUND_BYTES).slice();
+  }
+
+  cutoffHz(fc) {
+    this.hz ??= new Map();
+    if (!this.hz.has(fc)) {
+      const sound = this.defaultSound();
+      new DataView(sound.buffer).setUint16(CUTOFF_AT, fc, true);
+      const written = JSON.parse(this.write(sound, "X")).filter?.cutoff_hz;
+      this.hz.set(fc, written ?? Math.round((this.cutoffHz(fc - 1) + this.cutoffHz(fc + 1)) / 2));
+    }
+    return this.hz.get(fc);
   }
 
   userSounds(file) {

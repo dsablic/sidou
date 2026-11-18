@@ -217,6 +217,15 @@ the original's notes it plays at the same pitch and within two frames of the sam
 starter pack's eleven tunes (made with GoatTracker), 60 seconds each, 6,183 of the 6,214 notes come
 back at their pitch and time (no voice under 98 %), and the tempo is the one their source songs set.
 
-**Copyright.** A converted song is still the original's music: it keeps the original's copyright,
+**The tune's sounds.** The instruments the conversion found are offered as LAB sounds too
+([the Library page](library.md#the-tunes-sounds)): the envelope as LAB's envelope; the wave table
+as LAB's table (waves and pitch steps one frame each, a loop kept, 16 steps at most, so a longer
+table is cut); a pulse width and its sweep as the pulse width and a triangle PWM; and the filter's
+mode, cutoff and resonance, on all three voices (LAB's filter takes all three or none). Vibrato,
+table delays and the filter's moves in the tune are not carried over, and each sound says what it
+simplified. Listen to one, keep it in the browser, edit it as text, send it to the FM-1 or share
+its link.
+
+**Copyright.** A converted song, and the sounds taken from the tune, are still the original's music: it keeps the original's copyright,
 and the page carries the tune's author and release line into the song. Share a conversion only as
 the original's licence allows.
