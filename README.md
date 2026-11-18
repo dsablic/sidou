@@ -143,6 +143,10 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   own LAB sound (a preset, a USER sound, the keys' sound), picked by program change, with its
   own bend, wheel and aftertouch; a fourth plays the polyphonic instrument on chip B. The MIDI
   page names each channel's sound ([SIDOU from a DAW](docs/manual/daw.md)).
+- **One sound on chip A's three voices (WHOLE A).** One track plays a LAB sound on all three
+  of chip A's voices: as chords (POLY), a whole chord from one key (CHORD) or an arpeggio at a
+  rate or the DAW's clock (ARP), the sound picked by program change or on the MIDI page; a
+  second track plays the instrument on chip B.
 - **Play over Bluetooth.** Turn BLUETOOTH on in SETTINGS and a Mac, an iPad or a phone finds
   SIDOU as a Bluetooth MIDI device, no pairing: notes, CCs and clock in, the panel out, as over
   USB ([controls](docs/reference/controls.md)). Or set it to KEYBOARD and SIDOU connects to a

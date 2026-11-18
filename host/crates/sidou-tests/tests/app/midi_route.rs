@@ -6,97 +6,17 @@ use std::ffi::c_void;
 use sidou_sys::*;
 
 use crate::multi::{freq_at, preset_sound, Parts};
-use crate::{preset, Rig, PWM_BASS};
+use crate::{preset, Rig, NOISE_PERC, PWM_BASS};
 
 const TRS: u8 = MIDI_SRC_TRS as u8;
 const C4: u8 = 60;
 const E4: u8 = 64;
 const G4: u8 = 67;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Ev {
-    On {
-        voice: u32,
-        note: u32,
-        instr: u32,
-        legato: u32,
-    },
-    Off(u32),
-    Bend(u32, i32),
-    Filter(u32, u32, u32),
-}
-
-#[derive(Default)]
-struct Player {
-    log: Vec<Ev>,
-    full: bool,
-}
-
-unsafe extern "C" fn jam_on(
-    ctx: *mut c_void,
-    voice: u32,
-    note: u32,
-    instr: u32,
-    legato: u32,
-) -> i32 {
-    let p = unsafe { &mut *ctx.cast::<Player>() };
-    if p.full {
-        return 0;
-    }
-    p.log.push(Ev::On {
-        voice,
-        note,
-        instr,
-        legato,
-    });
-    1
-}
-
-unsafe extern "C" fn jam_off(ctx: *mut c_void, voice: u32) -> i32 {
-    let p = unsafe { &mut *ctx.cast::<Player>() };
-    if p.full {
-        return 0;
-    }
-    p.log.push(Ev::Off(voice));
-    1
-}
-
-unsafe extern "C" fn jam_bend(ctx: *mut c_void, voice: u32, offset: i32) -> i32 {
-    let p = unsafe { &mut *ctx.cast::<Player>() };
-    if p.full {
-        return 0;
-    }
-    p.log.push(Ev::Bend(voice, offset));
-    1
-}
-
-unsafe extern "C" fn filter(ctx: *mut c_void, locks: u32, cutoff: u32, reso: u32) -> i32 {
-    let p = unsafe { &mut *ctx.cast::<Player>() };
-    if p.full {
-        return 0;
-    }
-    p.log.push(Ev::Filter(locks, cutoff, reso));
-    1
-}
-
-fn gt_note_of(n: u8) -> u32 {
-    u32::from(n) - MIDI_ROUTE_GT_FIRST
-}
-
-fn on(voice: u32, n: u8, instr: u32) -> Ev {
-    Ev::On {
-        voice,
-        note: gt_note_of(n),
-        instr,
-        legato: 0,
-    }
-}
-
 struct Route {
     rig: Rig,
     rx: Box<midi_rx>,
     route: Box<midi_route>,
-    player: Box<Player>,
     parts: Parts,
 }
 
@@ -105,18 +25,9 @@ impl Route {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut rx = Box::<midi_rx>::default();
         let mut route = Box::<midi_route>::default();
-        let mut player = Box::<Player>::default();
-        let pp: *mut Player = &mut *player;
-        let iface = midi_route_player {
-            jam_on: Some(jam_on),
-            jam_off: Some(jam_off),
-            jam_bend: Some(jam_bend),
-            filter: Some(filter),
-            ctx: pp.cast(),
-        };
         unsafe {
             midi_rx_init(&mut *rx, &mut *rig.live, 0);
-            midi_route_init(&mut *route, &mut *rig.live, std::ptr::null_mut(), &iface);
+            midi_route_init(&mut *route, &mut *rig.live, std::ptr::null_mut());
             midi_rx_route(&mut *rx, &mut *route);
         }
         let mut parts = Parts::new(&rig.live);
@@ -125,7 +36,6 @@ impl Route {
             rig,
             rx,
             route,
-            player,
             parts,
         }
     }
@@ -137,7 +47,6 @@ impl Route {
         s.base = base;
         edit(&mut s);
         unsafe { midi_route_set(&mut *r.route, &s) };
-        r.player.log.clear();
         r.parts.chip.log.clear();
         r
     }
@@ -157,10 +66,6 @@ impl Route {
 
     fn tick(&mut self) {
         unsafe { midi_route_tick(&mut *self.route) };
-    }
-
-    fn take(&mut self) -> Vec<Ev> {
-        std::mem::take(&mut self.player.log)
     }
 
     fn chip_a(&self) -> [Option<u16>; 3] {
@@ -202,7 +107,7 @@ fn omni_is_the_default_and_every_channel_plays_the_instrument() {
         assert_eq!(r.held(), [C4], "channel {}", ch + 1);
         r.trs(&[0x80 | ch, C4, 0]);
     }
-    assert!(r.take().is_empty());
+    assert!(r.parts.chip.log.is_empty(), "chip A's parts untouched");
 }
 
 #[test]
@@ -218,7 +123,7 @@ fn live_plays_channel_n_alone() {
         assert_eq!(cutoff == 0, ch == 4, "channel {}: the CC map", ch + 1);
         r.trs(&[0xB0 | ch, 74, 127]);
     }
-    assert!(r.take().is_empty());
+    assert!(r.parts.chip.log.is_empty(), "chip A's parts untouched");
 }
 
 #[test]
@@ -228,7 +133,7 @@ fn whole_chip_b_plays_channel_n_on_the_instrument() {
     assert_eq!(r.held(), [C4, E4, G4]);
     r.trs(&[0x91, C4, 100]);
     assert_eq!(r.held(), [C4, E4, G4]);
-    assert!(r.take().is_empty());
+    assert!(r.parts.chip.log.is_empty(), "chip A's parts untouched");
 }
 
 fn at(n: u8) -> Option<u16> {
@@ -255,7 +160,6 @@ fn multitimbral_plays_n_to_n_plus_2_on_chip_as_voices_and_n_plus_3_on_the_instru
     assert_eq!(r.held(), [72]);
     r.trs(&[0x83, E4, 0]);
     assert_eq!(r.chip_a(), [at(C4), None, at(G4)]);
-    assert!(r.take().is_empty(), "the song's jam voices are not used");
 }
 
 #[test]
@@ -407,7 +311,6 @@ fn a_change_of_mode_releases_the_parts_and_resets_their_controllers() {
     unsafe { midi_route_set(&mut *r.route, &s) };
     assert_eq!(r.chip_a(), [None; 3]);
     assert_eq!(r.held(), [] as [u8; 0], "the instrument's notes too");
-    assert!(r.take().is_empty());
     s.mode = MIDI_MODE_MULTI as u8;
     unsafe { midi_route_set(&mut *r.route, &s) };
     r.trs(&[0x92, E4, 1]);
@@ -447,111 +350,190 @@ fn lost_input_releases_every_multi_note() {
     );
 }
 
-#[test]
-fn whole_chip_a_plays_three_voices_and_steals_the_oldest() {
-    let mut r = Route::with(MIDI_MODE_WHOLE_A, 0, |_| {});
-    r.trs(&[0xC0, 9]);
-    r.trs(&[0x90, C4, 1, E4, 1, G4, 1, 72, 1]);
-    assert_eq!(
-        r.take(),
-        [on(0, C4, 10), on(1, E4, 10), on(2, G4, 10), on(0, 72, 10)]
-    );
-    r.trs(&[0x80, E4, 0, 0x90, 74, 1, 0x90, G4, 1]);
-    assert_eq!(r.take(), [Ev::Off(1), on(1, 74, 10), on(2, G4, 10)]);
-    r.trs(&[0x91, C4, 1, 0x92, C4, 1]);
-    assert!(r.take().is_empty(), "N + 1 and N + 2 are nobody's");
-    r.trs(&[0x93, C4, 1]);
-    assert_eq!(r.held(), [C4], "N + 3 plays the instrument");
+fn whole_a(edit: impl FnOnce(&mut midi_route_setup)) -> Route {
+    Route::with(MIDI_MODE_WHOLE_A, 0, edit)
+}
+
+impl Route {
+    fn voice_1_steps(&mut self, ticks: usize) -> Vec<(usize, Option<u16>)> {
+        let mut was = self.chip_a()[0];
+        let mut steps = Vec::new();
+        for t in 0..ticks {
+            self.tick();
+            let now = self.chip_a()[0];
+            if now != was {
+                steps.push((t, now));
+            }
+            was = now;
+        }
+        steps
+    }
 }
 
 #[test]
-fn whole_chip_a_bends_every_voice_by_channel_n() {
-    let mut r = Route::with(MIDI_MODE_WHOLE_A, 0, |_| {});
-    r.trs(&[0xE0, 0x00, 0x60]);
+fn whole_chip_a_plays_three_voices_and_steals_the_oldest() {
+    let mut r = whole_a(|_| {});
+    r.trs(&[0x90, C4, 100, E4, 100, G4, 100]);
+    assert_eq!(r.chip_a(), [at(C4), at(E4), at(G4)]);
+    r.trs(&[0x90, 72, 100]);
+    assert_eq!(r.chip_a(), [at(72), at(E4), at(G4)], "C4 was the oldest");
+    r.attacks(0);
+    r.trs(&[0x80, E4, 0, 0x90, 74, 100, 0x90, G4, 100]);
+    assert_eq!(r.chip_a(), [at(72), at(74), at(G4)]);
+    assert_eq!(r.attacks(2), 1, "a held note again attacks its own voice");
+    r.trs(&[0x91, C4, 1, 0x92, C4, 1]);
+    assert!(r.parts.chip.log.is_empty(), "N + 1 and N + 2 are nobody's");
+    r.trs(&[0x93, C4, 1]);
+    assert_eq!(r.held(), [C4], "N + 3 plays the instrument");
+    r.trs(&[0x80, 72, 0, 0x80, 74, 0, 0x80, G4, 0]);
+    assert_eq!(r.chip_a(), [None; 3]);
+}
+
+#[test]
+fn whole_chip_a_plays_n_sound_on_every_voice_and_a_program_change_picks_it() {
+    let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
+    assert_eq!(r.parts.name(1), "PWM BASS");
+    let mut s = r.route.setup;
+    s.mode = MIDI_MODE_WHOLE_A as u8;
+    unsafe { midi_route_set(&mut *r.route, &s) };
+    let ads = |r: &mut Route| {
+        let ch = |v: u8| {
+            if r.route.setup.mode == MIDI_MODE_MULTI as u8 {
+                v
+            } else {
+                0
+            }
+        };
+        let (a, b, c) = (ch(0), ch(1), ch(2));
+        r.trs(&[0x90 | a, C4, 100, 0x90 | b, E4, 100, 0x90 | c, G4, 100]);
+        let ad = [0u8, 1, 2].map(|v| r.parts.reg(v * 7 + 5));
+        r.trs(&[0x80 | a, C4, 0, 0x80 | b, E4, 0, 0x80 | c, G4, 0]);
+        ad
+    };
+    assert_eq!(
+        ads(&mut r),
+        [preset(0).attack_decay; 3],
+        "N's sound on all three"
+    );
+    let mut pad = preset_sound(0);
+    pad[LAB_SOUND_AD as usize] = 0x7a;
+    r.parts.save_user(&mut r.rig, 5, "PAD", pad);
+    r.trs(&[0xC0, PWM_BASS]);
+    assert_eq!(ads(&mut r), [preset(PWM_BASS).attack_decay; 3]);
+    r.trs(&[0xC0, MULTI_PROGRAM_USER as u8 + 5, 0xC0, 9]);
+    assert_eq!(
+        r.parts.name(0),
+        "PAD",
+        "program 9 is no sound: the sound stays"
+    );
+    assert_eq!(ads(&mut r), [0x7a; 3]);
+    assert_eq!(r.rig.live.preset, 0, "not the instrument's sound");
+    s.mode = MIDI_MODE_MULTI as u8;
+    unsafe { midi_route_set(&mut *r.route, &s) };
+    assert_eq!(
+        ads(&mut r),
+        [
+            0x7a,
+            preset(PWM_BASS).attack_decay,
+            preset(NOISE_PERC).attack_decay
+        ],
+        "back in MULTI, N's part keeps the sound and the others their own"
+    );
+}
+
+#[test]
+fn whole_chip_a_takes_velocity_and_every_midi_note() {
+    let mut r = whole_a(|_| {});
+    r.trs(&[0x90, 0, 100, 0x90, 127, 100]);
+    assert_eq!(r.chip_a()[..2], [at(0), at(127)]);
+    assert_eq!(r.parts.m.p[1].velocity, 100);
+}
+
+#[test]
+fn whole_chip_a_bends_shakes_and_presses_every_voice_by_channel_n() {
+    let mut r = whole_a(|_| {});
+    r.trs(&[0x90, C4, 1, E4, 1, G4, 1, 0xE0, 0x00, 0x60]);
     r.tick();
     let o = (0x3000 - 8192) * 2;
-    assert_eq!(r.take(), [Ev::Bend(0, o), Ev::Bend(1, o), Ev::Bend(2, o)]);
+    assert_eq!(
+        r.chip_a(),
+        [C4, E4, G4].map(|n| Some(freq_at(n, o))),
+        "the sound's range"
+    );
+    r.trs(&[0xE0, 0x00, 0x40, 0xB0, 1, 127]);
+    for _ in 0..4 {
+        r.tick();
+    }
+    assert!(
+        r.chip_a()
+            .iter()
+            .zip([C4, E4, G4])
+            .all(|(f, n)| *f != at(n)),
+        "the wheel's vibrato on all three"
+    );
+    r.trs(&[0xB0, 121, 0, 0xD0, 127]);
+    let pressed: Vec<u8> = r.parts.m.p.iter().map(|p| p.pressure).collect();
+    assert_eq!(pressed, [127; 3]);
 }
 
 #[test]
 fn chord_plays_the_stored_chord_over_the_three_voices() {
-    let mut r = Route::with(MIDI_MODE_WHOLE_A, 0, |s| {
+    let mut r = whole_a(|s| {
         s.option = MIDI_WHOLE_CHORD as u8;
         s.chord = [3, 10];
     });
-    r.trs(&[0x90, C4, 1]);
-    assert_eq!(
-        r.take(),
-        [on(0, C4, 1), on(1, C4 + 3, 1), on(2, C4 + 10, 1)]
-    );
-    r.trs(&[0x90, E4, 1]);
-    assert_eq!(
-        r.take(),
-        [on(0, E4, 1), on(1, E4 + 3, 1), on(2, E4 + 10, 1)]
-    );
+    r.trs(&[0x90, C4, 100]);
+    assert_eq!(r.chip_a(), [at(C4), at(C4 + 3), at(C4 + 10)]);
+    r.trs(&[0x90, E4, 100]);
+    assert_eq!(r.chip_a(), [at(E4), at(E4 + 3), at(E4 + 10)]);
     r.trs(&[0x80, E4, 0]);
-    assert_eq!(
-        r.take(),
-        [on(0, C4, 1), on(1, C4 + 3, 1), on(2, C4 + 10, 1)]
-    );
+    assert_eq!(r.chip_a(), [at(C4), at(C4 + 3), at(C4 + 10)]);
     r.trs(&[0x80, C4, 0]);
-    assert_eq!(r.take(), [Ev::Off(0), Ev::Off(1), Ev::Off(2)]);
-    r.trs(&[0x90, 100, 1]);
-    assert_eq!(r.take(), [on(0, 100, 1), on(1, 103, 1)]);
+    assert_eq!(r.chip_a(), [None; 3]);
+    r.trs(&[0x90, 120, 100]);
+    assert_eq!(
+        r.chip_a(),
+        [at(120), at(123), None],
+        "above note 127: silent"
+    );
 }
 
 #[test]
 fn arp_cycles_the_held_notes_on_voice_1_every_n_frames() {
-    let mut r = Route::with(MIDI_MODE_WHOLE_A, 0, |s| {
+    let mut r = whole_a(|s| {
         s.option = MIDI_WHOLE_ARP as u8;
         s.arp_rate = 2;
     });
-    r.trs(&[0x90, C4, 1, E4, 1, G4, 1]);
-    assert_eq!(r.take(), [on(0, C4, 1)], "the first note at once");
-    let mut steps = Vec::new();
-    for t in 0..12 {
-        r.tick();
-        for e in r.take() {
-            steps.push((t, e));
-        }
-    }
+    r.trs(&[0x90, C4, 100, E4, 100, G4, 100]);
+    assert_eq!(r.chip_a(), [at(C4), None, None], "the first note at once");
     assert_eq!(
-        steps,
-        [(3, on(0, E4, 1)), (7, on(0, G4, 1)), (11, on(0, C4, 1))]
+        r.voice_1_steps(12),
+        [(3, at(E4)), (7, at(G4)), (11, at(C4))]
     );
     r.trs(&[0x80, E4, 0, 0x80, C4, 0]);
-    for _ in 0..4 {
-        r.tick();
-    }
-    assert_eq!(r.take(), [on(0, G4, 1)]);
+    assert_eq!(r.voice_1_steps(4), [(3, at(G4))]);
     r.trs(&[0x80, G4, 0]);
-    assert_eq!(r.take(), [Ev::Off(0)]);
-    for _ in 0..8 {
-        r.tick();
-    }
-    assert!(r.take().is_empty());
+    assert_eq!(r.chip_a(), [None; 3]);
+    assert!(r.voice_1_steps(8).is_empty());
 }
 
 #[test]
 fn arp_with_rate_0_steps_every_16th_of_the_clock() {
-    let mut r = Route::with(MIDI_MODE_WHOLE_A, 0, |s| {
+    let mut r = whole_a(|s| {
         s.option = MIDI_WHOLE_ARP as u8;
         s.arp_rate = 0;
     });
-    r.trs(&[0x90, C4, 1, E4, 1]);
-    r.take();
-    for _ in 0..10 {
-        r.tick();
-    }
-    assert!(r.take().is_empty(), "no clock, no step");
-    let mut at = Vec::new();
+    r.trs(&[0x90, C4, 100, E4, 100]);
+    assert!(r.voice_1_steps(10).is_empty(), "no clock, no step");
+    let mut steps = Vec::new();
     for k in 0..12 {
+        let was = r.chip_a()[0];
         r.trs(&[0xF8]);
-        if !r.take().is_empty() {
-            at.push(k);
+        if r.chip_a()[0] != was {
+            steps.push(k);
         }
     }
-    assert_eq!(at, [5, 11]);
+    assert_eq!(steps, [5, 11]);
 }
 
 #[test]
@@ -706,7 +688,7 @@ fn bank_select_is_kept_per_channel_and_bank_0_is_m1s() {
     r.trs(&[0xB1, 0, 1, 0xC1, 0]);
     assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, -1);
     assert_eq!(r.rig.live.preset, 1);
-    assert!(r.take().is_empty());
+    assert!(r.parts.chip.log.is_empty(), "chip A's parts untouched");
 }
 
 #[test]

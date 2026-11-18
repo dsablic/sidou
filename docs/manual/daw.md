@@ -30,7 +30,7 @@ HOME, **MIDI**, MODE. N is the page's CHANNEL (1 at power-on); N + 1 and on wrap
 | **LIVE** | one track among other synths | channel N plays the instrument; other channels are left to other gear |
 | **MULTI** | a song in four tracks | N, N+1 and N+2 a monophonic part each on chip A, each with its own sound; N+3 the instrument, polyphonic, on chip B |
 | **WHOLE B** | the instrument beside SIDOU's own song | channel N plays the instrument on chip B; chip A plays the song |
-| **WHOLE A** | chip A's three voices with one GoatTracker instrument | routed, but not sounding yet on the device |
+| **WHOLE A** | a polyphonic track, chords or an arpeggio on chip A | channel N plays one LAB sound on chip A's three voices (POLY, CHORD or ARP); N+3 the instrument on chip B |
 
 A change of MODE or CHANNEL releases what MIDI was playing.
 
@@ -81,7 +81,25 @@ row picks the sound there, and the big popup names it.
   from the song until it is released, and the filter stays the song's. A `.sid` tune owns chip
   A: the parts are silent until it stops.
 
-## 4. Clock and transport
+## 4. WHOLE A: one sound, three voices
+
+One track on channel N plays chip A's three voices with one sound, the one MULTI gives channel
+N (SAW LEAD at power-on; MULTI's other two parts keep theirs). A fourth track on N + 3 plays the
+instrument on chip B, as in MULTI. The MIDI page's **CH** row (CH1 with CHANNEL at 1) shows the
+sound and picks it, and a program change on N does the same, with MULTI's numbers (0 to 3, 4,
+16 to 31). **OPTION** says how the notes share the voices:
+
+| OPTION | Plays |
+|---|---|
+| **POLY** (power-on) | up to three notes at once; a fourth takes the voice of the oldest |
+| **CHORD** | each key plays a chord: the note, CHORD 2 and CHORD 3 semitones above it (+4 and +7, a major triad); LEGATO ON moves to the next chord with no new attack |
+| **ARP** | the held notes in turn on voice 1, in the order pressed: a step every ARP RATE frames (3, 60 ms), or at CLOCK every 16th of the MIDI clock |
+
+Velocity, pitch bend (the sound's range until RPN 0), the mod wheel and aftertouch move all
+three voices as on a MULTI part, the filter is the sound's (CC 74 and 71 move it), and CC 120
+and 123 release the voices. With a SIDOU song, held notes take their voices from it as in MULTI.
+
+## 5. Clock and transport
 
 The MIDI page's **CLOCK** (AUTO at power-on) makes SIDOU's song follow the DAW's MIDI clock:
 start plays from the top, continue goes on (or from a song position), stop stops, and each row
@@ -93,13 +111,13 @@ a row a 16th). FOLLOW stops the song with the clock; OFF ignores clock and trans
 while no clock comes in: the DAW can follow SIDOU instead. The parts and the instrument need no
 clock: they play the notes as they come.
 
-## 5. Record it
+## 6. Record it
 
 SIDOU is a USB audio input: select it as the DAW's input and record the line out, stereo at
 44.1 kHz, both chips and the effects, over the same cable as the MIDI. Record the four MULTI
 tracks in one pass, or a part at a time with the others muted in the DAW.
 
-## 6. Bank select
+## 7. Bank select
 
 CC 0 and 32 before a program change pick its bank on that channel, and the bank is kept until
 they change: bank 0 (CC 0 = 0, CC 32 = 0) is the sounds above; bank 1 loads the store's songs by

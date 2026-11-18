@@ -1658,12 +1658,7 @@ fn the_midi_page_sounds_moves_changes_and_refusals() {
         );
         ui_sound_set(&mut *snd, 1);
         views_set_sounds(&mut *ui.v, &mut *snd);
-        midi_route_init(
-            &mut *route,
-            &mut *ui.rig.live,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-        );
+        midi_route_init(&mut *route, &mut *ui.rig.live, std::ptr::null_mut());
     }
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
@@ -1685,14 +1680,7 @@ fn the_midi_page_sounds_moves_changes_and_refusals() {
 fn the_midi_page_edits_midis_mode_clamped_and_shows_a_dash_without_a_router() {
     let mut ui = Ui::new();
     let mut route = Box::<midi_route>::default();
-    unsafe {
-        midi_route_init(
-            &mut *route,
-            &mut *ui.rig.live,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-        )
-    };
+    unsafe { midi_route_init(&mut *route, &mut *ui.rig.live, std::ptr::null_mut()) };
     open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);
     assert_eq!(ui.top(), "MIDI");
     let row = midi_line(&mut ui, 0);
@@ -1757,12 +1745,7 @@ fn in_multi_the_midi_page_names_each_channel_and_its_sound_and_a_turn_picks_it()
     let mut route = Box::<midi_route>::default();
     let mut parts = crate::multi::Parts::new(&ui.rig.live);
     unsafe {
-        midi_route_init(
-            &mut *route,
-            &mut *ui.rig.live,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-        );
+        midi_route_init(&mut *route, &mut *ui.rig.live, std::ptr::null_mut());
         midi_route_parts(&mut *route, &mut *parts.m);
         views_route(&mut *ui.v, &mut *route);
     }
@@ -1803,9 +1786,45 @@ fn in_multi_the_midi_page_names_each_channel_and_its_sound_and_a_turn_picks_it()
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(route.setup.mode, MIDI_MODE_WHOLE_A as u8);
     assert!(
-        midi_line(&mut ui, 2).starts_with("OPTION"),
+        midi_line(&mut ui, 3).starts_with("OPTION"),
         "WHOLE A's rows again"
     );
+}
+
+#[test]
+fn in_whole_a_the_midi_page_names_the_one_sound_of_chip_as_three_voices_and_a_turn_picks_it() {
+    let mut ui = Ui::new();
+    let mut route = Box::<midi_route>::default();
+    let mut parts = crate::multi::Parts::new(&ui.rig.live);
+    unsafe {
+        midi_route_init(&mut *route, &mut *ui.rig.live, std::ptr::null_mut());
+        midi_route_parts(&mut *route, &mut *parts.m);
+        views_route(&mut *ui.v, &mut *route);
+    }
+    open_once_the_menu_settles(&mut ui, VIEWS_MENU_MIDI);
+    ui.turn(PANEL_ENC_ALGORITHM, -2);
+    assert_eq!(route.setup.mode, MIDI_MODE_WHOLE_A as u8);
+    ui.turn(PANEL_ENC_SELECT, 2);
+    let row = midi_line(&mut ui, 2);
+    assert!(
+        row.starts_with("CH1 ") && row.ends_with("SAW LEAD"),
+        "{row:?}"
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    let programs: Vec<u8> = parts.m.p.iter().map(|p| p.s.program).collect();
+    assert_eq!(programs, [1, 1, 3], "N's part's sound, MULTI's others kept");
+    assert!(midi_line(&mut ui, 2).ends_with("PWM BASS"));
+    ui.turn(PANEL_ENC_SELECT, 99);
+    assert_eq!(
+        usize::from(ui.v.midi.cursor),
+        VIEWS_MIDI_WHOLE_ITEMS as usize - 1
+    );
+    assert!(midi_line(&mut ui, 11).starts_with("CLOCK OUT"));
+    ui.turn(PANEL_ENC_SELECT, -99);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(route.setup.mode, MIDI_MODE_WHOLE_B as u8);
+    ui.turn(PANEL_ENC_SELECT, 99);
+    assert_eq!(usize::from(ui.v.midi.cursor), VIEWS_MIDI_ITEMS as usize - 1);
 }
 
 fn roll_dice(ui: &mut Ui) -> Option<String> {

@@ -55,12 +55,13 @@ typedef struct {
     void (*taking)(void* ctx, uint32_t taken);
     void* taking_ctx;
     uint8_t locks, resonance_cc, resonance_out, routed_out, mode_out;
-    uint8_t song, tune, profile, table_frame, taken;
+    uint8_t song, tune, profile, table_frame, taken, whole;
     uint16_t cutoff_cc, cutoff_out;
 } multi;
 
 void multi_init(multi* m, live_sink_fn sink, void* sink_ctx, const live* l, const keys_route* kr);
 int multi_program(multi* m, uint32_t part, uint32_t program);
+void multi_whole(multi* m, uint32_t whole);
 uint32_t multi_program_step(const multi* m, uint32_t program, int32_t steps);
 void multi_note_on(multi* m, uint32_t part, uint8_t note, uint8_t velocity, uint32_t legato);
 void multi_note_off(multi* m, uint32_t part);

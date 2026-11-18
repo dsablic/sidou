@@ -1441,11 +1441,12 @@ menu; CLOCK is AUTO and CLOCK OUT OFF at power-on.
 - [ ] **DAW mode routing over USB:** choose MULTI and base channel N on MIDI.
   Check that the panel's keys and DAW channel N+3 play the instrument on chip B;
   OMNI returns the live routing. Check WHOLE B similarly. Record channel/profile
-  selection separately from sound. **Chip-A MULTI/WHOLE jam callbacks remain
-  unbound in this build:** channels N..N+2 are not yet an audio acceptance pass.
-  Do not mark full multitimbral playback passed until that binding is added.
-  *Emulator:* `emu-gate/tests/midi_modes.rs::multitimbral_plays_the_instrument_on_chip_b_from_n_plus_3` (MULTI: channel N+3 plays the instrument on chip B, OMNI gives chip A back), `sidou-tests/tests/app/midi_route.rs::whole_chip_b_plays_channel_n_on_the_instrument`, `sidou-tests/tests/app/midi_route.rs::omni_is_the_default_and_every_channel_plays_the_instrument` (these send over TRS or the parser, not through the emulated USB host).
-  *Emulator (no test yet):* audio of channels N..N+2 in MULTI and WHOLE A: the jam callbacks are not bound in this build, so there is nothing to check until they are.
+  selection separately from sound. In WHOLE A, a three-note chord on N sounds on chip A's three
+  voices with one sound; OPTION CHORD plays a major triad from one key; ARP steps the held
+  notes on voice 1 at ARP RATE and, at CLOCK, with the DAW's clock; a program change on N
+  changes the sound of all three.
+  *Emulator:* `emu-gate/tests/midi_modes.rs::multitimbral_plays_three_parts_on_chip_a_and_the_instrument_on_chip_b` (MULTI: each part's voice and sound on chip A, channel N+3 plays the instrument on chip B, OMNI gives chip A back), `emu-gate/tests/midi_modes.rs::whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp` (WHOLE A: POLY's three voices with N's sound, program change to PWM BASS and USER 5, CHORD's triad, ARP at the rate and the clock), `emu-gate/tests/midi_modes.rs::whole_a_with_dense_chords_and_an_arpeggio_keeps_every_pass_and_audio_block_within_budget`, `sidou-tests/tests/app/midi_route.rs::whole_chip_b_plays_channel_n_on_the_instrument`, `sidou-tests/tests/app/midi_route.rs::omni_is_the_default_and_every_channel_plays_the_instrument` (these send over TRS or the parser, not through the emulated USB host).
+  *Device-only:* how chords and the arpeggio sound from a real DAW over USB.
 
 Notes:
 

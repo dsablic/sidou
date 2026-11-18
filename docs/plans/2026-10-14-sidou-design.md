@@ -763,9 +763,9 @@ The host library opens no ports. PUT owns explicit program holds with today's
 no-window flash timings; hold-free operation requires validated windows.
 
 The M2 row is an implementation milestone, not hardware acceptance: USB output
-remains unresolved on the unit. Existing MULTI/WHOLE A player jam callbacks are
-still unbound, as the M2e Task 3 results and controls reference record; routing
-and persisted song setup do not imply sounding chip-A jam voices. Live notes
+remains unresolved on the unit. MULTI's and WHOLE A's chip A voices play LAB
+sounds through the parts engine (`app/multi.c`, 2.0), not the song player's jam
+calls. Live notes
 retain decision 0005's block timing; clocked song transport uses its documented
 fixed alignment delay, not a new sample-accurate live-note mode. Sequencer note/
 CC output remains future work; it is not the panel's CC/program or clock output.

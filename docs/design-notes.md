@@ -5524,23 +5524,19 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - LIVE: channel N alone plays the instrument; the others are ignored.
 - MULTITIMBRAL: channels N, N+1, N+2 are a monophonic part each on chip A's voice 1, 2, 3,
   playing a LAB sound (MULTI's parts, below); channel N+3 plays the instrument, on chip B.
-- WHOLE-CHIP A: channel N plays all three voices of chip A with one GoatTracker instrument
-  (channel N's program): three-voice polyphony, a new note taking the voice whose note started
-  longest ago when all three sound. Options: CHORD (one key plays the stored chord) and ARP
+- WHOLE-CHIP A: channel N plays all three voices of chip A with one LAB sound, N's MULTI
+  part's (WHOLE A's sound, below): three-voice polyphony, a new note taking the voice whose
+  note started longest ago when all three sound. Options: CHORD (one key plays the stored chord) and ARP
   (the held notes cycled on voice 1 in the order they were pressed, a step every `arp_rate`
   player frames, or every 16th of the MIDI clock with `arp_rate` 0, so voices 2 and 3 stay the
   song's). Channel N+3 plays the instrument, on chip B.
 - WHOLE-CHIP B: channel N plays the instrument on chip B (all three of its voices); chip A is
   left to the song.
 - In MULTITIMBRAL and both WHOLE-CHIP modes chip A belongs to the player, song or not.
-- On chip A's channels (the jam channels): notes 12..107 (GoatTracker's C-0..B-7) play; others
-  are ignored. Velocity is not used (GoatTracker's instruments have none).
-- Pitch bend: ±the channel's range (2 semitones, RPN 0 sets it per channel), applied at the
+- Pitch bend: ±the channel's range (the sound's, RPN 0 sets it per channel), applied at the
   next tick, coalesced.
 - CC 74 (cutoff) and CC 71 (resonance) lock chip A's filter to the value, over the song's
   filter writes, until CC 121 or a change of mode.
-- Program change n (0..62) picks the channel's instrument n + 1; others are ignored.
-- These chip A rules are WHOLE-CHIP A's now; MULTI's parts follow their own (below).
 
 ### MULTI's parts (`app/multi.c`)
 
@@ -5603,14 +5599,42 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   count of items, so the page's budgets and scrolling are unchanged; the popup shows the full
   name, which a 14-character row can cut.
 
+### WHOLE A's sound
+
+- Why: WHOLE A routed and allocated its notes for the song player's jam calls, which were
+  never bound: on the device it was silent. A DAW user has no GoatTracker instruments to pick
+  either. The owner's decision (2026-11-18): WHOLE A plays one LAB sound on all three voices,
+  through MULTI's parts.
+- One engine, no new state: the parts play WHOLE A's voices, and a flag (`multi.whole`, a byte
+  in `multi`'s padding) makes every voice read part 0's sound (`sound_of`); each voice keeps
+  its own note, envelope gate, vibrato, PWM and table state. Copying N's sound into parts 2
+  and 3 was tried first and dropped: turning MODE from OMNI to MULTI passes WHOLE A, and the
+  copy wiped MULTI's sounds. WHOLE A's sound is N's part's, so the program change map, the
+  page's CH row (`MIDI_WHOLE_ITEMS`), the bend range and the filter (N's sound's) are MULTI's
+  as they stand.
+- The jam calls went with it: `midi_route_player`, the per-channel GoatTracker instrument,
+  GoatTracker's note range (now 0..127, with velocity) and the dropped-call count. The route is
+  20 bytes smaller (POOL 5,264 free, 5,248 before); the RAM region is unchanged (5,268 free)
+  and RAMTEXT too (45,920). The image grew 272 bytes (567,268 to 567,540, 11,976 under the
+  ceiling).
+- POLY, CHORD and ARP allocate as before; a voice's note is a part's note-on, a release its
+  note-off. Wheel, channel aftertouch and CC 121 go to the three parts; polyphonic aftertouch to
+  the voice holding that note.
+- The page: WHOLE A's twelve rows put N's CH row after CHANNEL; `midi_items` sets the menu's
+  count with the table and clamps the cursor, so a mode change from a song cannot leave it past
+  the end. The rows show six at a time as before, so the page's frame budget is unchanged.
+- Cost: a dense WHOLE A stream (notes, bends, CC 74, CC 1, USER program changes, the arpeggio
+  running) keeps the busiest main-loop pass at about 10,300 instructions of the 120,000
+  allowance and the audio interrupt's worst block at about 503 a sample (emu-gate
+  `midi_modes`); the same stream was 8,071 while WHOLE A was silent.
+
 ### Program change and bank select
 
 - CC 0 MSB and CC 32 LSB select a channel's bank, MSB × 128 + LSB, held until changed (from
   either port; kept across lost input); a program change means what the channel's bank says.
 - Bank 0, the channel's sound: on the instrument's channel the instrument's preset
   (0..`LIVE_PRESET_COUNT` − 1, where `LIVE_PRESET_COUNT` is 4) or a kept USER sound (16..31), on
-  a MULTI part's channel its sound (above), on WHOLE-CHIP A's channel GoatTracker instrument
-  n + 1.
+  chip A's channels (a MULTI part's, WHOLE-CHIP A's) their sound (above).
 - Bank 1, songs: program n asks for the store's n-th song in name order, loaded stopped, on the
   instrument's channel or channel N only.
 - Bank 2, the chip's profiles: 0..4 the built-in ones, on the instrument's channel live's

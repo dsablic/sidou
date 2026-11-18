@@ -263,7 +263,7 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
 |---|---|
 | LIVE | channel N plays the instrument, on the chip the keys play; the other channels are ignored |
 | MULTI | four parts: channels N, N+1 and N+2 each play a LAB sound, picked by program change, on chip A's voice 1, 2 and 3 (one note at a time, the last held sounding); N+3 plays the instrument on chip B |
-| WHOLE A | channel N plays chip A's three voices with one GoatTracker instrument: POLY (three voices, the oldest note stolen), CHORD (one key plays the stored chord) or ARP (the held notes cycled on voice 1, every few frames or every 16th of the clock); N+3 plays the instrument on chip B |
+| WHOLE A | channel N plays one LAB sound, picked by program change, on chip A's three voices: POLY (three voices, the oldest note stolen), CHORD (one key plays the stored chord) or ARP (the held notes cycled on voice 1, every few frames or every 16th of the clock); N+3 plays the instrument on chip B |
 | WHOLE B | channel N plays the instrument on chip B; chip A is the song's |
 | OMNI | every channel plays the instrument, on the chip the keys play (the default, M1's) |
 
@@ -294,11 +294,14 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
   while it is held (the song's writes to it are held back) and gives it back at its release;
   meanwhile the filter is the song's. PLAY, STOP and the clock work as in any mode. A `.sid`
   tune owns chip A: the parts are silent until it stops.
-- **WHOLE A's channel:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
-  instruments have none). Program change n (0..62) picks GoatTracker instrument n + 1
-  for the channel's next note. Pitch bend bends the voices by the channel's own range,
-  2 semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 and 71 lock chip A's
-  filter as in MULTI. CC 120 and 123 release the voices; CC 121 also centres the bend.
+- **WHOLE A's channel:** one LAB sound on all three of chip A's voices, played as MULTI's
+  parts play theirs: N's part's sound (SAW LEAD at power-on); MULTI's other two parts keep
+  their own for MULTI. Program change picks it as on a MULTI part's channel, for the three
+  voices at once; so does the MIDI page's CH row. Notes 0..127 with
+  velocity. Pitch bend (by the channel's range), the mod wheel, aftertouch (channel, or
+  polyphonic on the voice holding that note) and CC 121 move all three as on a MULTI part;
+  the filter is the sound's, and CC 74 and 71 lock it as in MULTI. CC 120 and 123 release the
+  voices.
 - **Chip A's channels, both modes:** CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model,
   envelope mode, profile and character. Nothing else (the map, MIDI learn) reaches them:
   those are the instrument's channel's.
@@ -307,8 +310,6 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
   +4 and +7 by default: a major triad). ARP cycles the held notes, in the order they
   were pressed, on voice 1, a step every ARP RATE frames (3 by default), or every 16th of
   the MIDI clock (6 clocks) with the rate at CLOCK.
-- **Not yet on the device:** WHOLE A's channel is routed and tracked, and sounds once song
-  control takes jam releases, voices and bends.
 
 ## Program change and banks
 
@@ -318,7 +319,7 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
 
 | Bank | Program n selects |
 |---|---|
-| 0 | the channel's sound: 0..3 the presets, 16..31 USER 1..16 (an empty slot does nothing); on a MULTI part's channel also 4, the instrument's sound as it is; on WHOLE A's channel N GoatTracker instrument n + 1, 0..62 |
+| 0 | the channel's sound: 0..3 the presets, 16..31 USER 1..16 (an empty slot does nothing); on chip A's channels (a MULTI part's, WHOLE A's) also 4, the instrument's sound as it is |
 | 1 | songs: program n loads the store's n-th song in name order, stopped; on the instrument's channel or channel N only |
 | 2 | the chip's profile: 0 6581 R2, 1 6581 R3, 2 6581 R4AR, 3 8580 R5, 4 worn 6581, 5..12 USER 1..8; the instrument's (the keys' setup) on its channel, chip A's on chip A's |
 

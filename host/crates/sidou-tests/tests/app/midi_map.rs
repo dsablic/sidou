@@ -1454,11 +1454,14 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
   while it is held (the song's writes to it are held back) and gives it back at its release;
   meanwhile the filter is the song's. PLAY, STOP and the clock work as in any mode. A `.sid`
   tune owns chip A: the parts are silent until it stops.
-- **WHOLE A's channel:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
-  instruments have none). Program change n (0..{instr}) picks GoatTracker instrument n + 1
-  for the channel's next note. Pitch bend bends the voices by the channel's own range,
-  {range} semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 and 71 lock chip A's
-  filter as in MULTI. CC 120 and 123 release the voices; CC 121 also centres the bend.
+- **WHOLE A's channel:** one LAB sound on all three of chip A's voices, played as MULTI's
+  parts play theirs: N's part's sound (SAW LEAD at power-on); MULTI's other two parts keep
+  their own for MULTI. Program change picks it as on a MULTI part's channel, for the three
+  voices at once; so does the MIDI page's CH row. Notes 0..127 with
+  velocity. Pitch bend (by the channel's range), the mod wheel, aftertouch (channel, or
+  polyphonic on the voice holding that note) and CC 121 move all three as on a MULTI part;
+  the filter is the sound's, and CC 74 and 71 lock it as in MULTI. CC 120 and 123 release the
+  voices.
 - **Chip A's channels, both modes:** CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model,
   envelope mode, profile and character. Nothing else (the map, MIDI learn) reaches them:
   those are the instrument's channel's.
@@ -1467,11 +1470,8 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
   +{c2} and +{c3} by default: a major triad). ARP cycles the held notes, in the order they
   were pressed, on voice 1, a step every ARP RATE frames ({arp} by default), or every 16th of
   the MIDI clock ({clocks} clocks) with the rate at CLOCK.
-- **Not yet on the device:** WHOLE A's channel is routed and tracked, and sounds once song
-  control takes jam releases, voices and bends.
 
 ",
-        instr = MIDI_ROUTE_INSTR_MAX - 1,
         range = LIVE_BEND_RANGE_DEFAULT,
         c2 = MIDI_ROUTE_CHORD_DEFAULT_2,
         c3 = MIDI_ROUTE_CHORD_DEFAULT_3,

@@ -30,9 +30,6 @@ typedef enum { MIDI_WHOLE_POLY = 0, MIDI_WHOLE_CHORD = 1, MIDI_WHOLE_ARP = 2 } m
 #define MIDI_ROUTE_HELD 8u
 #define MIDI_ROUTE_LIVE_OFFSET 3u
 #define MIDI_ROUTE_NO_NOTE 0xffu
-#define MIDI_ROUTE_GT_FIRST 12u
-#define MIDI_ROUTE_GT_NOTES 96u
-#define MIDI_ROUTE_INSTR_MAX 63u
 #define MIDI_ROUTE_ARP_CLOCKS 6u
 #define MIDI_ROUTE_TICKS_PER_FRAME 2u
 #define MIDI_ROUTE_CHORD_DEFAULT_2 4u
@@ -59,17 +56,8 @@ typedef struct {
 } midi_route_setup;
 
 typedef struct {
-    int (*jam_on)(void* ctx, uint32_t voice, uint32_t note, uint32_t instr, uint32_t legato);
-    int (*jam_off)(void* ctx, uint32_t voice);
-    int (*jam_bend)(void* ctx, uint32_t voice, int32_t offset);
-    int (*filter)(void* ctx, uint32_t locks, uint32_t cutoff, uint32_t resonance);
-    void* ctx;
-} midi_route_player;
-
-typedef struct {
     uint8_t held[MIDI_ROUTE_HELD];
     uint8_t n;
-    uint8_t instr;
     uint16_t bend;
     uint8_t range;
     uint8_t range_rpn;
@@ -85,7 +73,6 @@ typedef struct {
 
 typedef struct midi_route {
     midi_route_setup setup;
-    midi_route_player player;
     live* l;
     keys_route* kr;
     uint8_t to[16];
@@ -95,14 +82,12 @@ typedef struct midi_route {
     uint8_t bank[16][2];
     uint8_t song_req;
     uint8_t locks;
-    uint8_t locks_sent;
     uint16_t cutoff;
     uint8_t resonance;
     uint8_t filter_dirty;
     uint8_t arp_pos;
     uint8_t arp_wait;
     uint32_t stamp;
-    uint32_t dropped;
     multi* parts;
 } midi_route;
 
@@ -113,7 +98,7 @@ typedef enum {
 } midi_route_to;
 
 void midi_route_setup_default(midi_route_setup* s);
-void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_player* player);
+void midi_route_init(midi_route* r, live* l, keys_route* kr);
 void midi_route_set(midi_route* r, const midi_route_setup* s);
 void midi_route_parts(midi_route* r, multi* parts);
 int midi_route_part_program(midi_route* r, uint32_t part, uint32_t program);

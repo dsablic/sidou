@@ -33,6 +33,14 @@ All notable changes are documented here. The format follows
   sound, and ALGORITHM there picks it, in the big popup. Until now chip A's channels were routed
   but silent. A new manual page, [SIDOU from a DAW](docs/manual/daw.md), sets a sequencer up for
   each mode, the clock, USB audio recording and Bluetooth.
+- **WHOLE A sounds.** Channel N plays one LAB sound on all three of chip A's voices, the one
+  MULTI gives channel N (SAW LEAD at power-on): POLY plays up to three notes, the oldest giving
+  way; CHORD plays the note and CHORD 2 and CHORD 3 above it from one key; ARP steps the held
+  notes on voice 1 every ARP RATE frames or every 16th of the MIDI clock. Program change on N
+  picks the sound as on a MULTI part (0..3, 4, 16..31), and so does a new `CH` row on the MIDI
+  page, in the big popup. Notes 0..127 with velocity; bend, wheel, aftertouch and CC 74 and 71
+  as on a MULTI part. MULTI's other parts keep their sounds. Until now WHOLE A was routed but
+  silent, and its program changes picked GoatTracker instruments.
 - **Program changes 16..31 play USER 1..16** on the instrument's channel too (an empty slot
   does nothing).
 - **The first DICE roll after power-on says `LAB KEEPS 16 USER SOUNDS`**, once, unless a USER
