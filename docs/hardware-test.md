@@ -3498,11 +3498,11 @@ without it, so the videos page still plays 1.10.0's).
   `midi_modes.rs::multitimbral_plays_three_parts_on_chip_a_and_the_instrument_on_chip_b`,
   `midi_modes.rs::whole_a_plays_one_lab_sound_on_chip_as_three_voices_as_poly_chord_and_arp`.
   *Result:* Passed 2026-11-18 on the test package of the same code (main 1aafbba6; the release differs by its version alone), §43, measured over USB: each part its own note and sound, POLY, CHORD, ARP at 3 FR and on the clock.
-- [ ] **A `.sid` tune's sounds:** the Library page, *A .sid tune: convert it to a song*, drop
+- [x] **A `.sid` tune's sounds:** the Library page, *A .sid tune: convert it to a song*, drop
   `neon-highway.sid`, Convert; under the tune's sounds, Listen to one, then **Send to the FM-1…**
   (the owner's yes before sending). Pass: the page lists the instruments as LAB sounds with their
   voice and notes; the FM-1 lists the one-instrument song, its keys play the sound, and ENV on
-  INSTR pulls it into LAB. *Emulator:* `web/sidsound.test.mjs`. *Result:* Not run on the device (2026-11-18): the site feature is proven by `web/sidsound.test.mjs`; the send is 1.21's, shown in §41.
+  INSTR pulls it into LAB. *Emulator:* `web/sidsound.test.mjs`. *Result:* Passed 2026-11-18: `neon-highway.sid` converted on the 2.0 site (built locally), 12 sounds listed with their voice and notes, A1.1 SAW played in the browser and sent (1,320 bytes; Chrome's Web MIDI); on the FM-1 it loaded, its keys played the saw and ENV on INSTR pulled it into LAB (the owner).
 - [x] **The keyboard still reconnects:** with the microKEY Air on, a few seconds after a power
   cycle. Pass: the toast `KEYBOARD microKEY Air`, no pairing asked again (no `PASSKEY`), its notes
   play. *Emulator:*
