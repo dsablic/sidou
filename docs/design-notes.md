@@ -5108,9 +5108,11 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
   sent 211 cells in one frame with nothing else moving (STEP's GROOVE page, K2 then K1; 229 with
   the view's own cells), over the 200 a frame. A knob with another name or colour now replaces the
   popup in three bands, the name (rows 0 to 3, at most 112 cells), the value (4 to 6) and the bar
-  with the foot (7 and 8), the bands not yet replaced drawn again in what the popup showed
-  (`shown`, against the view under a popup that composed), and the covered cells claimed to the
-  views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
+  with the foot (7 and 8). The bands not yet replaced are drawn again, when the view under the
+  popup composed, in what the popup showed: the source is asked again for the earlier ask
+  (`old_ask`, one byte; a copy of the old face cost 29 bytes of the RAM region, which has 8 over
+  its floor of 5,120), so the old value shown is the old knob's value now. The covered cells
+  claimed to the views are the band's. A turn that arrives meanwhile waits in `popup_ask` (the latest wins and is
   read when the swap ends), so no frame holds two swaps. The cost: for two frames the value is
   the old knob's under the new name. A turn of the same knob (same name and colour) changes only
   its value and bar, in one frame as before. The sweep in `popup.rs` and STEP's test turn a second

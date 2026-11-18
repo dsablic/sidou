@@ -1861,11 +1861,9 @@ fn a_sidou_step_pattern_is_the_lane_steps_keys_make() {
 #[test]
 fn a_second_knob_in_the_popups_life_keeps_every_frame_within_200_cells() {
     const FRAME_CELLS: usize = 200;
-    let groove_page = |s: &mut Song| groove(s);
-    let held_step = |s: &mut Song| hold(s, 0);
-    let scenarios: [(&str, &dyn Fn(&mut Song), [u32; 2]); 2] = [
-        ("groove", &groove_page, [PANEL_ENC_K2, PANEL_ENC_K1]),
-        ("held step", &held_step, [PANEL_ENC_K4, PANEL_ENC_K2]),
+    let scenarios: [(&str, fn(&mut Song), [u32; 2]); 2] = [
+        ("groove", groove, [PANEL_ENC_K2, PANEL_ENC_K1]),
+        ("held step", |s| hold(s, 0), [PANEL_ENC_K4, PANEL_ENC_K2]),
     ];
     for (name, set_up, [first, second]) in scenarios {
         for gap in 0..8 {

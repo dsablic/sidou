@@ -315,17 +315,21 @@ static void copy_clipped(char* out, const char* text) {
     out[n] = 0;
 }
 
+static void face_set(screen_popup_face* f, const char* name, const char* value, uint32_t fill,
+                     uint32_t max, uint8_t accent) {
+    copy_clipped(f->name, name);
+    copy_clipped(f->value, value);
+    f->has_bar = (uint8_t)(max != 0);
+    f->accent = accent;
+    f->bar = (uint8_t)(max ? (fill > max ? max : fill) * (SCREEN_POPUP_BAR_CELLS * 8u) / max : 0u);
+}
+
 void screen_popup(screen* s, const char* name, const char* value, uint32_t fill, uint32_t max) {
     screen_popup_state* p = s->popup;
     if (!p) {
         return;
     }
-    copy_clipped(p->want.name, name);
-    copy_clipped(p->want.value, value);
-    p->want.has_bar = (uint8_t)(max != 0);
-    p->want.accent = screen_theme(s)->hot;
-    p->want.bar = (uint8_t)(max ? (fill > max ? max : fill) * (SCREEN_POPUP_BAR_CELLS * 8u) / max
-                                : 0u);
+    face_set(&p->want, name, value, fill, max, screen_theme(s)->hot);
     p->alive = 2;
     p->fresh = 1;
     s->layers = 1;
@@ -450,14 +454,16 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
         uint32_t max = 0;
         uint32_t accent = THEME_ACCENT;
         s->popup_ask = 0;
-        p->shown = p->want;
+        screen_popup_face before = p->want;
         if (p->source && p->source(p->source_ctx, ask, name, value, &fill, &max, &accent)) {
             screen_popup(s, name, value, fill, max);
             p->want.accent = (uint8_t)(accent == THEME_ACCENT ? screen_theme(s)->hot : accent);
-            if (p->rows && face_differs(&p->shown, &p->want)) {
+            if (p->rows && face_differs(&before, &p->want)) {
                 p->swapped = 0;
                 p->swapped_before = 0;
+                p->old_ask = p->on_screen_ask;
             }
+            p->on_screen_ask = (uint8_t)ask;
             asked = 1;
         }
     }
@@ -579,6 +585,21 @@ static void popup_paint(screen* s, const screen_popup_face* f, uint32_t from, ui
     }
 }
 
+static int popup_face_asked(screen* s, uint32_t ask, screen_popup_face* f) {
+    screen_popup_state* p = s->popup;
+    char name[SCREEN_POPUP_TEXT];
+    char value[SCREEN_POPUP_TEXT];
+    uint32_t fill = 0;
+    uint32_t max = 0;
+    uint32_t accent = THEME_ACCENT;
+    if (!p->source || !p->source(p->source_ctx, ask, name, value, &fill, &max, &accent)) {
+        return 0;
+    }
+    face_set(f, name, value, fill, max,
+             (uint8_t)(accent == THEME_ACCENT ? screen_theme(s)->hot : accent));
+    return 1;
+}
+
 __attribute__((noinline, unused)) static void popup_draw(screen* s) {
     screen_popup_state* p = s->popup;
     grid* g = s->g;
@@ -590,8 +611,13 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
     g->big_guard = 0;
     (void)grid_big_touched(g);
     popup_paint(s, &p->want, all ? 0u : clamp_to(p->swapped_before, p->rows), split, rows);
-    uint32_t shown_from = !all && p->rows > split ? p->rows : split;
-    popup_paint(s, &p->shown, shown_from, rows, rows);
+    uint32_t old_from = !all && p->rows > split ? p->rows : split;
+    if (old_from < rows) {
+        screen_popup_face old;
+        if (popup_face_asked(s, p->old_ask, &old)) {
+            popup_paint(s, &old, old_from, rows, rows);
+        }
+    }
     if (!grid_big_touched(g)) {
         grid_unstale(g, SCREEN_POPUP_COL, SCREEN_POPUP_ROW, SCREEN_POPUP_W, rows);
     }
@@ -605,9 +631,6 @@ __attribute__((noinline, unused)) static void layers_post(screen* s) {
         int moved = p->swapped != p->swapped_before;
         if (p->next && (s->composed || p->fresh || p->next > p->rows || moved)) {
             popup_draw(s);
-        }
-        if (moved && p->swapped >= SCREEN_POPUP_ROWS) {
-            p->shown = p->want;
         }
         if (!p->next) {
             p->swapped = SCREEN_POPUP_ROWS;

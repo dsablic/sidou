@@ -84,8 +84,9 @@ typedef struct {
     uint8_t swapped;
     uint8_t swapped_before;
     const uint8_t* theme_id;
+    uint8_t on_screen_ask;
+    uint8_t old_ask;
     screen_popup_face want;
-    screen_popup_face shown;
 } screen_popup_state;
 
 typedef struct {
