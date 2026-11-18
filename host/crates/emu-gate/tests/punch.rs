@@ -12,7 +12,7 @@ use fm1_core::Bus;
 use sidou_sys::*;
 use sidou_tests::player::Player;
 
-const CPU2_BUILD: &str = "SIDOU_FM1_CPU2_BUILD";
+const ONE_CORE_BUILD: &str = "SIDOU_FM1_ONE_CORE_BUILD";
 const CORE1_LOOP: &str = "fm1_cpu1_main";
 const OPEN_MS: u64 = 700;
 const PLAYING_MS: u64 = 1500;
@@ -284,19 +284,21 @@ fn assert_every_pad_fits(fw: &Firmware, what: &str) {
 }
 
 #[test]
-fn every_pad_held_fits_the_audio_interrupt_on_one_core() {
+fn every_pad_held_fits_the_audio_interrupt_with_chip_b_on_core_1() {
     let Some(fw) = firmware("the PUNCH interrupt budget test") else {
         return;
     };
-    assert_every_pad_fits(&fw, "one core");
+    assert_every_pad_fits(&fw, "chip B on core 1");
 }
 
 #[test]
-fn every_pad_held_fits_the_audio_interrupt_with_chip_b_on_core_1() {
-    let Some(two) = std::env::var_os(CPU2_BUILD).filter(|d| !d.is_empty()) else {
-        println!("skipping the two-core PUNCH budget: set {CPU2_BUILD} to a -DSIDOU_CPU2=ON build");
+fn every_pad_held_fits_the_audio_interrupt_on_one_core() {
+    let Some(one) = std::env::var_os(ONE_CORE_BUILD).filter(|d| !d.is_empty()) else {
+        println!(
+            "skipping the one-core PUNCH budget: set {ONE_CORE_BUILD} to a -DSIDOU_CPU2=OFF build"
+        );
         return;
     };
-    let fw = Firmware::load(&std::path::absolute(PathBuf::from(two)).unwrap());
-    assert_every_pad_fits(&fw, "chip B on core 1");
+    let fw = Firmware::load(&std::path::absolute(PathBuf::from(one)).unwrap());
+    assert_every_pad_fits(&fw, "one core");
 }
