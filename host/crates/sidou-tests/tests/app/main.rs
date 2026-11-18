@@ -56,6 +56,8 @@ mod midi_usb;
 mod multi;
 mod panel;
 mod popup;
+mod punch_echo;
+mod punch_view;
 mod ratchet;
 mod reg_ring;
 mod save_key;

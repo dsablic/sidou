@@ -388,3 +388,31 @@ fn odd_block_sizes_and_switches_at_mix_0_do_not_change_the_output() {
         assert_eq!(diff, 0, "trial {trial}: {diff} samples differ");
     }
 }
+
+#[test]
+fn a_closed_send_lets_the_delay_ring_out_what_it_holds_and_takes_nothing_new() {
+    let n = FS as usize;
+    let first = burst_of_5ms_at_300hz(n / 8, 1000, 0.25);
+    let later = burst_of_5ms_at_300hz(n, 2000, 0.25);
+    let mut quiet = Slots::new(1);
+    let mut sent = Slots::new(1);
+    for s in [&mut quiet, &mut sent] {
+        s.set(FX, params(SID_FXSLOT_DELAY, 0.7, 0.3, 0.0, 1.0));
+        s.run(&vec![0i16; FS as usize / 10]);
+        s.run(&first);
+        s.s.send = 0.0;
+    }
+    let tail = left(&quiet.run(&vec![0i16; n]));
+    let out = left(&sent.run(&later));
+    let t = echo_time_in_samples(&sent) as usize;
+    assert!(
+        peak_near(&tail, n / 2, n / 2) > 300,
+        "the held echoes ring on"
+    );
+    let echo_of_the_later_burst = (2055 + t - 60)..(2055 + t + 60);
+    let off = echo_of_the_later_burst
+        .map(|i| (i32::from(out[i]) - i32::from(tail[i])).abs())
+        .max()
+        .unwrap();
+    assert!(off <= 1, "the later burst reached the delay: {off}");
+}

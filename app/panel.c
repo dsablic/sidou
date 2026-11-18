@@ -356,6 +356,7 @@ panel_leds panel_get_leds(const panel* p, const live* l, const panel_led_in* in)
         glo_layer(in, blink, &o);
     }
     o.notes |= in->pick;
+    o.notes_dim |= in->pads;
     o.buttons_dim &= ~o.buttons;
     o.notes_dim &= ~o.notes;
     return o;

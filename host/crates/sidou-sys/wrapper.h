@@ -68,6 +68,8 @@
 #include "midi_rx.h"
 #include "midi_usb.h"
 #include "panel.h"
+#include "punch_echo.h"
+#include "punch_view.h"
 #include "reg_ring.h"
 #include "scene.h"
 #include "art_pack.h"

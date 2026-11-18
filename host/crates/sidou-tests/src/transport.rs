@@ -118,6 +118,10 @@ impl Transport {
         unsafe { song_ctl_funktempo(&mut *self.sc, left, right) != 0 }
     }
 
+    pub fn punch(&mut self, pads: u32, beat_calls: u32) -> bool {
+        unsafe { song_ctl_punch(&mut *self.sc, pads, beat_calls) != 0 }
+    }
+
     pub fn seek(&mut self, call: u32) -> bool {
         unsafe { song_ctl_seek(&mut *self.sc, call) != 0 }
     }

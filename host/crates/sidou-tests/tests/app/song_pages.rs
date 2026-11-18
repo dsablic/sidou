@@ -2055,7 +2055,7 @@ fn rec_in_lab_sends_and_edit_rec_asks_before_it_replaces_and_an_arpeggio_opens_o
 }
 
 #[test]
-fn env_lfo_and_fx_on_instr_pull_a_sent_instrument_exactly_and_a_kit_drum_decoded_into_lab() {
+fn env_and_lfo_on_instr_pull_a_sent_instrument_exactly_and_a_kit_drum_decoded_into_lab() {
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     let s = modulated();
     h.send(&s, 0).unwrap();
@@ -2083,8 +2083,8 @@ fn env_lfo_and_fx_on_instr_pull_a_sent_instrument_exactly_and_a_kit_drum_decoded
         m.instr[1][2] = 100 + 9;
     }
     h.ui.v.song.instr = 2;
-    h.ui.press(PANEL_BTN_FX);
-    assert_eq!(u32::from(h.ui.v.lab.page), LAB_PAGE_FX);
+    h.ui.press(PANEL_BTN_LFO);
+    assert_eq!(u32::from(h.ui.v.lab.page), LAB_PAGE_MOD);
     let toast = h.ui.toast().unwrap();
     assert!(
         toast.starts_with("I02 ~") && toast.contains("DRUM"),

@@ -127,7 +127,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 |---|---|
 | Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
-| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; STEP takes them with a step held; in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
+| **ENV / LFO / FX (buttons 4, 5, 2)**, on LIVE | open [LAB](#lab) at its ENVELOPE, MOD and FX page (in LAB they step to those pages; STEP takes them with a step held; FX on a song view opens [PUNCH](#punch); in the other views they do nothing). FX is lit while the 8580 plays; the chip model is ALGORITHM on TONE (below) or CC 25 |
 | K1 (encoder 2) | cutoff: 64 detents from a semitone above the chip's lowest cutoff to its highest, even in pitch (on the CHIP view: its focused section's first value, [below](#chip)) |
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider; its modulation sweeps around that width, shallower near 3 % so it never goes thinner than 3 %), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
@@ -159,7 +159,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
 LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
 on LIVE, ARP is the [chord arpeggio](#chord-arpeggio) and LFO opens LAB (with ENV and FX); elsewhere
-LFO and ARP do nothing yet, nor do ENV and FX outside LIVE and LAB, and
+LFO and ARP do nothing yet, nor do ENV and FX outside LIVE, LAB and the song views, and
 PRESETS steps the preset. SELECT does nothing on ABOUT (on STATUS it turns the
 [page](#status-pages)), ALGORITHM nothing on ABOUT and on STATUS but its CORES page.
 
@@ -268,6 +268,7 @@ GoatTracker does). TRACKER ROWS is saved with the settings.
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
 | **SAVE** | a clean release saves the song; an unnamed song opens SAVE AS. Held + K1..K4 opens MIDI learn |
+| **FX** | opens [PUNCH](#punch) over the song view, the song playing on (STEP with a step held keeps FX for the step's SLIDE) |
 
 GLO's layer works in every view and comes before the panel: one of the leftmost six keys
 pressed while GLO is held (or latched) sounds nothing until it is let go, even if GLO is let go
@@ -560,7 +561,7 @@ refusals use the large toast. K1/K2 show the actual edited value in the value po
 | INSTR | SELECT | selects one of the nine parameters, then a character of its 16-byte GT2 name; with EDIT held, 8 (ATK/DEC to 1ST WAVE, then the same character on the name's other line) |
 | INSTR | K1 / K2 | coarse (16) / fine (1) adjustment of the selected byte or name character |
 | INSTR | EDIT + SEQ | on WAVE/PULSE/FILTER/VIBRATO pointer, opens that table at its pointer; otherwise asks SELECT A PTR |
-| INSTR | ENV / LFO / FX | [pulls the instrument into LAB](#pull-an-instrument-into-lab), which opens at ENVELOPE / MOD / FX (`EMPTY INSTRUMENT` for one with no bytes: nothing happens) |
+| INSTR | ENV / LFO | [pulls the instrument into LAB](#pull-an-instrument-into-lab), which opens at ENVELOPE / MOD (`EMPTY INSTRUMENT` for one with no bytes: nothing happens); FX opens [PUNCH](#punch), as on every song view |
 | TABLE | ALGORITHM | selects WAVE, PULSE, FILTER or SPEED |
 | TABLE | SELECT | selects table row 01–FF; with EDIT held, 12 rows (a page) |
 | TABLE | K1 / K2 | edits the left / right byte |
@@ -685,6 +686,37 @@ position and every held note and table its phase. A key you press still starts i
 normally, and an edit made while a note is held changes that note the way the edit says. With
 the song stopped, only the voices you jam sound; the song's own notes never play.
 
+### PUNCH
+
+**FX on any song view** (STEP, TRACKER, ORDER, INSTR, TABLE) opens **PUNCH**: a page of six
+momentary effects for a playing song, played on the **note keys 1-6** (the leftmost six, the keys
+GLO's layer uses) as **held pads**. A pad works while its key is held and is undone exactly when
+it is let go; several can be held at once. Nothing is written into the song, the sound or the
+settings, and the song plays on under the page: **HOME** goes back to the song view, **SEQ** opens the song view used last over it (as from any view; HOME comes back to PUNCH), **PLAY** stops or plays the song as everywhere.
+
+| Key | Pad | While held | Let go |
+|---|---|---|---|
+| 1 | **MUTE** | the song silent on chip A (its three voices muted at the chip's output, a digi drum too); the song's timing, envelopes and registers run on | the voices heard again where they are |
+| 2 | **FILTER SLAM** | the song's filter shut: cutoff at the bottom, resonance 15, low pass only, every voice through it (the song's volume kept) | the song's own filter registers, as the song last wrote them |
+| 3 | **PITCH DIVE** | every voice slows like a stopped tape: its pitch falls linearly to an octave down over 0.5 s (32 steps) and stays there; new notes dive with it | every voice's own pitch at the next frame |
+| 4 | **STUTTER** | the beat from the press (the song's rows a beat, `ROWS/BEAT` on the [MIDI page](#the-midi-page), at the song's speed) repeats, rows, sound and all | the song comes back where it would have been had it played on: the player fast-forwards from the beat and takes over at the exact frame |
+| 5 | **ECHO THROW** | the FX slot is a delay (the slot's own DELAY or PING-PONG with its time and damping, else DELAY), its feedback 96 and mix 72, and the song is sent into it | the send closes and the echoes ring on for 4 s; then the FX slot is the sound's own again |
+| 6 | **CHIP SWAP** | the song's chip A on the other SID model (a 6581 profile plays on the 8580 R5, an 8580 on the 6581 R4AR), the song's character and expert settings kept | the song's own profile back; the swap and its return are the chip change SID MODEL makes, a few tens of milliseconds |
+
+The **other keys do nothing** on PUNCH (no note sounds, nothing is recorded) and the page says
+**KEYS ARE PADS**; GLO + a pad key is the pad (no mute or solo). With the song **stopped** the
+pads do nothing and the page says **PLAY TO PUNCH**; a pad held when the song starts punches at
+once, and stopping the song (or leaving PUNCH) lets every pad go. A STUTTER pressed while the
+song is busy elsewhere (a seek, a widening of its tables) does not loop; release as usual.
+
+The page: **PUNCH** at 2×, `HOLD 1-6, SEVERAL AT ONCE`, then the six pads at 2×, each its key's
+number and its name: a held pad reversed (on the theme's highlight colour), the others in the
+value colour with the number highlighted, all grey while the song is stopped; `KEYS ARE PADS` (or `PLAY TO PUNCH` in red) and
+`HOME BACK` at the foot. The six pad keys glow dim while the song plays and a held one is lit.
+A change of the pads draws within the frame's 200 cells (the pads catch up over a second frame
+when all six change at once). The goldens are `tests/golden/lcd/punch.png`, `punch-held.png`
+(pads 2 and 4) and `punch-stopped.png`.
+
 ## Help
 
 **Hold HOME for 600 ms** in any view and a help card opens over it: the title bar (**HELP** and
@@ -695,8 +727,9 @@ SETTINGS, the MIDI page (its setup is RAM-only), CHIP, SCENE, each of the five s
 TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STATUS, ABOUT, the
 glyph sheet (CHARSET), the SONG menu's actions and each of its pages: the list of files LOAD
 and DELETE browse (**FILES**), SAVE AS's name and a confirmation; and the SID views: the browser
-(**SIDS**), **NOW PLAYING** (its card is **PLAYING**), the browser's question (**UNSAVED**) and
-NOW PLAYING's question which voice to lift (**LIFT**).
+(**SIDS**), **NOW PLAYING** (its card is **PLAYING**), the browser's question (**UNSAVED**),
+NOW PLAYING's question which voice to lift (**LIFT**) and [PUNCH](#punch) (**PUNCH**: the six
+pads by their keys, PLAY and HOME).
 
 **The card is the one for the state the view is in when HOME has been held**, where a control
 means something else there:
@@ -1030,8 +1063,8 @@ gives this exact sound.
 
 ### Pull an instrument into LAB
 
-On **INSTR**, **ENV**, **LFO** or **FX** take the instrument under the cursor into LAB, which
-opens at ENVELOPE, MOD or FX, as they open LAB from LIVE. The pull is one undo step (EDIT + LFO
+On **INSTR**, **ENV** or **LFO** take the instrument under the cursor into LAB, which
+opens at ENVELOPE or MOD, as they open LAB from LIVE (FX there is [PUNCH](#punch)). The pull is one undo step (EDIT + LFO
 gives the sound before it back; the name stays the instrument's), and the sound takes the
 instrument's name, its first 12 characters (`I05` for one without a name), with a `*`: a send
 back keeps it. LAB opens over INSTR in the place of the LAB a send came from, so HOME goes back

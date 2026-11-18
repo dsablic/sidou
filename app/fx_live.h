@@ -14,6 +14,7 @@ extern "C" {
 
 #define LIVE_REG_SLOT_BASE 0xA0u
 #define LIVE_REG_SLOT(slot, field) (LIVE_REG_SLOT_BASE | ((slot) << 3) | (field))
+#define LIVE_REG_FX_SEND LIVE_REG_SLOT(SID_SLOT_FX, LIVE_SLOT_FIELDS)
 
 typedef struct {
     sid_slots* slots;

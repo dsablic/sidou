@@ -39,6 +39,7 @@ typedef struct {
     chip_setup tune_b_want;
     uint8_t song_seen;
     uint8_t song_user;
+    uint8_t swap;
     void (*moved)(void* ctx, uint32_t chip);
     void* moved_ctx;
     void (*taking)(void* ctx, uint32_t voices);
@@ -61,6 +62,7 @@ void keys_route_fresh(keys_route* kr, uint32_t chip);
 uint8_t keys_route_voices_taken(const keys_route* kr);
 int keys_route_ready_for_song(const keys_route* kr);
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup);
+void keys_route_swap(keys_route* kr, int on);
 int keys_route_song_edit(keys_route* kr, const chip_setup* setup, uint32_t edit_mask);
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
 

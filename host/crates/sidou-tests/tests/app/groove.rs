@@ -176,6 +176,9 @@ fn the_old_chords_set_no_swing_no_euclid_and_no_ratchet() {
     assert_ne!(s.ui.toast().as_deref(), Some("EUCLID OFF"));
     s.ui.up(PANEL_BTN_FX);
     settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "PUNCH", "FX opens PUNCH, no chord");
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
     assert_eq!(notes_col(&s), notes, "FX + K1 writes no rhythm");
     hold(&mut s, 0);
     s.ui.down(PANEL_BTN_EDIT);

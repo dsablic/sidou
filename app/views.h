@@ -17,6 +17,7 @@
 #include "midi_route.h"
 #include "midi_sync.h"
 #include "panel.h"
+#include "punch_view.h"
 #include "save_key.h"
 #include "scene_view.h"
 #include "settings.h"

@@ -22,6 +22,7 @@
 #include "live.h"
 #include "midi.h"
 #include "panel.h"
+#include "punch_echo.h"
 #include "player/song_ctl.h"
 #include "psid/psid_ctl.h"
 #include "psid/psid_file.h"
@@ -68,6 +69,7 @@ static bootguard boot_guard __attribute__((section(".noinit")));
 static volatile uint32_t uptime_ms;
 static live instrument;
 static keys_route keys_router;
+static punch_echo echo_throw __attribute__((section(".noinit.punch")));
 static ui_sound ui_sounds;
 static panel front;
 static song_io songs;
@@ -1129,6 +1131,20 @@ static int st_funktempo(void* ctx, uint32_t left, uint32_t right) {
     return song_away ? 0 : song_ctl_funktempo(ctx, left, right);
 }
 
+_Static_assert(SONG_T_PUNCH_MUTE == SONG_PUNCH_MUTE && SONG_T_PUNCH_SLAM == SONG_PUNCH_SLAM &&
+                   SONG_T_PUNCH_DIVE == SONG_PUNCH_DIVE &&
+                   SONG_T_PUNCH_STUTTER == SONG_PUNCH_STUTTER,
+               "the transport's pads are the player's");
+
+static int st_punch(void* ctx, uint32_t pads, uint32_t beat_calls) {
+    if (song_away || !song_ctl_punch(ctx, pads & SONG_PUNCH_PADS, beat_calls)) {
+        return 0;
+    }
+    keys_route_swap(&keys_router, (int)(pads & SONG_T_PUNCH_SWAP));
+    punch_echo_hold(&echo_throw, (int)(pads & SONG_T_PUNCH_ECHO), uptime_ms);
+    return 1;
+}
+
 static void song_seen_rows(const song_event* ev, uint32_t n) {
     for (uint32_t i = 0; i < n; i++) {
         uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
@@ -1368,6 +1384,7 @@ static const song_transport song_binding = {
     .draft = st_draft,
     .held = st_held,
     .funktempo = st_funktempo,
+    .punch = st_punch,
 };
 static song_transport song_bound;
 
@@ -2155,6 +2172,9 @@ static int play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         song_pass();
     }
     if (tick_due) {
+        if (echo_throw.state) {
+            punch_echo_tick(&echo_throw, now);
+        }
         keys_route_tick(&keys_router);
         audio_chip_b_use(AUDIO_B_UI, ui_sound_busy(&ui_sounds));
         midi_send();
@@ -2268,6 +2288,7 @@ static void sidou_main(void) {
     keys_router.moved = audio_keys;
     keys_router.taking = song_keys_take;
     live_init(&instrument, keys_route_sink, &keys_router, SID_MODEL_6581);
+    punch_echo_init(&echo_throw, &instrument);
     live_set_preparer(&instrument, keys_route_prepare, &keys_router);
     keys_route_start(&keys_router);
     ui_sound_init(&ui_sounds, &instrument, reg_ring_sink, audio_sink_ctx_b());

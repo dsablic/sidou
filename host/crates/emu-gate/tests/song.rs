@@ -1040,6 +1040,7 @@ const BENCH_NAME_CELLS: u32 = 0;
 const BENCH_SWAPS: u32 = 1;
 const BENCH_NO_EDITS: u32 = 2;
 const BENCH_ROW_CELLS: u32 = 3;
+const BENCH_PUNCH: u32 = 4;
 const SWAPS_EVERY: usize = 4;
 const ROW_DELTA_BLOCKS: u32 = 192;
 
@@ -1339,6 +1340,49 @@ fn the_players_worst_block_fits_its_budget() {
     assert!(
         u64::from(SONG_FF_CALLS) * charged <= u64::from(SONG_SLICE_INSTRUCTIONS),
         "{SONG_FF_CALLS} calls of {worst_call_beyond_the_edits} are over the slice of {SONG_SLICE_INSTRUCTIONS}"
+    );
+}
+
+#[test]
+fn every_player_pad_of_punch_held_keeps_the_players_worst_block_in_its_budget() {
+    let Some((build, _)) = build_and_firmware("the player's budget under PUNCH") else {
+        return;
+    };
+    let songs = budget_songs();
+    let worst = |kind: u32| {
+        let runs = par_map(&songs, |(_, song, sub)| {
+            let ms = unsafe {
+                let mut o = gt2_options::default();
+                song_ext_get_options(song.ptr(), &mut o);
+                u32::from(o.multispeed.max(1))
+            };
+            let blocks = (BUDGET_CALLS * SAMPLES_A_CALL as u32 / ms / HALF_FRAMES as u32) + 8;
+            bench(&build, song, *sub, blocks, kind)
+        });
+        songs
+            .iter()
+            .zip(&runs)
+            .filter(|(_, b)| b.error == 0)
+            .map(|((name, ..), b)| (*b.blocks.iter().max().unwrap(), name.clone()))
+            .max()
+            .unwrap()
+    };
+    let plain = worst(BENCH_NAME_CELLS);
+    let punched = worst(BENCH_PUNCH);
+    let per_sample = |w: u64| w as f64 / HALF_FRAMES as f64;
+    println!(
+        "the player's worst block with 8 cell edits: {:.1} a sample ({}); every player pad held \
+         (a beat of 24 calls looping): {:.1} ({}); budget {PLAYER_WORST_BLOCK}",
+        per_sample(plain.0),
+        plain.1,
+        per_sample(punched.0),
+        punched.1
+    );
+    assert!(
+        per_sample(punched.0) <= PLAYER_WORST_BLOCK,
+        "PUNCH's pads put the player's worst block at {:.1} a sample in {}",
+        per_sample(punched.0),
+        punched.1
     );
 }
 

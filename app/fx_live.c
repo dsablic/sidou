@@ -15,6 +15,10 @@ _Static_assert((LIVE_REG_SLOT_BASE & 0xe0u) == 0xa0u &&
                "the slots' pseudo-registers are 0xA0..0xBF");
 
 int fx_live_apply(fx_live* f, uint8_t reg, uint8_t value) {
+    if (reg == LIVE_REG_FX_SEND) {
+        f->slots->send = (float)value * (1.0f / (float)LIVE_SLOT_MAX);
+        return 1;
+    }
     uint32_t slot = (uint32_t)(reg - LIVE_REG_SLOT_BASE) >> 3;
     uint32_t field = reg & 7u;
     if (reg < LIVE_REG_SLOT_BASE || slot >= SID_SLOT_COUNT || field >= LIVE_SLOT_FIELDS) {

@@ -505,7 +505,7 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
         Some(("STEP" | "GLO" | "SAVE" | "ARP" | "SCL", _)) => return Some(Vec::new()),
         _ => (false, key),
     };
-    if rest.starts_with("KEY") {
+    if rest.starts_with("KEY") || rest.bytes().all(|b| b.is_ascii_digit()) {
         return Some(vec![(Ctl::Keys, edit)]);
     }
     let knobs = |range: std::ops::RangeInclusive<u32>| {
@@ -557,7 +557,7 @@ struct Ctx {
     _tune: Option<(Box<crate::sid_view::Tune>, crate::sid_view::Bound)>,
 }
 
-const CONTEXTS: [&str; 48] = [
+const CONTEXTS: [&str; 49] = [
     "LIVE",
     "LAB OSC",
     "LAB ENV",
@@ -606,6 +606,7 @@ const CONTEXTS: [&str; 48] = [
     "STEP FULL",
     "CHIP MOD",
     "CHIP FX",
+    "PUNCH",
 ];
 
 fn song_action(action: u32) -> Open {
@@ -717,6 +718,11 @@ fn open_ctx(name: &str) -> Ctx {
             crate::song_view::settle(ui);
         }
         "ORDER" => seq(ui, 3),
+        "PUNCH" => {
+            seq(ui, 1);
+            ui.press(PANEL_BTN_FX);
+            ui.settle();
+        }
         "INSTR" => seq(ui, 4),
         "TABLE" => seq(ui, 5),
         "ARP" => {

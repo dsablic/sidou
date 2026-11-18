@@ -9,6 +9,18 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **PUNCH**: FX on any song view opens a page whose first six note keys are held effect pads for
+  the playing song, several at once: **MUTE** (chip A silent, its voices running on), **FILTER
+  SLAM** (cutoff to the bottom, resonance up, every voice through the low pass), **PITCH DIVE**
+  (every voice slows like a stopped tape, an octave down in half a second), **STUTTER** (the beat
+  from the press repeats; let go, the song is exactly where it would have been), **ECHO THROW**
+  (the song sent into a delay; let go, the echoes ring on for 4 s before the FX slot is yours
+  again) and **CHIP SWAP** (the song on the other SID model). Each is undone when its key is let
+  go and nothing is written into the song; the other keys are inert (`KEYS ARE PADS`), and with
+  the song stopped the pads wait (`PLAY TO PUNCH`). HOME goes back, the song playing on; its help
+  card is PUNCH. STUTTER needs no audio buffer (the player repeats the beat's frames and is
+  fast-forwarded back), and every pad held keeps the player's worst block at 44.1 instructions a
+  sample (budget 60).
 - **MULTI plays four parts from a DAW.** Channels N, N+1 and N+2 are a monophonic part each on
   chip A's voice 1, 2 and 3, each with its own LAB sound: program change 0..3 the presets, 4 the
   instrument's sound as it is (a DICE roll, an edit), 16..31 USER 1..16. Each part has its own
@@ -43,6 +55,8 @@ All notable changes are documented here. The format follows
   `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
 
 ### Changed
+- **FX on INSTR opens PUNCH**, as on every song view; ENV and LFO still pull the instrument into
+  LAB (at ENVELOPE and MOD).
 - **Aftertouch adds vibrato by default**, as the mod wheel does since 1.20: pressing a key
   harder shakes the note on every sound. NRPN 6/3 still picks OFF, PULSE or CUTOFF; it is kept
   with the settings (record version 11: an older record's OFF reads as VIBRATO, any other choice

@@ -43,6 +43,16 @@ enum {
     SONG_CMD_DRAFT, SONG_CMD_HELD, SONG_CMD_FUNKTEMPO
 };
 
+#define SONG_PUNCH_MUTE (1u << 0)
+#define SONG_PUNCH_SLAM (1u << 1)
+#define SONG_PUNCH_DIVE (1u << 2)
+#define SONG_PUNCH_STUTTER (1u << 3)
+#define SONG_PUNCH_PADS (SONG_PUNCH_MUTE | SONG_PUNCH_SLAM | SONG_PUNCH_DIVE | SONG_PUNCH_STUTTER)
+#define SONG_PUNCH_DIVE_SAMPLES 22059u
+#define SONG_PUNCH_DIVE_STEPS 32u
+#define SONG_PUNCH_BEAT_MAX 0xffffu
+enum { SONG_STUTTER_OFF, SONG_STUTTER_HOLD, SONG_STUTTER_LEAVING };
+
 #define SONG_HELD_LOCKS (SONG_LOCK_PULSE + 1u)
 
 typedef struct {
@@ -121,7 +131,7 @@ typedef struct song_ctl {
     uint8_t song_gate;
     song_event ev[SONG_EVENT_RING];
     gt2_player player;
-    uint8_t shadow[GT2_SID_REGS];
+    _Alignas(4) uint8_t shadow[GT2_SID_REGS];
     uint8_t mute;
     uint8_t taken;
     uint8_t armed, armed_now;
@@ -146,7 +156,9 @@ typedef struct song_ctl {
     uint32_t blocks;
     uint32_t play_block;
     uint32_t edits_block_max;
+#ifdef SIDOU_REG_RING_RACE_HOOK
     uint32_t edit_cells, edit_swaps;
+#endif
     gt2_shape* shapes[2];
     song_work* w;
     song_chip_hooks hooks;
@@ -163,7 +175,7 @@ typedef struct song_ctl {
     uint32_t ff_seq, ff_calls, ff_target;
     uint32_t quiet;
     uint32_t slices;
-    uint32_t handovers, narrowed, handed_back;
+    uint32_t handovers, handed_back;
     int16_t error;
     uint8_t state;
     uint8_t active;
@@ -225,6 +237,11 @@ typedef struct song_ctl {
     uint8_t glide_left[GT2_PLAY_CHANNELS], glide_ctrl[GT2_PLAY_CHANNELS];
     uint16_t glide_from[GT2_PLAY_CHANNELS], prev_freq[GT2_PLAY_CHANNELS];
     uint8_t prev_ctrl[GT2_PLAY_CHANNELS];
+    uint8_t punch;
+    uint8_t stutter;
+    uint16_t stutter_len;
+    uint32_t dive_at;
+    volatile uint32_t stutter_from;
 } song_ctl;
 
 void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,
@@ -264,6 +281,7 @@ int song_ctl_draft(song_ctl* sc, uint32_t ch, uint32_t first, uint32_t n, const 
                    const uint8_t* right);
 int song_ctl_held(song_ctl* sc, uint32_t ch, const uint8_t* locks, uint32_t n);
 int song_ctl_funktempo(song_ctl* sc, uint32_t left, uint32_t right);
+int song_ctl_punch(song_ctl* sc, uint32_t pads, uint32_t beat_calls);
 
 uint32_t song_ctl_state(const song_ctl* sc);
 uint32_t song_ctl_clock_calls(const song_ctl* sc);

@@ -519,6 +519,7 @@ void views_song_loaded(views* v) {
     song_pages_init(&v->pages, &v->song);
     v->pages.page = page;
     step_view_init(&v->step, &v->song);
+    punch_view_init(&punch_view_state, &v->song);
     v->song.gen.pages = &v->pages;
     v->songs.built = 0;
 }
@@ -600,6 +601,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     song_view_init(&v->song, l);
     song_pages_init(&v->pages, &v->song);
     step_view_init(&v->step, &v->song);
+    punch_view_init(&punch_view_state, &v->song);
     v->song.gen.pages = &v->pages;
     v->songs.built = 0;
     v->songs.scanning = 0;
@@ -773,6 +775,9 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     }
     if (top == &scene_view_view) {
         return HELP_CARD_SCENE;
+    }
+    if (top == &punch_view_view) {
+        return HELP_CARD_PUNCH;
     }
     int recording = song_view_rec_playing(&v->song);
     if (recording) {
@@ -1071,6 +1076,12 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_lab(views* v, uint3
     }
 }
 
+static void punch_open(views* v) {
+    if (screen_push(&v->s, &punch_view_view, &punch_view_state, SCREEN_WIPE_DOWN) != 0) {
+        (void)screen_push_over(&v->s, &punch_view_view, &punch_view_state, SCREEN_WIPE_DOWN);
+    }
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     knob_page(v, p);
     if (((pressed >> PANEL_BTN_EDIT) | v->lab.edit_down) & 1u) {
@@ -1103,7 +1114,13 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
         }
     }
     if (rest & LAB_BUTTONS) {
-        live_lab(v, rest);
+        if ((rest >> PANEL_BTN_FX & 1u) && song_view_is(screen_top(&v->s))) {
+            punch_open(v);
+            rest &= ~(1u << PANEL_BTN_FX);
+        }
+        if (rest & LAB_BUTTONS) {
+            live_lab(v, rest);
+        }
     }
     knob_page(v, p);
     panel_buttons(p, v->l, rest, held);
@@ -1119,10 +1136,20 @@ static uint32_t panel_owned(const panel* p, uint32_t keys) {
     return owned;
 }
 
+static void punch_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
+    panel_quiet_keys(p, v->l, down | pressed);
+    panel_note_keys(p, v->l, down, pressed);
+    (void)panel_take_glo(p);
+}
+
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     song_view* sv = &v->song;
     if (down | pressed | sv->jam_keys | v->step.down) {
         const view* top = views_shows(v);
+        if (top == &punch_view_view) {
+            punch_keys(v, p, down, pressed);
+            return;
+        }
         if (top == &help_view_view && v->s.depth >= 2u) {
             top = v->s.stack[v->s.depth - 2u].v;
         }
@@ -1470,6 +1497,11 @@ void views_frame(views* v, uint32_t now_ms) {
         v->song_last = top;
     }
     song_view_frame(&v->song, in_song);
+    int punching = top == &punch_view_view;
+    if (punching && v->p) {
+        punch_view_keys(&punch_view_state, v->p->quiet);
+    }
+    punch_view_frame(&punch_view_state, punching);
     if (v->pages.pending || v->pages.arp_dirty || v->pages.arp) {
         uint8_t previous = v->pages.status;
         (void)song_pages_poll(&v->pages);
@@ -1564,7 +1596,11 @@ void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
                                                               : PANEL_REC_COUNT;
     out->silent = (uint8_t)song_view_mute_mask(&v->song);
     out->solo = v->song.solo;
-    out->pick = (uint8_t)(top == &sid_view_playing ? sid_view_lift_keys(&v->sids) : 0u);
+    int punching = top == &punch_view_view;
+    out->pick = (uint8_t)(top == &sid_view_playing ? sid_view_lift_keys(&v->sids)
+                          : punching                 ? punch_view_lit(&punch_view_state)
+                                                     : 0u);
+    out->pads = (uint8_t)(punching && punch_view_state.playing ? PUNCH_VIEW_ALL : 0u);
     out->ask = (uint8_t)save_asked(v);
     out->step_on = (uint8_t)(top == &step_view_view);
     out->step_head = PANEL_NO_STEP;

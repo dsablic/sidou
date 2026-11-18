@@ -51,6 +51,8 @@ add_library(sidou_live STATIC
     midi_usb.c
     multi.c
     panel.c
+    punch_echo.c
+    punch_view.c
     reg_ring.c
     scene.c
     scene_art.c
@@ -116,6 +118,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(sid_io.c song_io.c sysex.c song_view.c scene_song.c scene_rmr.c scene_intro.c
         midi_learn.c about.c song_edit.c midi_map.c help_view.c logo.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(keys_route.c panel.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(punch_view.c punch_echo.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(chip_ctl.c PROPERTIES COMPILE_OPTIONS -Os)
     set_source_files_properties(screen.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(live_setup.c live_walk.c PROPERTIES COMPILE_OPTIONS -Oz)

@@ -73,6 +73,12 @@ package on the [releases page](https://github.com/dsablic/sidou/releases); what 
   spread a number of hits evenly over it (Bjorklund's rhythms) as real steps, and RATCHET plays a
   picked step two to four times in its row (a shared copy of its instrument that GoatTracker
   plays too).
+- **Punch a playing song.** FX on any song view opens PUNCH, whose first six note keys are held
+  pads, several at once: MUTE, FILTER SLAM (the filter shut at full resonance), PITCH DIVE (a
+  tape stop, an octave down in half a second), STUTTER (the beat repeats; let go, the song is
+  where it would have been), ECHO THROW (sent into a delay whose echoes ring on after) and CHIP
+  SWAP (the song on the other SID model). Each is undone the moment its key is let go, and
+  nothing is written into the song ([punch a playing song](docs/manual/punch.md)).
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play `.sid` tunes.** SIDOU's own 6502 plays PSID tunes (one or two SIDs, PAL or NTSC) from
@@ -200,7 +206,7 @@ On LIVE:
 | SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile (the 6581s and the 8580) or the effect's algorithm |
 | EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
 | SCL | the next effect slot |
-| ENV / LFO / FX | open LAB at its envelope, modulation or effects page |
+| ENV / LFO / FX | open LAB at its envelope, modulation or effects page (FX on a song view: PUNCH, six held effect pads on the first six keys) |
 | MASTER | volume |
 | SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
 | PLAY / REC | play and stop the song (with a `.sid` tune loaded, the tune; EDIT held pauses it) / record mode |
