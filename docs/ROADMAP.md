@@ -17,13 +17,6 @@ Sizes: S is under a day of work, M a few days, L more.
   LEVEL. It fits one core: the gain rides on the voice's output in both render loops, about 8
   instructions a sample per chip, inside every audio budget unchanged
   ([design notes](design-notes.md#a-layers-level-20)).
-- **SIDOU as a DAW plugin**, starting from its design session (the owner, 2026-11-04): a SIDOU
-  edition of fm1-emu's FM-1 plugin (AU, VST3, CLAP) running the real firmware, with a large mirror
-  of the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard and
-  side panels drawn from the firmware's state. The spike ([its plan](plans/2026-11-05-daw-plugin-spike.md),
-  code in `spikes/daw-plugin/`) runs SIDOU's package at 17.6x real time; stable parameters a LAB
-  card, GPL-3.0-or-later. A first release M, the whole edition L.
-
 ## Open from earlier releases
 
 - **SIDOU's own USB ID** (0x51D0): waits for pid.codes request #1341. The update loader stays
@@ -68,6 +61,12 @@ Sizes: S is under a day of work, M a few days, L more.
 
 ## Parked
 
+- **SIDOU as a DAW plugin** (parked by the owner, 2026-11-18, until players ask for it): a SIDOU
+  edition of fm1-emu's FM-1 plugin (AU, VST3, CLAP) running the real firmware, with a large mirror
+  of the screen, real knobs for LAB's pages and LIVE, tracker entry from the computer keyboard and
+  side panels drawn from the firmware's state. The spike ([its plan](plans/2026-11-05-daw-plugin-spike.md),
+  code in `spikes/daw-plugin/`) runs SIDOU's package at 17.6x real time; stable parameters a LAB
+  card, GPL-3.0-or-later. A first release M, the whole edition L.
 - **The 8580 mixer's grit** (measured, not kept): the spike (its branch `mixer-8580` no longer exists; the measurements are here) puts
   a quadratic on the 8580's output; its second harmonic lands within 0.8 dB of reSIDfp's, but the
   distance to the CSG8580R5 recordings does not move (0.04 dB at most on every tune), for 80 bytes
