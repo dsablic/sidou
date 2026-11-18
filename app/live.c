@@ -15,9 +15,8 @@
 #define REG_RES_FILT 0x17u
 #define REG_MODE_VOL 0x18u
 #define NOTE_TOP 106
-#define CUTOFF_PER_VALUE 8
-#define PW_PER_VALUE 16
-#define TABLE_NOTE_C0 12u
+#define CUTOFF_PER_VALUE LIVE_CUTOFF_PER_VALUE
+#define PW_PER_VALUE LIVE_PW_PER_VALUE
 
 _Static_assert(LIVE_PITCH_SEMITONE == 8192 && LIVE_BEND_CENTRE == 8192u,
                "a bend times the range is the offset in 1/8192 semitone");
@@ -222,9 +221,7 @@ static int32_t pitch_offset(const live* l, int v) {
     const live_voice* x = &l->voice[v];
     uint32_t depth = vibrato_depth(l, v);
     if (depth && !x->vibrato_wait) {
-        int32_t p = x->vibrato_phase;
-        int32_t t = p < 16384 ? p : p < 49152 ? 32768 - p : p - 65536;
-        off += t * (int32_t)depth / 256;
+        off += live_vibrato_swing(x->vibrato_phase, depth);
     }
     return off;
 }
@@ -245,7 +242,7 @@ uint32_t live_table_voice(const live* l, uint32_t v) {
 }
 
 static const uint8_t* table_step(const live* l, int v) {
-    return &l->table[LAB_SOUND_TABLE_STEPS - LAB_SOUND_TABLE + 2u * l->table_pos[v]];
+    return live_table_step(l->table, l->table_pos[v]);
 }
 
 uint32_t live_table_playing(const live* l) {
@@ -274,12 +271,7 @@ static uint16_t voice_freq(const live* l, int v) {
     }
     int32_t step = 0;
     if (live_table_voice(l, (uint32_t)v)) {
-        uint8_t n = table_step(l, v)[1];
-        if (lab_table_absolute(n)) {
-            note = (uint8_t)(n - LAB_TABLE_NOTE_NONE + TABLE_NOTE_C0);
-        } else {
-            step = lab_table_offset(n) * LIVE_PITCH_SEMITONE;
-        }
+        step = live_table_pitch(table_step(l, v)[1], &note);
     }
     uint32_t f = live_freq_at(note, pitch_offset(l, src) + layer_offset(l, v) + step);
     if (l->mono_sync && v == 0) {
@@ -335,8 +327,7 @@ static uint8_t voice_sr(const live* l, int v) {
     if (l->velocity_target != LIVE_VELOCITY_SUSTAIN) {
         return sr;
     }
-    uint32_t s = ((uint32_t)(sr >> 4) * l->voice[voice_source(l, v)].velocity + 63u) / 127u;
-    return (uint8_t)(s << 4 | (sr & 0x0fu));
+    return live_velocity_sustain(sr, l->voice[voice_source(l, v)].velocity);
 }
 
 uint32_t live_resonance_effective(const live* l) {
@@ -434,23 +425,8 @@ uint32_t live_pwm_depth_effective(const live* l) {
 }
 
 static uint16_t pw_effective(const live* l, int v) {
-    int32_t pw = layer_pulse_width(l, v);
-    int32_t depth = (int32_t)live_pwm_depth_effective(l);
-    int32_t room = pw - LIVE_PULSE_FIRST;
-    int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
-    room = room < top ? room : top;
-    depth = depth < room ? depth : room;
-    if (depth > 0) {
-        int32_t phase = l->lfo_phase;
-        int32_t tri = phase < 32768 ? phase : 65536 - phase;
-        pw += (tri - (int32_t)LFO_CENTRE) * depth / (int32_t)LFO_CENTRE;
-    }
-    if (pw < 0) {
-        pw = 0;
-    } else if (pw > (int32_t)LIVE_PULSE_WIDTH_MAX) {
-        pw = LIVE_PULSE_WIDTH_MAX;
-    }
-    return (uint16_t)pw;
+    return (uint16_t)live_pwm_swing(layer_pulse_width(l, v),
+                                    (int32_t)live_pwm_depth_effective(l), l->lfo_phase);
 }
 
 static uint16_t clamp_u16(int32_t x, int32_t max) {
@@ -464,9 +440,7 @@ static uint16_t voice_pw(const live* l, int v) {
         pw = clamp_u16(pw + voice_pressure(l, src) * PW_PER_VALUE, (int32_t)LIVE_PULSE_WIDTH_MAX);
     }
     if (l->velocity_target == LIVE_VELOCITY_PULSE_WIDTH) {
-        int32_t edge = pw <= 2048 ? pw : 4096 - pw;
-        int32_t d = (edge * l->voice[src].velocity + 63) / 127;
-        pw = clamp_u16(pw <= 2048 ? d : 4096 - d, (int32_t)LIVE_PULSE_WIDTH_MAX);
+        pw = live_velocity_pulse(pw, l->voice[src].velocity);
     }
     if (l->lfo_out[LAB_LFO_PULSE]) {
         pw = clamp_u16(pw + l->lfo_out[LAB_LFO_PULSE], (int32_t)LIVE_PULSE_WIDTH_MAX);
@@ -1021,11 +995,6 @@ void live_set_master(live* l, uint16_t value) {
     l->volume = (uint8_t)((value * 100u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
 }
 
-static uint32_t wheel_pulse_width(uint8_t value) {
-    uint32_t span = LIVE_PULSE_WIDTH_MAX + 1u - 2u * LIVE_PULSE_FIRST;
-    return LIVE_PULSE_FIRST + ((uint32_t)value * span + 63u) / 127u;
-}
-
 void live_cc(live* l, uint8_t cc, uint8_t value) {
     if (value > 127) {
         return;
@@ -1046,7 +1015,7 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
     }
     if (cc == LIVE_CC_MOD_WHEEL) {
         if (l->mod_target == LIVE_MOD_PULSE_WIDTH) {
-            live_param_set(l, LIVE_PARAM_PULSE_WIDTH, wheel_pulse_width(value));
+            live_param_set(l, LIVE_PARAM_PULSE_WIDTH, live_wheel_pulse_width(value));
         } else {
             l->mod_wheel = value;
         }
@@ -1262,8 +1231,6 @@ LIVE_COLD static void table_tick(live* l) {
     if (l->table_frame) {
         return;
     }
-    uint32_t steps = table_steps(l);
-    uint32_t loop = l->table[LAB_SOUND_TABLE_LOOP - LAB_SOUND_TABLE];
     for (int v = 0; v < LIVE_VOICES; ++v) {
         if (!live_table_voice(l, (uint32_t)v) || l->voice[voice_source(l, v)].note == LIVE_NO_NOTE) {
             continue;
@@ -1272,8 +1239,7 @@ LIVE_COLD static void table_tick(live* l) {
             continue;
         }
         l->table_wait[v] = 0;
-        uint32_t next = l->table_pos[v] + 1u;
-        next = next < steps ? next : loop ? loop - 1u : steps - 1u;
+        uint32_t next = live_table_next(l->table, l->table_pos[v]);
         if (next != l->table_pos[v]) {
             l->table_pos[v] = (uint8_t)next;
             write_control(l, v);
@@ -1374,7 +1340,7 @@ void live_tick(live* l) {
     if (l->filter_lfo || live_pwm_depth_effective(l)) {
         l->lfo_phase = (uint16_t)(l->lfo_phase + l->pwm_rate);
     }
-    uint32_t step = ((uint32_t)l->vibrato_rate * 65536u + 500u) / 1000u;
+    uint32_t step = live_vibrato_step(l->vibrato_rate);
     for (int v = 0; v < LIVE_VOICES; ++v) {
         live_voice* x = &l->voice[v];
         if (x->vibrato_wait) {

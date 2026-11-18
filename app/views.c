@@ -489,10 +489,19 @@ void views_popup_midi(views* v, int on) {
     screen_popup_watch(&v->s, on ? midi_watch : NULL, on ? v : NULL);
 }
 
+static int read_user_sound(void* ctx, uint32_t slot, char name[LAB_SOUND_NAME + 1u],
+                           uint8_t sound[LAB_SOUND_BYTES]) {
+    return user_sound_read(ctx, slot, name, sound);
+}
+
 void views_route(views* v, midi_route* route) {
     v->route = route;
     if (route) {
         v->song.rows_beat = route->setup.rows_per_beat;
+    }
+    if (route && route->parts) {
+        route->parts->user = read_user_sound;
+        route->parts->user_ctx = &v->sounds;
     }
 }
 

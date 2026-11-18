@@ -9,7 +9,7 @@
 #define CTRL_SYNC 0x02u
 #define CTRL_RING 0x04u
 #define CTRL_WAVEFORM 0xf0u
-#define LFO_CENTRE 16384u
+#define LFO_CENTRE LIVE_LFO_CENTRE
 
 static inline void put(live* l, uint8_t reg, uint8_t value) {
     l->sink(l->sink_ctx, reg, value);

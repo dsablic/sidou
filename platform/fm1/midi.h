@@ -15,6 +15,7 @@
 
 void midi_init(live* l, keys_route* kr);
 midi_route* midi_routed(void);
+multi* midi_parts(void);
 void midi_tick(void);
 midi_sync* midi_synced(void);
 void midi_sync_pass(void);

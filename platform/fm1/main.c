@@ -2091,7 +2091,7 @@ static void commit_pass(void) {
         audio_set_spread(spread_sent);
     }
     audio_commit();
-    uint8_t taken = keys_route_voices_taken(&keys_router);
+    uint8_t taken = (uint8_t)(keys_route_voices_taken(&keys_router) | multi_taken(midi_parts()));
     if (taken != song_taken && !song_away) {
         song_taken = taken;
         (void)song_ctl_take(audio_song(), taken);
@@ -2255,6 +2255,7 @@ static void sidou_main(void) {
     audio_set_master(instrument.master);
     midi_init(&instrument, &keys_router);
     route_state = midi_routed();
+    midi_parts()->taking = song_keys_take;
     midi_sync_bind(midi_synced(), &song_bound);
     sync_state = midi_synced();
     update_boot();

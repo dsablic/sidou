@@ -490,7 +490,11 @@ fn pressure_adds_vibrato_by_default() {
     pressure(&mut rig, 127);
     rig.tick();
     rig.tick();
-    assert_ne!(rig.voice_freq(0), freq_at(C4, 0), "aftertouch bends the pitch");
+    assert_ne!(
+        rig.voice_freq(0),
+        freq_at(C4, 0),
+        "aftertouch bends the pitch"
+    );
 }
 
 #[test]

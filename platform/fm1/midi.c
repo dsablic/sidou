@@ -41,6 +41,7 @@ static midi_ring in_ring __attribute__((section(".noinit.midi_in")));
 static midi_rx rx;
 static midi_learn learned __attribute__((used, section(".pool")));
 static midi_route routing __attribute__((used));
+static multi parts __attribute__((used, section(".pool")));
 static midi_sync syncing __attribute__((used));
 static midi_out midi_tx __attribute__((used));
 static uint32_t poll_stamp;
@@ -292,6 +293,8 @@ void midi_init(live* l, keys_route* kr) {
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     midi_route_init(&routing, l, kr, NULL);
+    multi_init(&parts, reg_ring_sink, audio_sink_ctx(), l, kr);
+    midi_route_parts(&routing, &parts);
     midi_rx_route(&rx, &routing);
     midi_sync_init(&syncing);
     midi_rx_sync(&rx, &syncing);
@@ -312,6 +315,10 @@ midi_learn* midi_learned(void) {
 
 midi_route* midi_routed(void) {
     return &routing;
+}
+
+multi* midi_parts(void) {
+    return &parts;
 }
 
 void midi_tick(void) {

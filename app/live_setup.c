@@ -569,6 +569,32 @@ static uint32_t get16(const uint8_t* s, uint32_t at) {
     return (uint32_t)s[at] | (uint32_t)s[at + 1u] << 8;
 }
 
+LIVE_COLD void live_preset_sound(uint32_t index, uint8_t out[LAB_SOUND_BYTES]) {
+    const live_preset* p = &presets[index < LIVE_PRESET_SLOTS ? index : 0u];
+    memset(out, 0, LAB_SOUND_BYTES);
+    out[LAB_SOUND_CONTROL] = p->control;
+    out[LAB_SOUND_AD] = p->attack_decay;
+    out[LAB_SOUND_SR] = p->sustain_release;
+    put16(out, LAB_SOUND_PULSE, p->pulse_width);
+    put16(out, LAB_SOUND_CUTOFF, p->cutoff);
+    out[LAB_SOUND_RESONANCE] = p->resonance;
+    out[LAB_SOUND_FILTER_VOICES] = p->filter_voices;
+    out[LAB_SOUND_FILTER_MODE] = p->filter_mode;
+    out[LAB_SOUND_MONO_SYNC] = p->mono_sync;
+    put16(out, LAB_SOUND_SYNC_BASE, p->sync_ratio_q8);
+    put16(out, LAB_SOUND_PWM_DEPTH, p->pwm_depth);
+    put16(out, LAB_SOUND_PWM_RATE, p->pwm_rate);
+    out[LAB_SOUND_BEND_RANGE] = p->bend_range;
+    out[LAB_SOUND_VELOCITY] = p->velocity_target;
+    out[LAB_SOUND_MOD] = p->mod_target;
+    out[LAB_SOUND_PRESSURE] = p->pressure_target;
+    out[LAB_SOUND_VIBRATO_RATE] = p->vibrato_rate;
+    out[LAB_SOUND_VIBRATO_DEPTH] = p->vibrato_depth;
+    out[LAB_SOUND_VIBRATO_DELAY] = p->vibrato_delay;
+    out[LAB_SOUND_ARP + LIVE_ARP_RATE] = LIVE_ARP_RATE_DEFAULT;
+    out[LAB_SOUND_ARP + LIVE_ARP_SPAN] = 1;
+}
+
 void live_sound_get(const live* l, uint8_t out[LAB_SOUND_BYTES]) {
     out[LAB_SOUND_CONTROL] = l->control;
     out[LAB_SOUND_AD] = l->attack_decay;

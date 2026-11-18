@@ -49,6 +49,7 @@ add_library(sidou_live STATIC
     midi_sync.c
     midi_rx.c
     midi_usb.c
+    multi.c
     panel.c
     reg_ring.c
     scene.c
@@ -105,7 +106,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(store.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(settings.c PROPERTIES COMPILE_OPTIONS -Oz)
     set_source_files_properties(user_profile.c song_io.c sysex.c sid_io.c PROPERTIES COMPILE_OPTIONS -Os)
-    set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(midi_route.c multi.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
     set_source_files_properties(views.c views_menu.c views_settings.c views_status.c chip_view.c learn_view.c tracker_view.c sid_view.c
         PROPERTIES COMPILE_OPTIONS -Os)
     set_source_files_properties(views_popup.c views_song_menu.c views_midi.c views_devices.c

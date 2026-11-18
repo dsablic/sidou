@@ -868,7 +868,9 @@ fn the_wheel_and_aftertouch_targets_survive_a_power_cycle_and_an_older_records_d
         (LIVE_PARAM_MOD_TARGET, LIVE_MOD_CUTOFF, 3u32),
         (LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_CUTOFF, 4),
     ];
-    for ((param, version, was, now), (_, deliberate, choices)) in VIBRATO_DEFAULTS.into_iter().zip(cases) {
+    for ((param, version, was, now), (_, deliberate, choices)) in
+        VIBRATO_DEFAULTS.into_iter().zip(cases)
+    {
         let mut blank = Set::blank();
         assert_eq!(blank.param(param), now, "param {param}'s default");
         for target in 0..choices {
