@@ -147,6 +147,7 @@ typedef struct {
     uint32_t clock;
     float smooth_ahead, fade_step;
     uint32_t clear_per_sample;
+    float send;
     sid_slot_pool* pool;
     sid_slot_dist_state dist;
     sid_slot_mod_state mod;

@@ -83,6 +83,8 @@ const SOURCES: &[&str] = &[
     "app/midi_rx.c",
     "app/midi_usb.c",
     "app/panel.c",
+    "app/punch_echo.c",
+    "app/punch_view.c",
     "app/reg_ring.c",
     "app/scene.c",
     "app/scene_art.c",
@@ -268,11 +270,11 @@ fn main() {
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|chip_view_.*|chip_mix|chip_spread_.*|master_.*|tail_gate_.*|thump_out_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*|user_sound_.*|user_sounds_.*|",
-                "sid_view_.*|lab_.*|link_.*|patch_json_.*|patch_level_.*|ble_record_.*|ble_keyboard_.*|ble_scan_.*|art_pack_.*",
+                "sid_view_.*|lab_.*|link_.*|patch_json_.*|patch_level_.*|ble_record_.*|ble_keyboard_.*|ble_scan_.*|art_pack_.*|punch_.*",
             ),
         )
         .allowlist_type(
-            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*|patch_json|patch_level.*|ble_keyboard|ble_setting_kept|ble_scan_tab|ble_found|art_pack.*",
+            "link_state|sid.*|cpu6502.*|psid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|chip_view.*|chip_mix.*|chip_spread.*|master.*|tail_gate.*|thump_out.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|user_sound.*|theme.*|help_.*|sid_view.*|sid_status|sid_transport|lab_.*|patch_json|patch_level.*|ble_keyboard|ble_setting_kept|ble_scan_tab|ble_found|art_pack.*|punch_.*",
         )
         .allowlist_var(
             concat!(
@@ -282,7 +284,7 @@ fn main() {
                 "SCENE_.*|scene_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
                 "demo_song_.*|gt2_kit_.*|gt2_freq_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
-                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|GLOW_.*|glow_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*|BLE_.*|ART_PACK_.*|art_pack_.*",
+                "USER_PROFILE.*|user_profile.*|USER_SOUND.*|THEME_.*|theme_.*|GLOW_.*|glow_.*|SID_VIEW_.*|SID_T_.*|sid_view_.*|LAB_.*|lab_.*|LINK_.*|PATCH_JSON_.*|PATCH_LEVEL_.*|BLE_.*|ART_PACK_.*|art_pack_.*|PUNCH_.*|punch_.*",
             ),
         )
         .blocklist_item(HEADER_PRIVATE_TABLES)

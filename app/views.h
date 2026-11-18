@@ -17,6 +17,7 @@
 #include "midi_route.h"
 #include "midi_sync.h"
 #include "panel.h"
+#include "punch_view.h"
 #include "save_key.h"
 #include "scene_view.h"
 #include "settings.h"
@@ -165,6 +166,7 @@ typedef struct {
     uint32_t send_ask_at;
     uint8_t send_ask;
     step_view step;
+    punch_view punch;
     uint8_t home_down;
     uint32_t home_at;
     help_view help;

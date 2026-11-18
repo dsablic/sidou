@@ -39,6 +39,7 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
     s->sample_rate = sample_rate;
     s->seed = seed;
     s->clock = 0;
+    s->send = 1.0f;
     float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
     float ahead = 1.0f;
     for (uint32_t i = 0; i < 16u; ++i) {

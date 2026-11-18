@@ -83,21 +83,25 @@ static const char* const TRACKER_REC_LINES[] = {
 static const char* const ORDER_LINES[] = {
     "SELECT\0ENTRY",  "E+SELECT\0PAGE", "ALG\0TUNE/VOICE", "K1\0VALUE",
     "K2\0KIND",       "E+PRE\0INS/DEL", "ARP\0RESTART",    "KEYS\0AUDITION",
-    "PLAY\0FROM HERE", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+    "PLAY\0FROM HERE", "FX\0PUNCH",      "SEQ\0NEXT VIEW", "SAVE\0SONG",
+    "HOME\0BACK"};
 static const char* const INSTR_LINES[] = {
     "SELECT\0PARAM",  "E+SELECT\0PAGE", "PRESETS\0INSTR",  "K1\0COARSE",
-    "K2\0FINE",       "E+SEQ\0TABLE",    "ENV LFO FX\0LAB", "KEYS\0AUDITION",
-    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+    "K2\0FINE",       "E+SEQ\0TABLE",    "ENV LFO\0LAB",    "FX\0PUNCH",
+    "KEYS\0AUDITION", "SEQ\0NEXT VIEW",  "SAVE\0SONG",      "HOME\0BACK"};
 static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "E+SELECT\0PAGE",  "ALG\0TABLE",
                                           "K1\0LEFT BYTE",    "K2\0RIGHT BYTE",  "ARP\0ARPEGGIO",
-                                          "KEYS\0AUDITION",   "SEQ\0NEXT VIEW",  "SAVE\0SONG",
-                                          "HOME\0BACK"};
+                                          "KEYS\0AUDITION",   "FX\0PUNCH",       "SEQ\0NEXT VIEW",
+                                          "SAVE\0SONG",       "HOME\0BACK"};
 static const char* const ARP_LINES[] = {"SELECT\0STEP",   "ALG\0STEPS",    "K1 K2\0OFFSET",
                                         "K3\0SPEED",      "K4\0LOOP",      "PRESETS\0WAVE",
                                         "KEYS\0DRAFT", "SEQ\0NEXT VIEW", "SAVE\0WRITE",
                                         "HOME\0CANCEL"};
 static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
                                           "KEYS\0PLAY",    "HOME\0BACK"};
+static const char* const PUNCH_LINES[] = {"1\0MUTE",       "2\0FILTER SLAM", "3\0PITCH DIVE",
+                                          "4\0STUTTER",    "5\0ECHO THROW",  "6\0CHIP SWAP",
+                                          "PLAY\0PLAY/STOP", "HOME\0BACK"};
 static const char* const SONG_LINES[] = {"SELECT\0ACTION", "SAVE\0OPEN", "ALG\0OPEN",
                                          "SEQ\0SONG VIEWS", "HOME\0BACK"};
 static const char* const STATUS_LINES[] = {"SELECT\0PAGE",  "KEYS\0PLAY",    "K1-K4\0SOUND",
@@ -165,7 +169,7 @@ static const char* const LAB_NAME_LINES[] = {
 const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LIVE] = CARD("LIVE", LIVE_LINES),       [HELP_CARD_MENU] = CARD("MENU", MENU_LINES),
     [HELP_CARD_CHIP] = CARD("CHIP", CHIP_LINES),       [HELP_CARD_TRACKER] = CARD("TRACKER", TRACKER_LINES),
-    [HELP_CARD_SCENE] = CARD("SCENE", SCENE_LINES),    [HELP_CARD_STATUS] = CARD("STATUS", STATUS_LINES),
+    [HELP_CARD_SCENE] = CARD("SCENE", SCENE_LINES),    [HELP_CARD_PUNCH] = CARD("PUNCH", PUNCH_LINES),    [HELP_CARD_STATUS] = CARD("STATUS", STATUS_LINES),
     [HELP_CARD_STEP] = CARD("STEP", STEP_LINES),       [HELP_CARD_ORDER] = CARD("ORDER", ORDER_LINES),
     [HELP_CARD_INSTR] = CARD("INSTR", INSTR_LINES),    [HELP_CARD_TABLE] = CARD("TABLE", TABLE_LINES),
     [HELP_CARD_MIDI] = CARD("MIDI", MIDI_LINES),       [HELP_CARD_SONG] = CARD("SONG", SONG_LINES),

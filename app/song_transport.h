@@ -18,6 +18,14 @@ extern "C" {
 #define SONG_T_PLAYING 2u
 #define SONG_T_STOPPED 3u
 
+#define SONG_T_PUNCH_MUTE (1u << 0)
+#define SONG_T_PUNCH_SLAM (1u << 1)
+#define SONG_T_PUNCH_DIVE (1u << 2)
+#define SONG_T_PUNCH_STUTTER (1u << 3)
+#define SONG_T_PUNCH_ECHO (1u << 4)
+#define SONG_T_PUNCH_SWAP (1u << 5)
+#define SONG_T_PUNCH_PADS 6u
+
 #define SONG_T_RELEASE 0xffu
 #define SONG_T_NOWHERE 0xffu
 
@@ -83,6 +91,7 @@ typedef struct {
                  const uint8_t* right);
     int (*held)(void* ctx, uint32_t voice, const uint8_t* locks, uint32_t n);
     int (*funktempo)(void* ctx, uint32_t left, uint32_t right);
+    int (*punch)(void* ctx, uint32_t pads, uint32_t beat_calls);
 } song_transport;
 
 #ifdef __cplusplus

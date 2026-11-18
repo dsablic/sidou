@@ -419,9 +419,11 @@ static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
     }
     switch (sl->algorithm) {
     case SID_FXSLOT_DELAY:
-    case SID_FXSLOT_PINGPONG:
-        FX_LOOP(sid_fx_echo_tick(&f->echo, pool, mono, amount, a, b, &wl, &wr))
+    case SID_FXSLOT_PINGPONG: {
+        const float send = s->send;
+        FX_LOOP(sid_fx_echo_tick(&f->echo, pool, mono * send, amount, a, b, &wl, &wr))
         break;
+    }
     case SID_FXSLOT_REVERB_LIGHT:
         FX_LOOP(sid_fx_reverb_tick(&f->reverb, pool, mono, amount, a, b, &wl, &wr))
         break;

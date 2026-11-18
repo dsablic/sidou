@@ -57,7 +57,8 @@ typedef enum {
     HELP_CARD_LAB_TABLE = 42,
     HELP_CARD_LAB_LFO = 43,
     HELP_CARD_STEP_GROOVE = 44,
-    HELP_CARDS = 45
+    HELP_CARD_PUNCH = 45,
+    HELP_CARDS = 46
 } help_card_id;
 
 #define HELP_LINES 8u
