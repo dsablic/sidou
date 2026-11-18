@@ -766,7 +766,12 @@ in [decisions/](decisions/); history lives in git and [CHANGELOG.md](../CHANGELO
   same image with core 1 retired by a fault at its first FPU instruction
   (`booted_fallen_back_to_one_core`). The emulator steps core 1 beside core 0, so the gate's
   run takes longer in time, not in what it checks; the `cpu2` shard, which ran a subset of the
-  gates on the ON image, is gone.
+  gates on the ON image, is gone. Moving every gate over found timing the subset never met: the
+  self-test before `sidou_main` (now in the LCD's wait, below), and a SysEx sent within 10 ms of a
+  bus left idle for 100 ms (`usb.c` marks it suspended until its 10 ms frame check sees the frame
+  number move, and `midi_sysex_service` drops a USB frame while it is). A plugged host sends a
+  frame every millisecond, so `usb.rs`'s `keep_sounds` keeps its frames going through the settle;
+  a host that sleeps and wakes waits out USB's 10 ms resume recovery before it sends.
 - **Sizes at the switch:** the default image 559,796 bytes (19,720 under the 579,516 ceiling;
   +3,888 against the OFF image), RAMTEXT 45,728 of 49,152 (+704), the RAM region 5,128 bytes free
   (the floor is 5,120), NOINIT 11,384 of 15,696 bytes. The two-chip worst block with every slot's
