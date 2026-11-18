@@ -5,6 +5,7 @@ import { CoreError, loadCore } from "./core.js";
 import { fromLink, loadPatcher, shareableLink } from "./patch.js";
 import { CHANGED, NO_FM1, clientFor, fillPorts, pairIsTheFm1, refusedWords } from "./ports.js";
 import { Preview } from "./preview.js";
+import { setupSounds } from "./sidsound-ui.js";
 import { ART_NAME, Library, STORE_FILE_ART, artRefusal, extOf, storeName, typeLabel, typeOfFile } from "./store.js";
 
 const $ = (id) => document.getElementById(id);
@@ -425,26 +426,37 @@ async function checkPatch() {
   showPatch();
 }
 
+async function previewer() {
+  if (!state.preview) {
+    const wasm = new Uint8Array(await (await fetch("sidou-core.wasm")).arrayBuffer());
+    state.preview = new Preview(wasm, { onMessage: (m) => { if (m.type === "error") say($("patch-state"), `The preview failed: ${m.message}.`, "error"); else if (m.type === "state" && m.state !== "idle") state.previewed = m; } });
+  }
+  return state.preview;
+}
+
+async function playNote(sng, instrument = 1) {
+  const preview = await previewer();
+  preview.setSong(sng);
+  await preview.note(0, PREVIEW_NOTE, instrument);
+  setTimeout(() => preview.release(0), PREVIEW_MS);
+}
+
 async function previewPatch() {
   if (!state.patch?.ok) return;
   try {
-    if (!state.preview) {
-      const wasm = new Uint8Array(await (await fetch("sidou-core.wasm")).arrayBuffer());
-      state.preview = new Preview(wasm, { onMessage: (m) => { if (m.type === "error") say($("patch-state"), `The preview failed: ${m.message}.`, "error"); else if (m.type === "state" && m.state !== "idle") state.previewed = m; } });
-    }
-    state.preview.setSong(state.patch.sng);
     if (state.patch.step || state.patch.song) {
+      const preview = await previewer();
+      preview.setSong(state.patch.sng);
       if (state.previewing) {
         state.previewing = false;
-        state.preview.stop();
+        preview.stop();
         return;
       }
       state.previewing = true;
-      await state.preview.play();
+      await preview.play();
       return;
     }
-    await state.preview.note(0, PREVIEW_NOTE, Number($("patch-pick").value) || 1);
-    setTimeout(() => state.preview.release(0), PREVIEW_MS);
+    await playNote(state.patch.sng, Number($("patch-pick").value) || 1);
   } catch (e) {
     say($("patch-state"), `The preview failed: ${e.message}.`, "error");
   }
@@ -465,12 +477,12 @@ async function copyInstructions() {
   say($("patch-state"), (await copyText(text)) ? `The instructions are copied (${text.split(/\s+/).length} words): paste them into a chat, then ask for a sound.` : "The browser did not allow copying: open the instructions link and copy them from there.", "ok");
 }
 
-async function copyLink() {
-  const made = shareableLink(new URL("library.html", location.href).href, $("patch-text").value);
+async function copyLink(text, node) {
+  const made = shareableLink(new URL("library.html", location.href).href, text);
   if (!made) return;
-  if (made.error) return say($("patch-state"), made.error, "error");
+  if (made.error) return say(node, made.error, "error");
   const { link } = made;
-  say($("patch-state"), (await copyText(link)) ? `The link is copied (${link.length} characters).` : `The link: ${link}`, "ok");
+  say(node, (await copyText(link)) ? `The link is copied (${link.length} characters).` : `The link: ${link}`, "ok");
 }
 
 function sendPatch() {
@@ -512,8 +524,30 @@ async function showSounds() {
   state.sounds = bank;
 }
 
+const SOUND_STATE = () => $("sid-sounds-state");
+
+async function withChecked(text, act) {
+  try {
+    const p = (await patcher()).check(text);
+    if (!p.ok) return say(SOUND_STATE(), p.error, "error");
+    await act(p);
+  } catch (e) {
+    say(SOUND_STATE(), `${e.message}.`, "error");
+  }
+}
+
+const sounds = setupSounds({
+  $, el, button, say, notify: () => setBusy(state.busy),
+  actions: {
+    listen: (text) => withChecked(text, (p) => playNote(p.sng)),
+    edit: (text) => openPatch(text),
+    send: (text) => withChecked(text, (p) => sendBytes(p.name, p.sng, 1)),
+    link: (text) => copyLink(text, SOUND_STATE()),
+  },
+});
+
 setupConvert({
-  $, el, say, save, stemOf, kb, edit: editSong,
+  $, el, say, save, stemOf, kb, edit: editSong, patcher, sounds,
   send: (bytes, suggested) => {
     const name = window.prompt("The name for this song on the FM-1 (up to 16 characters):", storeName(suggested))?.trim().toUpperCase();
     if (name) sendBytes(name, bytes, 1);
@@ -524,7 +558,7 @@ showSounds().catch((e) => say($("sounds-state"), `The sounds could not be listed
 $("patch-check").addEventListener("click", checkPatch);
 $("patch-preview").addEventListener("click", previewPatch);
 $("patch-send").addEventListener("click", sendPatch);
-$("patch-link").addEventListener("click", copyLink);
+$("patch-link").addEventListener("click", () => copyLink($("patch-text").value, $("patch-state")));
 $("patch-edit").addEventListener("click", () => state.patch?.song && editSong(state.patch.sng, { name: state.patch.name }));
 $("patch-save").addEventListener("click", () => state.patch?.ok && save(state.patch.sng, `${stemOf(state.patch.name)}.sng`));
 $("patch-text").addEventListener("input", () => { state.patch = null; showPatch(); say($("patch-state"), ""); });

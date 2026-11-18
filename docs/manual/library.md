@@ -174,3 +174,25 @@ leaves out and how close it comes: [Convert a tune into a song](sid-tunes.md#6-c
 
 The panel lists the tempo, the instruments and patterns, how many of each voice's notes the FM-1's
 player plays on time, and what the conversion simplifies. Nothing leaves the browser.
+
+### The tune's sounds
+
+Below the notes, **Sounds in this tune** lists the instruments the conversion found as LAB sounds,
+voice by voice: a name (`A1.3 PUL`: the voice, the instrument's number, its last wave), how many
+notes use it, and a short description (the waves in order, a pulse sweep, a filter, an arpeggio,
+pitch steps). Each says what LAB could not hold of it, for instance that the wave table was cut
+to LAB's 16 steps, that the pulse sweep became a triangle PWM, or that the tune filtered one voice
+and LAB filters all three. A sound that LAB's rules refuse is listed with the reason, and can be
+opened as text but not played.
+
+- **Listen** plays a note on the sound, as the FM-1 plays it.
+- **Keep** adds it to **Sounds you kept**, up to 16, in this browser only (it stays across visits;
+  nothing is uploaded). **All as a bank (JSON)** opens the kept sounds as one bank in section 5,
+  to preview, send as one song or copy.
+- **Edit as text** opens it in section 5 as a `sidou-patch/1` patch, to change by hand or by
+  asking a model.
+- **Send to the FM-1…** sends it as a one-instrument song, as a patch is sent: on the FM-1, SONG,
+  LOAD it, SEQ to INSTR, then ENV opens it in LAB, and SAVE keeps it as a USER sound.
+- **Copy link** copies a `#patch=` link that opens it on this page.
+
+The sounds are the original's music: the copyright note below applies to them as to the song.
