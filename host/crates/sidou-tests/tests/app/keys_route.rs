@@ -1326,13 +1326,19 @@ fn chip_swap_plays_the_song_on_the_other_model_and_release_brings_its_own_setup_
         };
         unsafe { keys_route_song_wants(&mut *k.kr, &song) };
         k.ticks(200);
-        assert!(chip_a_is(&k, &song), "profile {own}: chip A has the song's setup");
+        assert!(
+            chip_a_is(&k, &song),
+            "profile {own}: chip A has the song's setup"
+        );
         let b = setup(&k, 1);
         unsafe { keys_route_swap(&mut *k.kr, 1) };
         k.ticks(200);
         let mut swapped = song;
         swapped.profile = unsafe { sid_chip_default(other) } as u8;
-        assert!(chip_a_is(&k, &swapped), "profile {own}: chip A on the other model");
+        assert!(
+            chip_a_is(&k, &swapped),
+            "profile {own}: chip A on the other model"
+        );
         let want = k.kr.song_want;
         assert_eq!(
             (want.profile, want.controls, want.gate_reset, want.expert),
@@ -1342,7 +1348,10 @@ fn chip_swap_plays_the_song_on_the_other_model_and_release_brings_its_own_setup_
         assert_eq!(setup(&k, 1), b, "profile {own}: the keys' chip B");
         unsafe { keys_route_swap(&mut *k.kr, 0) };
         k.ticks(200);
-        assert!(chip_a_is(&k, &song), "profile {own}: chip A back on the song's setup");
+        assert!(
+            chip_a_is(&k, &song),
+            "profile {own}: chip A back on the song's setup"
+        );
         assert_eq!(k.chips.lost_resets, 0);
     }
 }

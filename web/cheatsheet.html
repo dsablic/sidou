@@ -191,7 +191,7 @@
         <tr><td>K1–K4 on CHIP</td><td>character: AGE, DAC, THUMP (note thump), BLEED</td></tr>
         <tr><td>E+ ALGORITHM, SAVE</td><td>pick USER 1–8 (<code>SAVE TO USER 3</code>), SAVE stores the profile (asks before overwriting)</td></tr>
       </table>
-      <p class="note">ENV, LFO, FX = LAB's pages (on LIVE they open LAB; on INSTR they pull its instrument into LAB; elsewhere they do nothing), LFO = clear (in STEP and TRACKER), GLO = mutes and solos.</p>
+      <p class="note">ENV, LFO, FX = LAB's pages (on LIVE they open LAB; on INSTR ENV and LFO pull its instrument into LAB; FX on a song view opens PUNCH; elsewhere they do nothing), LFO = clear (in STEP and TRACKER), GLO = mutes and solos.</p>
     </section>
 
     <section>
@@ -234,7 +234,7 @@
         <tr><td>REC on, song stopped</td><td>keys write notes · ARP key off · LFO clears (twice: whole row) · K1 instr · K2 command · K3/K4 data · PRESETS current instr · E+ PRESETS insert/delete row · E+ LFO one undo</td></tr>
         <tr><td>TRACKER E+ ARP · E+ SCL · E+ ENV</td><td>STEP's MUTATE · DICE (its frame and knobs while held) · SWEEP on the shown voice's pattern; a <code>%</code> marks a row with a chance below 100</td></tr>
         <tr><td>ORDER</td><td>SELECT entry (E+: 12, a page) · ALG subtune/voice · K1 value · K2 kind (pattern, repeat, transpose) · E+ PRESETS insert/delete · ARP restart · PLAY from here</td></tr>
-        <tr><td>INSTR</td><td>PRESETS instrument · SELECT parameter / name letter (E+: 8, the name's other line) · K1 coarse · K2 fine · WAVE/PULSE/FILT PTR say their program beside the hex, the cursor's at the foot (<code>PUL +0 +4 +7</code>), ATK/DEC and SUS/REL their times (<code>A 2MS D 1.5S</code>) · E+ SEQ opens its table · ENV LFO FX pull it into LAB</td></tr>
+        <tr><td>INSTR</td><td>PRESETS instrument · SELECT parameter / name letter (E+: 8, the name's other line) · K1 coarse · K2 fine · WAVE/PULSE/FILT PTR say their program beside the hex, the cursor's at the foot (<code>PUL +0 +4 +7</code>), ATK/DEC and SUS/REL their times (<code>A 2MS D 1.5S</code>) · E+ SEQ opens its table · ENV LFO pull it into LAB</td></tr>
         <tr><td>TABLE</td><td>ALG WAVE/PULSE/FILTER/SPEED · SELECT row (E+: 12, a page) · K1/K2 left/right byte · ARP opens the ARP helper (WAVE)</td></tr>
         <tr><td>ARP helper</td><td>SELECT step · ALG steps 1–8 · K1/K2 octave/semitone · K3 speed · K4 loop or HOLD · PRESETS waveform · the keys play the draft, each turn heard at once · SAVE writes · HOME cancels</td></tr>
       </table>
@@ -246,6 +246,12 @@
         <tr><td>SETTINGS → REC</td><td>quantise: NEAREST, OFF, COUNT-IN (one bar first)</td></tr>
         <tr><td>GLO + key 1–3 · 4–6</td><td>mute · solo voice 1–3 (again: back)</td></tr>
         <tr><td>Keys in a song view</td><td>audition the current instrument on the cursor's voice</td></tr>
+      </table>
+      <h3>PUNCH (FX on a song view)</h3>
+      <table>
+        <tr><td>keys 1–6, held</td><td><b>MUTE</b> · <b>FILTER SLAM</b> (cutoff down, reso up) · <b>PITCH DIVE</b> (tape stop, an octave in 0.5 s) · <b>STUTTER</b> (the beat repeats, then the song is where it would have been) · <b>ECHO THROW</b> (into a delay, the tail rings on) · <b>CHIP SWAP</b> (6581 ↔ 8580); several at once, each undone at release, nothing written</td></tr>
+        <tr><td>other keys · stopped</td><td>nothing (<code>KEYS ARE PADS</code>) · the pads wait for PLAY (<code>PLAY TO PUNCH</code>)</td></tr>
+        <tr><td>HOME · SEQ</td><td>back to the song view · on to the next one</td></tr>
       </table>
     </section>
 

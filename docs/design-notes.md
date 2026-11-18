@@ -3712,6 +3712,69 @@ Results are in [the feasibility plan](https://github.com/dsablic/sidou/blob/v1.9
 - Every view's `ui_poll` and input bounds are checked against `POLL_INSTRUCTIONS` at compile time: a
   compose that grows past it fails there, not as a late note somewhere else.
 
+### PUNCH (2.0)
+
+- The design the owner agreed on 2026-11-18 (docs/plans/2026-11-18-punch-design.md, option A): a
+  page whose note keys 1-6 are held pads, opened by FX on a song view, so no gesture needs two
+  held buttons and the pads are the keys GLO's layer already names 1-6. FX is free on the song
+  views but for STEP's held step (SLIDE stays) and INSTR, where it pulled the instrument into LAB
+  at FX: ENV and LFO still pull, and FX is PUNCH there as everywhere in the song (one rule beats a
+  third way into LAB). The other keys are quieted (no note, no jam, no record) and GLO + a pad key
+  is the pad, since the page owns the keys.
+- Nothing is written into the song, the sound or the settings: each pad overrides on the way out
+  (chip A's mute, the lock overrides, the FX slot's registers, chip A's wanted profile) and lets go
+  to what is underneath. `song_ctl_punch` takes the four player pads in one command
+  (`SONG_CMD_PUNCH`), the transport's `punch` hook the six; a refused command (a full ring) is
+  sent again on the next frame, as the mutes are.
+- **MUTE** is chip A's voice mute at the output (`sid_set_mute`), not the song's gate-off mute:
+  the envelopes, registers and timing run on, so the voices come back where they are, with no new
+  attack. A digi drum is added after the chip, so the block's end adds it at level 0 while muted
+  (`heard = level & keep`, every 5 samples). The 6581's DC settles over about 70 ms after the mute,
+  under 2 % of full scale.
+- **FILTER SLAM** and **PITCH DIVE** are overrides in `song_lock_apply`, after the locks and the
+  slide, so they compose with the song's own writes and the locks: the registers the song wrote
+  stay in its shadow, the overridden ones are written each call, and `lock_regs` writes the
+  shadow's value back at the first call after the release (within a frame). SLAM routes all three
+  voices into the low pass so that a song that never filters hears it; its volume nibble is kept.
+- PITCH DIVE is linear in frequency (a tape slowing to half speed), 32 steps over 0.5 s counted in
+  samples from the press, so it takes as long at every multispeed; linear needs no table (an
+  exponential one was 66 bytes of RAM the region's floor could not spare).
+- **STUTTER** needs no audio buffer. At the press the interrupt copies the player into
+  `song_work.ff` (the fast-forward player, idle: the press is refused while a seek, a widening or a
+  hand-over has it) and arms the existing hand-over at the press's call plus a beat, re-armed a
+  beat later each time it lands: the player's frames of the beat repeat, rows, tables and events.
+  The interrupt's call count runs on, so at the release the main loop fast-forwards the copy from
+  the press's call (`FF_RESUME`: the active shape, chasing the interrupt `SONG_HANDOVER_LEAD`
+  calls ahead) and the hand-over lands at the exact call: the song is where it would have been
+  (sidou-tests `tests/song_punch.rs` against a plain twin, emu-gate `tests/punch.rs` against the
+  host's player at the same call). A beat is the MIDI page's rows a beat at the song's speeds
+  (`(speed 1 + speed 2) / 2` calls a row) from the press, not quantised to the bar: it starts at
+  once and stays in step with the song's rows. Stopping the song cancels it (no hand-over wanted).
+- **ECHO THROW** opens a **send** on the FX slot (`sid_slots.send`, 1.0 unless thrown, set by the
+  pseudo-register `LIVE_REG_FX_SEND`, 0xB5, through the register ring): the steady DELAY and
+  PING-PONG loops feed the delay `mono * send`. A send of 1.0 changes no sample (the goldens). The
+  throw keeps the player's own delay and its time and damping, or takes DELAY at its defaults, at
+  feedback 96 and mix 72; the release closes the send and the echoes ring for
+  `PUNCH_ECHO_TAIL_MS` (4 s) before the slot gets the sound's own values back (`app/punch_echo.c`,
+  ticked with the keys' tick). The LIVE sound's slot values are never touched.
+- **CHIP SWAP** is `keys_route`'s want for chip A with the profile replaced by the other model's
+  default (`sid_chip_default`: 6581 R4AR, 8580 R5), the character and expert settings the song's.
+  The swap and the return are the prepared chip and its reset that SID MODEL already uses.
+- The page (`app/punch_view.c`) draws the whole screen each compose (the grid sends only changed
+  cells) and moves the pads' look towards the held pads within `PUNCH_VIEW_FRAME_CELLS` (200): all
+  six changing at once take a second frame. Measured on the device (emu-gate `tests/screen.rs`):
+  176 cells at most a frame (PLAY and stop), every pad 160.
+- `song_punch` runs once a command, from flash (`FRAME_RATE_IN_FLASH`), called through `SIDOU_FAR`
+  from `song_apply`; RAMTEXT grew 176 bytes (45,024 to 45,200 of 49,152), the image 2,672
+  (555,892 to 558,564, 20,952 under 1.8's ceiling), the RAM region's free bytes 5,256 to 5,224 (the
+  floor 5,120).
+- Budgets on the device (emu-gate): the player's worst block with every player pad held and a beat
+  of 24 calls looping, 45.2 instructions a sample (`PLAYER_WORST_BLOCK` 60; 46.7 with no pad, the
+  same benches: the loop-back is a hand-over, cheaper than the rows it repeats). The audio
+  interrupt with the song on chip A and chip B at its worst: 1,045.7 a sample, 1,169.6 with every
+  pad held on one core; chip B on core 1, core 0's 660.4 and 785.9 (`AUDIO_TARGET` 2,700). ECHO
+  THROW's delay accounts for the rise (+187: the FX slot running), the other pads none measurable.
+
 ## LIVE
 
 ### The register sink

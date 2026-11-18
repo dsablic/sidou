@@ -3,10 +3,10 @@
 
 use sidou_sys::*;
 
+use crate::drain;
 use crate::sid_view::golden;
 use crate::song_view::{settle, Call, Song};
 use crate::views::Ui;
-use crate::drain;
 
 const SONG_VIEWS: [&str; 5] = ["STEP", "TRACKER", "ORDER", "INSTR", "TABLE"];
 const BEAT_AT_SPEED_6: u32 = 4 * 6;
@@ -106,7 +106,10 @@ fn the_other_keys_play_nothing_and_send_nothing_on_punch() {
         s.ui.live().voice.iter().all(|v| v.gate == 0),
         "no key sounds on PUNCH"
     );
-    assert_eq!(s.ui.big(PUNCH_VIEW_HINT_ROW as usize, 2, 2, 13), "KEYS ARE PADS");
+    assert_eq!(
+        s.ui.big(PUNCH_VIEW_HINT_ROW as usize, 2, 2, 13),
+        "KEYS ARE PADS"
+    );
     hold(&mut s, 0);
     s.ui.down(PANEL_BTN_GLO);
     assert_eq!(punches(&hold(&mut s, 1 << 1)), [(1 << 1, BEAT_AT_SPEED_6)]);
@@ -120,7 +123,10 @@ fn stopped_the_pads_do_nothing_and_the_page_says_play_to_punch() {
     punch_over(&mut s, "TRACKER");
     assert_eq!(punches(&hold(&mut s, 1 << 2)), [], "stopped");
     settle(&mut s.ui);
-    assert_eq!(s.ui.big(PUNCH_VIEW_HINT_ROW as usize, 2, 2, 13), "PLAY TO PUNCH");
+    assert_eq!(
+        s.ui.big(PUNCH_VIEW_HINT_ROW as usize, 2, 2, 13),
+        "PLAY TO PUNCH"
+    );
     golden(&s.ui, "punch-stopped");
     s.ui.press(PANEL_BTN_PLAY);
     s.ui.frame();
@@ -131,7 +137,11 @@ fn stopped_the_pads_do_nothing_and_the_page_says_play_to_punch() {
     );
     s.ui.press(PANEL_BTN_PLAY);
     s.ui.frame();
-    assert_eq!(punches(&s.calls()), [(0, BEAT_AT_SPEED_6)], "stopping lets it go");
+    assert_eq!(
+        punches(&s.calls()),
+        [(0, BEAT_AT_SPEED_6)],
+        "stopping lets it go"
+    );
 }
 
 #[test]
@@ -177,7 +187,11 @@ fn the_held_pads_light_their_keys_and_the_other_pads_glow_dim() {
     hold(&mut s, 1 << 2);
     let l = leds(&mut s);
     assert_eq!(l.notes & PAD_KEYS, 1 << 2, "the held pad lit");
-    assert_eq!(l.notes_dim & PAD_KEYS, PAD_KEYS & !(1 << 2), "the others dim");
+    assert_eq!(
+        l.notes_dim & PAD_KEYS,
+        PAD_KEYS & !(1 << 2),
+        "the others dim"
+    );
     assert_eq!((l.notes | l.notes_dim) & OTHER_KEYS, 0, "no other key lit");
 }
 

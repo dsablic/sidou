@@ -26,6 +26,7 @@
 #define FILTER_MODES 0x70u
 #define DIVE_STEP_SAMPLES (SONG_PUNCH_DIVE_SAMPLES / SONG_PUNCH_DIVE_STEPS)
 #define DIVE_ONE 32768u
+#define DIVE_STEP (DIVE_ONE / 2u / SONG_PUNCH_DIVE_STEPS)
 
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
@@ -444,14 +445,6 @@ __attribute__((noinline)) static uint32_t slide(song_ctl* sc, uint8_t r[GT2_SID_
     return mask;
 }
 
-#ifdef __PI32V2__
-__attribute__((section(".data.song_punch_dive")))
-#endif
-static const uint16_t DIVE[SONG_PUNCH_DIVE_STEPS + 1u] = {
-    32768, 32066, 31379, 30706, 30048, 29405, 28774, 28158, 27554, 26964, 26386,
-    25821, 25268, 24726, 24196, 23678, 23170, 22674, 22188, 21713, 21247, 20792,
-    20347, 19911, 19484, 19066, 18658, 18258, 17867, 17484, 17109, 16743, 16384};
-
 __attribute__((noinline)) static uint32_t punch_slam(uint8_t r[GT2_SID_REGS]) {
     r[0x15] = (uint8_t)(r[0x15] & 0xf8u);
     r[0x16] = 0u;
@@ -463,7 +456,8 @@ __attribute__((noinline)) static uint32_t punch_slam(uint8_t r[GT2_SID_REGS]) {
 __attribute__((noinline)) static uint32_t punch_dive(const song_ctl* sc, uint8_t r[GT2_SID_REGS],
                                                      uint8_t drop) {
     uint32_t step = (sc->samples - sc->dive_at) / DIVE_STEP_SAMPLES;
-    uint32_t k = DIVE[step < SONG_PUNCH_DIVE_STEPS ? step : SONG_PUNCH_DIVE_STEPS];
+    step = step < SONG_PUNCH_DIVE_STEPS ? step : SONG_PUNCH_DIVE_STEPS;
+    uint32_t k = DIVE_ONE - DIVE_STEP * step;
     uint32_t mask = 0u;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
         if ((drop >> ch) & 1u)

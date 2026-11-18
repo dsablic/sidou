@@ -23,7 +23,12 @@ impl Throw {
             unsafe {
                 live_slot_pick(&mut *rig.live, FX, alg);
                 for (f, v) in values.into_iter().enumerate() {
-                    live_slot_set(&mut *rig.live, FX, LIVE_SLOT_AMOUNT + f as u32, i32::from(v));
+                    live_slot_set(
+                        &mut *rig.live,
+                        FX,
+                        LIVE_SLOT_AMOUNT + f as u32,
+                        i32::from(v),
+                    );
                 }
             }
         }
@@ -85,8 +90,16 @@ impl Throw {
 fn echo_throw_sends_into_a_delay_lets_its_tail_ring_and_then_gives_the_fx_slot_back() {
     for (what, own, alg) in [
         ("the slot off", None, SID_FXSLOT_DELAY),
-        ("a reverb", Some((SID_FXSLOT_REVERB_LUSH, [80, 48, 96, 40])), SID_FXSLOT_DELAY),
-        ("a ping-pong", Some((SID_FXSLOT_PINGPONG, [20, 100, 10, 30])), SID_FXSLOT_PINGPONG),
+        (
+            "a reverb",
+            Some((SID_FXSLOT_REVERB_LUSH, [80, 48, 96, 40])),
+            SID_FXSLOT_DELAY,
+        ),
+        (
+            "a ping-pong",
+            Some((SID_FXSLOT_PINGPONG, [20, 100, 10, 30])),
+            SID_FXSLOT_PINGPONG,
+        ),
     ] {
         let mut t = Throw::new(own);
         let mine = t.own();
@@ -97,7 +110,11 @@ fn echo_throw_sends_into_a_delay_lets_its_tail_ring_and_then_gives_the_fx_slot_b
         assert_eq!(values[0], PUNCH_ECHO_FEEDBACK as u8, "{what}: the feedback");
         assert_eq!(values[3], PUNCH_ECHO_MIX as u8, "{what}: the mix");
         if alg == mine.0 {
-            assert_eq!(values[1..3], mine.1[1..3], "{what}: the player's own time and damping");
+            assert_eq!(
+                values[1..3],
+                mine.1[1..3],
+                "{what}: the player's own time and damping"
+            );
         }
         t.hold(false, 2000);
         assert_eq!(t.heard().2, 0.0, "{what}: the send closes at release");
@@ -119,10 +136,18 @@ fn a_second_throw_in_the_tail_opens_the_send_again_and_starts_a_new_tail() {
     t.hold(true, 100 + PUNCH_ECHO_TAIL_MS / 2);
     assert_eq!(t.heard().2, 1.0, "the send opens again");
     t.tick(100 + PUNCH_ECHO_TAIL_MS);
-    assert_eq!(t.heard().0, SID_FXSLOT_DELAY, "a held throw has no tail to end");
+    assert_eq!(
+        t.heard().0,
+        SID_FXSLOT_DELAY,
+        "a held throw has no tail to end"
+    );
     t.hold(false, 200 + PUNCH_ECHO_TAIL_MS);
     t.tick(200 + 2 * PUNCH_ECHO_TAIL_MS - 1);
-    assert_eq!(t.heard().0, SID_FXSLOT_DELAY, "the new tail rings its whole length");
+    assert_eq!(
+        t.heard().0,
+        SID_FXSLOT_DELAY,
+        "the new tail rings its whole length"
+    );
     t.tick(200 + 2 * PUNCH_ECHO_TAIL_MS);
     assert_eq!(t.heard().0, SID_FXSLOT_NONE);
 }

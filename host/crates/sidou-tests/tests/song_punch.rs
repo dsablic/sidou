@@ -98,8 +98,8 @@ impl Twin {
 }
 
 fn dive_q15(step: u32) -> u32 {
-    let octave = f64::from(step.min(SONG_PUNCH_DIVE_STEPS)) / f64::from(SONG_PUNCH_DIVE_STEPS);
-    (32768.0 * 2f64.powf(-octave)).round() as u32
+    let slowed = f64::from(step.min(SONG_PUNCH_DIVE_STEPS)) / f64::from(SONG_PUNCH_DIVE_STEPS);
+    (32768.0 * (1.0 - slowed / 2.0)) as u32
 }
 
 #[test]
@@ -133,7 +133,11 @@ fn filter_slam_closes_the_low_pass_at_full_resonance_and_release_restores_the_so
         let c = &t.punched.chip;
         assert_eq!((c.fc, c.res, c.routing), (0, 15, 7), "the slammed filter");
         assert_eq!(c.mode_vol & 0x70, 0x10, "low pass only");
-        assert_eq!(c.mode_vol & 0x0f, t.plain.chip.mode_vol & 0x0f, "the song's volume");
+        assert_eq!(
+            c.mode_vol & 0x0f,
+            t.plain.chip.mode_vol & 0x0f,
+            "the song's volume"
+        );
     }
     assert!(
         t.plain.chip.fc != 0 && t.plain.chip.routing != 0,
@@ -145,7 +149,7 @@ fn filter_slam_closes_the_low_pass_at_full_resonance_and_release_restores_the_so
 }
 
 #[test]
-fn pitch_dive_bends_every_voice_an_octave_down_over_half_a_second_and_release_snaps_back() {
+fn pitch_dive_slows_every_voice_like_tape_an_octave_down_in_half_a_second_and_release_snaps_back() {
     let mut t = Twin::playing(FILTERED_SONG);
     t.punch(SONG_PUNCH_DIVE);
     let mut deepest = 0;
@@ -187,7 +191,10 @@ fn stutter_repeats_a_beat_and_release_resumes_where_the_song_would_have_been() {
     }
     t.punch(0);
     t.until_handed_back();
-    assert_eq!(t.punched.sc.handovers, 1, "the song came back by one hand-over");
+    assert_eq!(
+        t.punched.sc.handovers, 1,
+        "the song came back by one hand-over"
+    );
     t.calls(1);
     t.assert_players_equal("after STUTTER");
     t.calls(BEAT_CALLS);

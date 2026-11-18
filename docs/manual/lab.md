@@ -15,7 +15,8 @@ you like. LAB came in 1.0.
 
 **SELECT** steps the ten pages (OSC, ENVELOPE, FILTER, FILTER ENV, MOD, LFO, FX, MACRO, LAYERS, TABLE), and ENV, LFO and FX jump to
 theirs (LFO again on MOD goes to the LFO page, and back). **HOME** goes back to LIVE with the sound as you left it. Outside LIVE and LAB, ENV, LFO
-and FX do nothing.
+and FX do nothing, but for the song views: on INSTR, ENV and LFO pull the instrument into LAB, and
+FX on any song view opens [PUNCH](punch.md).
 
 ## 2. Turn the cards
 

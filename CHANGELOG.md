@@ -9,6 +9,18 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **PUNCH**: FX on any song view opens a page whose first six note keys are held effect pads for
+  the playing song, several at once: **MUTE** (chip A silent, its voices running on), **FILTER
+  SLAM** (cutoff to the bottom, resonance up, every voice through the low pass), **PITCH DIVE**
+  (every voice slows like a stopped tape, an octave down in half a second), **STUTTER** (the beat
+  from the press repeats; let go, the song is exactly where it would have been), **ECHO THROW**
+  (the song sent into a delay; let go, the echoes ring on for 4 s before the FX slot is yours
+  again) and **CHIP SWAP** (the song on the other SID model). Each is undone when its key is let
+  go and nothing is written into the song; the other keys are inert (`KEYS ARE PADS`), and with
+  the song stopped the pads wait (`PLAY TO PUNCH`). HOME goes back, the song playing on; its help
+  card is PUNCH. STUTTER needs no audio buffer (the player repeats the beat's frames and is
+  fast-forwarded back), and every pad held keeps the player's worst block at 45.2 instructions a
+  sample (budget 60).
 - **A layer's level in LAB**: LAYERS' K4 is LEVEL, the edited layer's level, `0` to `100` %
   (ONE OSC: the whole chord's), its card large as it turns; the page shows each layer's level as a
   bar and a number. The audio interrupt scales each voice by its level in the render, about 8
@@ -18,6 +30,8 @@ All notable changes are documented here. The format follows
   `layers`) carry it. An older sound, file or patch reads at full level; NRPN 7/20 turns it.
 
 ### Changed
+- **FX on INSTR opens PUNCH**, as on every song view; ENV and LFO still pull the instrument into
+  LAB (at ENVELOPE and MOD).
 - **LAYERS' K4 FILT is gone from the panel**: which layers go through the filter is FILTER's K3
   VOICES (layer n is voice n), as it always was underneath. NRPN 7/9 still routes the edited
   layer, so a controller mapped to it keeps working.

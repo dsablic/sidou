@@ -6,7 +6,8 @@
  * chip's render. The emulator test (emu-gate tests/song.rs) puts the song's region at
  * SONG_ADDR (a song read and laid out by the host, as the device's region) and the
  * parameters at PARAM_ADDR before it starts: [0] the subtune, [1] the blocks, [2] the edits'
- * kind (0 name cells, 1 index swaps, 2 none, 3 real row cells on an isolated song).
+ * kind (0 name cells, 1 index swaps, 2 none, 3 real row cells on an isolated song, 4 name
+ * cells with every player pad of PUNCH held from the second block, a beat of PUNCH_BEAT calls).
  * Marks: the start, the play's analysis (every
  * slice), a derivation of the whole shape (a widening's worst), then each block's start and
  * end. RESULT_ADDR [2] gets song_ctl's error, [3] the calls made, [4] the commands sent. */
@@ -20,6 +21,8 @@
 #define RESULT_MAGIC 0x53494442u /* "SIDB" */
 #define SONG_ADDR 0x01CA0000u
 #define PARAM_ADDR 0x01CB0000u
+#define KIND_PUNCH 4u
+#define PUNCH_BEAT 24u
 
 extern uint32_t __data_start[], __data_end[], __data_load[], __bss_start[], __bss_end[];
 
@@ -110,9 +113,12 @@ int main(void) {
                         row_error = gt2_set_row(row_song, 0u, 0u, cell, &row_edits[k]);
                     }
                 } else {
-                    edit(song, kind);
+                    edit(song, kind == KIND_PUNCH ? 0u : kind);
                 }
             }
+        }
+        if (b == 1u && kind == KIND_PUNCH) {
+            (void)song_ctl_punch(&sc, SONG_PUNCH_PADS, PUNCH_BEAT);
         }
         song_ctl_commit(&sc);
         bench_mark();

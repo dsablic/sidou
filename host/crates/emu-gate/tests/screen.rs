@@ -3736,7 +3736,7 @@ fn help_cards_match_their_goldens() {
     };
     for name in [
         "menu", "settings", "chip", "scene", "step", "tracker", "order", "instr", "table",
-        "status", "about", "charset", "midi", "song", "files", "saveas", "confirm",
+        "status", "about", "charset", "midi", "song", "files", "saveas", "confirm", "punch",
     ] {
         let mut m = booted(&fw);
         match name {
@@ -3778,6 +3778,7 @@ fn help_cards_match_their_goldens() {
                 }
             }
             "status" => open_status(&mut m, &fw),
+            "punch" => open_punch(&mut m, &fw),
             "midi" => enter_menu_item(&mut m, &fw, MENU_MIDI),
             "song" => enter_menu_item(&mut m, &fw, MENU_SONG),
             _ => {
@@ -3803,6 +3804,57 @@ fn help_cards_match_their_goldens() {
         }
         let_go_of_home_and_close_help_with_k1(&mut m, &fw);
     }
+}
+
+fn open_punch(m: &mut Machine, fw: &Firmware) {
+    press(m, SEQ);
+    settle(m, fw);
+    press(m, FX);
+    settle(m, fw);
+    assert_eq!(top_view(m, fw), fw.symbol("punch_view_view"), "FX on STEP");
+}
+
+fn punch_pads(m: &mut Machine, pads: u32) {
+    for k in 0..sidou_sys::SONG_T_PUNCH_PADS {
+        m.key(KEY0 + k as u8, pads >> k & 1 != 0);
+    }
+}
+
+#[test]
+fn punch_draws_as_its_goldens_and_each_change_of_its_pads_fits_the_frame_budget() {
+    let Some((build, fw)) = common::build_and_firmware("the PUNCH page test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    run_past_boot(&mut m, &fw);
+    open_punch(&mut m, &fw);
+    compare_golden(&build, "punch-stopped", &m.soc.lcd.fb, &[]);
+    let mut most = Vec::new();
+    let mut step = |m: &mut Machine, what: &str, act: &dyn Fn(&mut Machine)| {
+        let c = measure(m, &fw, 12, act);
+        let per = cells_sent(&c);
+        let worst = per.iter().copied().max().unwrap_or(0);
+        assert!(
+            worst <= sidou_sys::PUNCH_VIEW_FRAME_CELLS && c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: {per:?}"
+        );
+        assert_eq!(per.last().copied(), Some(0), "{what}: still drawing");
+        most.push((what.to_string(), worst));
+    };
+    step(&mut m, "play", &|m| m.key(PLAY, true));
+    m.key(PLAY, false);
+    compare_golden(&build, "punch", &m.soc.lcd.fb, &[]);
+    step(&mut m, "every pad", &|m| {
+        punch_pads(m, sidou_sys::PUNCH_VIEW_ALL)
+    });
+    step(&mut m, "pads 2 and 4", &|m| punch_pads(m, 1 << 1 | 1 << 3));
+    compare_golden(&build, "punch-held", &m.soc.lcd.fb, &[]);
+    step(&mut m, "none", &|m| punch_pads(m, 0));
+    step(&mut m, "stop", &|m| m.key(PLAY, true));
+    m.key(PLAY, false);
+    compare_golden(&build, "punch-stopped", &m.soc.lcd.fb, &[]);
+    println!("PUNCH, the most cells a frame: {most:?}");
 }
 
 #[test]

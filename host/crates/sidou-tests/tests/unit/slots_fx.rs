@@ -405,7 +405,10 @@ fn a_closed_send_lets_the_delay_ring_out_what_it_holds_and_takes_nothing_new() {
     let tail = left(&quiet.run(&vec![0i16; n]));
     let out = left(&sent.run(&later));
     let t = echo_time_in_samples(&sent) as usize;
-    assert!(peak_near(&tail, n / 2, n / 2) > 300, "the held echoes ring on");
+    assert!(
+        peak_near(&tail, n / 2, n / 2) > 300,
+        "the held echoes ring on"
+    );
     let echo_of_the_later_burst = (2055 + t - 60)..(2055 + t + 60);
     let off = echo_of_the_later_burst
         .map(|i| (i32::from(out[i]) - i32::from(tail[i])).abs())
